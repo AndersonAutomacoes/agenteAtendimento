@@ -1,0 +1,91 @@
+# PostgreSQL (pgvector) + Redis + API Spring Boot (imagem local via Dockerfile)
+# Uso: docker compose up -d --build
+#
+# Só Gemini (chat + embeddings RAG). OPENAI não é usado por defeito (cerebro.ai.openai-chat-enabled=false).
+# .env na raiz (ver também .env.example):
+#   GEMINI_API_KEY=...   # obrigatório para api
+#   cp .env.example .env
+#
+# Testes com Testcontainers: eles chamam a API do Docker Engine para SUBIR OUTRO container
+# (imagem pgvector), não usam este Postgres automaticamente.
+# - Windows (Maven nativo): perfil docker-windows-npipe define DOCKER_HOST=npipe (pipe
+#   dockerDesktopLinuxEngine, como no contexto desktop-linux do Docker Desktop).
+# - WSL2 (Maven na distro Linux): Maven vê os.family=unix; use o socket Docker padrão ou
+#   export DOCKER_HOST=unix:///var/run/docker.sock antes do mvn se precisar.
+# - Linux/CI: socket padrão ou export DOCKER_HOST=…; variável de ambiente sobrescreve classpath.
+# - Testcontainers com JDK 24+ no Windows: se o Engine estiver ok mas os testes não acharem Docker,
+#   tente JAVA_HOME=JDK 21 LTS (compatibilidade do cliente Docker em Java).
+# - Sem API Docker: CEREBRO_IT_USE_LOCAL_PG=true + testes *LocalPostgresTest em localhost:5433.
+#
+# Padrões (alinhados ao application.yml):
+#   PostgreSQL no host: porta 5433 → 5432 no container (evita colisão com Postgres local na 5432).
+#   Usuário/senha/banco: cerebro / cerebro / cerebro
+#   Redis: senha cerebroredis / porta 6379
+#
+# Se você mudou POSTGRES_USER ou criou o volume com outra configuração e vê
+# "role ... does not exist", o data dir já foi inicializado: pare e remova o volume
+#   docker compose down -v
+#   docker compose up -d
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: cerebro-postgres
+    environment:
+      POSTGRES_USER: cerebro
+      POSTGRES_PASSWORD: cerebro
+      POSTGRES_DB: cerebro
+    ports:
+      - "5433:5432"
+    volumes:
+      - cerebro_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cerebro -d cerebro"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: cerebro-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--requirepass", "cerebroredis"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "cerebroredis", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cerebro-api
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/cerebro
+      SPRING_DATASOURCE_USERNAME: cerebro
+      SPRING_DATASOURCE_PASSWORD: cerebro
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: cerebroredis
+      # Tabela pgvector criada na primeira subida (Flyway trata o restante)
+      SPRING_AI_VECTORSTORE_PGVECTOR_INITIALIZE_SCHEMA: "true"
+      SPRING_AI_VECTORSTORE_PGVECTOR_DIMENSIONS: "768"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?set GEMINI_API_KEY in .env (Gemini chat + embeddings)}
+      # Binding explícito Spring (relaxed binding) para chat + client Gemini
+      SPRING_AI_GOOGLE_GENAI_API_KEY: ${GEMINI_API_KEY}
+      # Garante binding mesmo se o YAML não for aplicado como esperado
+      SPRING_AI_GOOGLE_GENAI_EMBEDDING_API_KEY: ${GEMINI_API_KEY}
+      # Ativa GoogleGenAiTextEmbeddingAutoConfiguration (evita falha sem EmbeddingModel se o JAR foi buildado com YAML antigo)
+      SPRING_AI_MODEL_EMBEDDING_TEXT: google-genai
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  cerebro_pgdata:

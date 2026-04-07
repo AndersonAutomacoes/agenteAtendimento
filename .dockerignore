@@ -1,0 +1,10 @@
+# Build context enxuto para imagem da API
+**/target/
+.git
+.gitignore
+.cursor
+*.iml
+.idea
+.vscode
+terminals
+**/*.md

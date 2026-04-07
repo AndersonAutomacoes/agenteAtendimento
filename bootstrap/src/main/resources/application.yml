@@ -1,0 +1,76 @@
+spring:
+  application:
+    name: cerebro
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      # Sem OPENAI_API_KEY: estes beans falham ao arrancar (stack só Gemini por defeito).
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/cerebro}
+    username: ${SPRING_DATASOURCE_USERNAME:cerebro}
+    password: ${SPRING_DATASOURCE_PASSWORD:cerebro}
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD:cerebroredis}
+  ai:
+    model:
+      chat: google-genai
+      # Obrigatório: valor "google-genai" ativa o GoogleGenAiTextEmbeddingAutoConfiguration (não usar só "model" aqui).
+      embedding:
+        text: google-genai
+    google:
+      genai:
+        # Chat Gemini (bean googleGenAiChatModel). Embeddings RAG usam spring.ai.google.genai.embedding.* abaixo.
+        # Se só a chave de embedding estiver definida, o AI Studio pode mostrar tráfego sem o chat funcionar.
+        api-key: ${GEMINI_API_KEY:${GOOGLE_AI_API_KEY:${SPRING_AI_GOOGLE_GENAI_API_KEY:}}}
+        # Ligação de embeddings (pode usar a mesma chave que o chat ou SPRING_AI_GOOGLE_GENAI_EMBEDDING_API_KEY).
+        embedding:
+          api-key: ${GEMINI_API_KEY:${GOOGLE_AI_API_KEY:${SPRING_AI_GOOGLE_GENAI_EMBEDDING_API_KEY:}}}
+          # Nome do modelo de embedding (não confundir com spring.ai.model.embedding.text acima).
+          # gemini-embedding-001 pode devolver >2000 dimensões; pgvector HNSW só indexa até 2000 — sem isto o CREATE INDEX falha.
+          text:
+            options:
+              model: gemini-embedding-001
+              dimensions: 768
+        chat:
+          options:
+            # No free tier, gemini-2.0-flash pode aparecer com quota 0 (429 limit:0). Use 1.5 Flash ou ative faturação.
+            model: ${GEMINI_CHAT_MODEL:gemini-2.5-flash}
+    vectorstore:
+      pgvector:
+        initialize-schema: ${SPRING_AI_VECTORSTORE_PGVECTOR_INITIALIZE_SCHEMA:false}
+        # Obrigatório com HNSW: pgvector limita HNSW a 2000 dim.; sem isto o builder usa EmbeddingModel.dimensions() (ex.: 3072).
+        dimensions: 768
+        schema-name: public
+        table-name: vector_store
+        index-type: HNSW
+        distance-type: COSINE_DISTANCE    
+
+cerebro:
+  ai:
+    default-chat-provider: GEMINI
+    # Chat OpenAI (beans OpenAiChatModel) só se true; por defeito só Gemini — sem chamadas à API OpenAI.
+    openai-chat-enabled: false
+
+server:
+  port: 8080
+
+# Camel expõe o REST DSL no Servlet dedicado (evita colisão com o DispatcherServlet do Spring MVC).
+camel:
+  servlet:
+    mapping:
+      context-path: /api/*
+
+chat:
+  circuit:
+    # Inclui Redis + embedding (RAG) + chat Gemini + Redis; 15s pode disparar fallback com latência real.
+    timeout-ms: 45000

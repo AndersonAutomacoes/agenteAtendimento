@@ -1,0 +1,123 @@
+package com.atendimento.cerebro.infrastructure.adapter.out.knowledge;
+
+import com.atendimento.cerebro.application.port.out.KnowledgeBasePort;
+import com.atendimento.cerebro.domain.knowledge.KnowledgeHit;
+import com.atendimento.cerebro.domain.tenant.TenantId;
+import com.pgvector.PGvector;
+import java.util.List;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.VectorStore;
+import java.util.Map;
+import org.springframework.ai.vectorstore.filter.Filter;
+import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
+import org.springframework.ai.vectorstore.pgvector.PgVectorFilterExpressionConverter;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+
+/**
+ * {@link KnowledgeBasePort} com Spring AI + PGVector. Metadados devem incluir {@value #TENANT_ID_METADATA_KEY} por
+ * documento. {@link #findTopThreeRelevantFragments} gera o vetor da pergunta via {@link EmbeddingModel} e consulta
+ * o PostgreSQL uma vez (sem segunda chamada ao provedor de embeddings).
+ */
+@Component
+public class PgVectorKnowledgeBaseAdapter implements KnowledgeBasePort {
+
+    public static final String TENANT_ID_METADATA_KEY = "tenant_id";
+
+    /**
+     * Mesmos templates que {@code PgDistanceType} no Spring AI (ordem dos placeholders: tabela, filtro jsonpath).
+     * Mantidos aqui porque {@code PgDistanceType} não é exposto como API pública no módulo publicado.
+     */
+    private static final Map<String, String> SIMILARITY_SQL_BY_DISTANCE_TYPE = Map.of(
+            "COSINE_DISTANCE",
+            "SELECT *, embedding <=> ? AS distance FROM %s WHERE embedding <=> ? < ? %s ORDER BY distance LIMIT ? ",
+            "EUCLIDEAN_DISTANCE",
+            "SELECT *, embedding <-> ? AS distance FROM %s WHERE embedding <-> ? < ? %s ORDER BY distance LIMIT ? ",
+            "NEGATIVE_INNER_PRODUCT",
+            "SELECT *, (1 + (embedding <#> ?)) AS distance FROM %s WHERE (1 + (embedding <#> ?)) < ? %s ORDER BY distance LIMIT ? ");
+
+    private final VectorStore vectorStore;
+    private final EmbeddingModel embeddingModel;
+    private final JdbcTemplate jdbcTemplate;
+    private final String qualifiedVectorTable;
+    private final String similaritySearchSqlTemplate;
+    private final PgVectorFilterExpressionConverter filterConverter = new PgVectorFilterExpressionConverter();
+
+    public PgVectorKnowledgeBaseAdapter(
+            VectorStore vectorStore,
+            EmbeddingModel embeddingModel,
+            JdbcTemplate jdbcTemplate,
+            @Value("${spring.ai.vectorstore.pgvector.schema-name:public}") String schemaName,
+            @Value("${spring.ai.vectorstore.pgvector.table-name:vector_store}") String tableName,
+            @Value("${spring.ai.vectorstore.pgvector.distance-type:COSINE_DISTANCE}") String distanceTypeName) {
+        this.vectorStore = vectorStore;
+        this.embeddingModel = embeddingModel;
+        this.jdbcTemplate = jdbcTemplate;
+        this.qualifiedVectorTable = schemaName + "." + tableName;
+        this.similaritySearchSqlTemplate = SIMILARITY_SQL_BY_DISTANCE_TYPE.getOrDefault(
+                distanceTypeName, SIMILARITY_SQL_BY_DISTANCE_TYPE.get("COSINE_DISTANCE"));
+    }
+
+    /**
+     * Gera o embedding da pergunta e busca os 3 fragmentos mais similares, filtrando por {@code tenant_id} no
+     * metadata JSONB.
+     */
+    @Override
+    public List<KnowledgeHit> findTopThreeRelevantFragments(TenantId tenantId, String userQuestion) {
+        float[] queryVector = embeddingModel.embed(userQuestion);
+        if (queryVector == null || queryVector.length == 0) {
+            throw new IllegalStateException("Falha ao gerar embedding da pergunta do usuário");
+        }
+
+        Filter.Expression tenantFilter =
+                new FilterExpressionBuilder().eq(TENANT_ID_METADATA_KEY, tenantId.value()).build();
+        String nativeFilter = filterConverter.convertExpression(tenantFilter);
+        String jsonPathFilter = "";
+        if (StringUtils.hasText(nativeFilter)) {
+            jsonPathFilter = " AND metadata::jsonb @@ '" + nativeFilter + "'::jsonpath ";
+        }
+
+        double distanceCutoff = 1.0 - SearchRequest.SIMILARITY_THRESHOLD_ACCEPT_ALL;
+        String sql = String.format(similaritySearchSqlTemplate, qualifiedVectorTable, jsonPathFilter);
+
+        PGvector embeddingParam = new PGvector(queryVector);
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> {
+                    String id = rs.getString("id");
+                    String text = rs.getString("content");
+                    float dist = rs.getFloat("distance");
+                    return new KnowledgeHit(id, text != null ? text : "", (double) (1.0f - dist));
+                },
+                embeddingParam,
+                embeddingParam,
+                distanceCutoff,
+                KnowledgeBasePort.TOP_KNOWLEDGE_FRAGMENTS);
+    }
+
+    @Override
+    public List<KnowledgeHit> semanticSearch(TenantId tenantId, String query, int topK) {
+        Filter.Expression tenantFilter =
+                new FilterExpressionBuilder().eq(TENANT_ID_METADATA_KEY, tenantId.value()).build();
+
+        SearchRequest request = SearchRequest.builder()
+                .query(query)
+                .topK(topK)
+                .similarityThreshold(SearchRequest.SIMILARITY_THRESHOLD_ACCEPT_ALL)
+                .filterExpression(tenantFilter)
+                .build();
+
+        return vectorStore.similaritySearch(request).stream()
+                .map(PgVectorKnowledgeBaseAdapter::toKnowledgeHit)
+                .toList();
+    }
+
+    private static KnowledgeHit toKnowledgeHit(Document doc) {
+        String text = doc.isText() && doc.getText() != null ? doc.getText() : "";
+        return new KnowledgeHit(doc.getId(), text, doc.getScore());
+    }
+}

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <!-- Docker indisponível: manter WARN para ver qual estratégia falhou (útil no Windows/Desktop). -->
+    <logger name="org.testcontainers.dockerclient" level="WARN"/>
+</configuration>

@@ -1,0 +1,19 @@
+# Secrets — nunca commitar
+.env
+.env.local
+.env.*.local
+
+# Build
+**/target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
