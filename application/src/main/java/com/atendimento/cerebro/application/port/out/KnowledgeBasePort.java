@@ -1,5 +1,6 @@
 package com.atendimento.cerebro.application.port.out;
 
+import com.atendimento.cerebro.domain.knowledge.KnowledgeDocument;
 import com.atendimento.cerebro.domain.knowledge.KnowledgeHit;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import java.util.List;
@@ -21,4 +22,9 @@ public interface KnowledgeBasePort {
     default List<KnowledgeHit> findTopThreeRelevantFragments(TenantId tenantId, String userQuestion) {
         return semanticSearch(tenantId, userQuestion, TOP_KNOWLEDGE_FRAGMENTS);
     }
+
+    /**
+     * Persiste fragmentos na base vetorial; cada documento deve referenciar o tenant (metadados + contrato).
+     */
+    void persistKnowledgeDocuments(TenantId tenantId, List<KnowledgeDocument> documents);
 }

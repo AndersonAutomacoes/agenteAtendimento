@@ -1,6 +1,10 @@
 spring:
   application:
     name: cerebro
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 30MB
   autoconfigure:
     exclude:
       - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration

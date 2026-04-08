@@ -28,6 +28,7 @@
     <properties>
         <java.version>21</java.version>
         <camel.version>4.10.5</camel.version>
+        <tika.version>3.0.0</tika.version>
     </properties>
 
     <dependencyManagement>
@@ -60,6 +61,16 @@
                 <groupId>com.atendimento</groupId>
                 <artifactId>infrastructure</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.tika</groupId>
+                <artifactId>tika-core</artifactId>
+                <version>${tika.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.tika</groupId>
+                <artifactId>tika-parsers-standard-package</artifactId>
+                <version>${tika.version}</version>
             </dependency>
             <!-- com.google.genai → httpclient traz commons-logging; Spring usa spring-jcl (aviso no startup). -->
             <dependency>

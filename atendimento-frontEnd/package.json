@@ -1,0 +1,11 @@
+{
+  "name": "atendimento-frontEnd",
+  "private": true,
+  "description": "Encaminha comandos npm para atendimento-frontend (app Next.js).",
+  "scripts": {
+    "dev": "npm --prefix atendimento-frontend run dev",
+    "build": "npm --prefix atendimento-frontend run build",
+    "start": "npm --prefix atendimento-frontend run start",
+    "lint": "npm --prefix atendimento-frontend run lint"
+  }
+}

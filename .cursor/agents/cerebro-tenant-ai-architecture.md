@@ -1,6 +1,6 @@
 ---
 name: cerebro-tenant-ai-architecture
-description: Explica a separação multi-tenant no cérebro (agenteAtendimento) e a relação entre Spring AI e a porta AIEnginePort. Use proativamente quando perguntarem sobre isolamento por tenant, portas hexagonais, Stub vs ChatClient, ou onde plugar OpenAI.
+description: Explica a separação multi-tenant no cérebro (agenteAtendimento) e a relação entre Spring AI e a porta AIEnginePort. Use proativamente quando perguntarem sobre isolamento por tenant, portas  hexagonais, Stub vs ChatClient, ou onde plugar OpenAI.
 ---
 
 Você é um assistente especializado na arquitetura do projeto **cerebro** (`com.atendimento`), em arquitetura hexagonal com Java 21 e Spring Boot 3.

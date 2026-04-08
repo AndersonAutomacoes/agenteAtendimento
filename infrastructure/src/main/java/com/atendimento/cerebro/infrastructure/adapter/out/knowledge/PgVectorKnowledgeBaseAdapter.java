@@ -1,15 +1,18 @@
 package com.atendimento.cerebro.infrastructure.adapter.out.knowledge;
 
 import com.atendimento.cerebro.application.port.out.KnowledgeBasePort;
+import com.atendimento.cerebro.domain.knowledge.KnowledgeDocument;
 import com.atendimento.cerebro.domain.knowledge.KnowledgeHit;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import com.pgvector.PGvector;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
-import java.util.Map;
 import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.ai.vectorstore.pgvector.PgVectorFilterExpressionConverter;
@@ -114,6 +117,23 @@ public class PgVectorKnowledgeBaseAdapter implements KnowledgeBasePort {
         return vectorStore.similaritySearch(request).stream()
                 .map(PgVectorKnowledgeBaseAdapter::toKnowledgeHit)
                 .toList();
+    }
+
+    @Override
+    public void persistKnowledgeDocuments(TenantId tenantId, List<KnowledgeDocument> documents) {
+        if (documents == null || documents.isEmpty()) {
+            return;
+        }
+        List<Document> springDocs = new ArrayList<>(documents.size());
+        for (KnowledgeDocument kd : documents) {
+            Map<String, Object> meta = new HashMap<>();
+            for (var e : kd.metadata().entrySet()) {
+                meta.put(e.getKey(), e.getValue());
+            }
+            meta.put(TENANT_ID_METADATA_KEY, tenantId.value());
+            springDocs.add(Document.builder().id(kd.id()).text(kd.content()).metadata(meta).build());
+        }
+        vectorStore.add(springDocs);
     }
 
     private static KnowledgeHit toKnowledgeHit(Document doc) {
