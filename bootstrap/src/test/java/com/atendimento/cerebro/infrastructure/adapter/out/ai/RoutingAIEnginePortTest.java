@@ -26,7 +26,7 @@ class RoutingAIEnginePortTest {
     void complete_throwsBadRequestWhenOpenAiNotConfigured() {
         var router = new RoutingAIEnginePort(providerOf(null), providerOf(null));
         var req = new AICompletionRequest(
-                new TenantId("t1"), List.of(), List.of(), "hi", AiChatProvider.OPENAI);
+                new TenantId("t1"), List.of(), List.of(), "hi", "", AiChatProvider.OPENAI);
 
         assertThatThrownBy(() -> router.complete(req))
                 .isInstanceOf(ResponseStatusException.class)

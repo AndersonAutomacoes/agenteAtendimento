@@ -1,10 +1,11 @@
 /**
  * Chamadas HTTP ao backend Cérebro.
  *
- * - Sem `NEXT_PUBLIC_API_BASE`: URLs relativas (`/api/v1/...`) — os rewrites do Next
- *   encaminham para o Java (ingest: `/api/v1/ingest` → `/v1/ingest` no servidor).
- * - Com `NEXT_PUBLIC_API_BASE` (ex.: http://localhost:8080): pedidos diretos ao
- *   backend — exige CORS configurado no Spring.
+ * - `next.config.ts` define em **development** `NEXT_PUBLIC_API_BASE` para o Java
+ *   (ex.: http://localhost:8080) por defeito, para o browser falar direto com o
+ *   backend e evitar o proxy dos rewrites (~timeout curto) que causa ECONNRESET
+ *   em respostas longas (chat + IA). Em produção o defeito é URL relativa + rewrites.
+ * - Com `NEXT_PUBLIC_API_BASE`: pedidos diretos — CORS já está no Spring para localhost:3000.
  */
 
 function normalizeBase(raw: string | undefined): string {
@@ -30,6 +31,16 @@ function ingestUrl(tenantId: string): string {
     return `${base}/v1/ingest?${q}`;
   }
   return `/api/v1/ingest?${q}`;
+}
+
+/** PUT bot-settings: no Java é `/v1/bot-settings`; com proxy Next usamos `/api/v1/bot-settings`. */
+function botSettingsUrl(tenantId: string): string {
+  const base = getApiBaseUrl();
+  const q = new URLSearchParams({ tenantId }).toString();
+  if (base) {
+    return `${base}/v1/bot-settings?${q}`;
+  }
+  return `/api/v1/bot-settings?${q}`;
 }
 
 export type ChatRequestBody = {
@@ -117,4 +128,135 @@ export async function postIngest(
     throw new Error("Resposta sem chunksIngested");
   }
   return { chunksIngested: obj.chunksIngested };
+}
+
+export async function putBotSettings(
+  tenantId: string,
+  personality: string,
+): Promise<void> {
+  const res = await fetch(botSettingsUrl(tenantId), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ botPersonality: personality }),
+  });
+
+  const text = await res.text();
+  if (!res.ok) {
+    let json: unknown;
+    try {
+      json = text ? JSON.parse(text) : {};
+    } catch {
+      throw new Error(text || `Resposta inválida (${res.status})`);
+    }
+    throw new Error(
+      parseErrorMessage(json, `Gravar configurações falhou (${res.status})`),
+    );
+  }
+}
+
+/** Alinhado ao enum Java e ao Camel {@code TenantSettingsHttpRequest}. */
+export type WhatsAppProviderType = "SIMULATED" | "META" | "EVOLUTION";
+
+export type TenantSettings = {
+  tenantId: string;
+  systemPrompt: string;
+  whatsappProviderType: WhatsAppProviderType;
+  whatsappApiKey: string | null;
+  whatsappInstanceId: string | null;
+  whatsappBaseUrl: string | null;
+};
+
+export type TenantSettingsPayload = {
+  tenantId: string;
+  systemPrompt: string;
+  whatsappProviderType: WhatsAppProviderType;
+  whatsappApiKey: string | null;
+  whatsappInstanceId: string | null;
+  whatsappBaseUrl: string | null;
+};
+
+/** GET: servlet Camel {@code /api/v1/tenant/settings?tenantId=}. */
+function tenantSettingsGetUrl(tenantId: string): string {
+  const base = getApiBaseUrl();
+  const q = new URLSearchParams({ tenantId }).toString();
+  if (base) {
+    return `${base}/api/v1/tenant/settings?${q}`;
+  }
+  return `/api/v1/tenant/settings?${q}`;
+}
+
+/** PUT: corpo JSON (sem query). */
+function tenantSettingsPutUrl(): string {
+  const base = getApiBaseUrl();
+  return base ? `${base}/api/v1/tenant/settings` : "/api/v1/tenant/settings";
+}
+
+function isWhatsAppProviderType(v: string): v is WhatsAppProviderType {
+  return v === "SIMULATED" || v === "META" || v === "EVOLUTION";
+}
+
+export async function getTenantSettings(tenantId: string): Promise<TenantSettings> {
+  const res = await fetch(tenantSettingsGetUrl(tenantId), {
+    method: "GET",
+    headers: { Accept: "application/json" },
+  });
+
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(text || `Resposta inválida (${res.status})`);
+  }
+
+  if (!res.ok) {
+    throw new Error(
+      parseErrorMessage(json, `Carregar configurações falhou (${res.status})`),
+    );
+  }
+
+  const o = json as Record<string, unknown>;
+  if (typeof o.tenantId !== "string" || typeof o.systemPrompt !== "string") {
+    throw new Error("Resposta de configurações inválida");
+  }
+  const raw = typeof o.whatsappProviderType === "string" ? o.whatsappProviderType : "SIMULATED";
+  const whatsappProviderType: WhatsAppProviderType = isWhatsAppProviderType(raw)
+    ? raw
+    : "SIMULATED";
+
+  return {
+    tenantId: o.tenantId,
+    systemPrompt: o.systemPrompt,
+    whatsappProviderType,
+    whatsappApiKey: typeof o.whatsappApiKey === "string" ? o.whatsappApiKey : null,
+    whatsappInstanceId:
+      typeof o.whatsappInstanceId === "string" ? o.whatsappInstanceId : null,
+    whatsappBaseUrl: typeof o.whatsappBaseUrl === "string" ? o.whatsappBaseUrl : null,
+  };
+}
+
+export async function putTenantSettings(
+  payload: TenantSettingsPayload,
+): Promise<void> {
+  const res = await fetch(tenantSettingsPutUrl(), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const text = await res.text();
+  if (!res.ok) {
+    let json: unknown;
+    try {
+      json = text ? JSON.parse(text) : {};
+    } catch {
+      throw new Error(text || `Resposta inválida (${res.status})`);
+    }
+    throw new Error(
+      parseErrorMessage(
+        json,
+        `Gravar configurações do canal falhou (${res.status})`,
+      ),
+    );
+  }
 }

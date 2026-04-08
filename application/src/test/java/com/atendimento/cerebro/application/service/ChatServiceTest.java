@@ -15,6 +15,7 @@ import com.atendimento.cerebro.application.dto.ChatCommand;
 import com.atendimento.cerebro.application.port.out.AIEnginePort;
 import com.atendimento.cerebro.application.port.out.ConversationContextStorePort;
 import com.atendimento.cerebro.application.port.out.KnowledgeBasePort;
+import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort;
 import com.atendimento.cerebro.domain.conversation.ConversationContext;
 import com.atendimento.cerebro.domain.conversation.ConversationId;
 import com.atendimento.cerebro.domain.conversation.Message;
@@ -43,6 +44,9 @@ class ChatServiceTest {
     @Mock
     private AIEnginePort aiEngine;
 
+    @Mock
+    private TenantConfigurationStorePort tenantConfigurationStore;
+
     @InjectMocks
     private ChatService chatService;
 
@@ -57,6 +61,7 @@ class ChatServiceTest {
 
     @Test
     void chat_createsContextWhenMissing_loadsKb_callsAi_savesWithBothMessages() {
+        when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.empty());
         when(conversationContextStore.load(tenantId, conversationId)).thenReturn(Optional.empty());
         when(knowledgeBase.findTopThreeRelevantFragments(eq(tenantId), eq("hello")))
                 .thenReturn(List.of(new KnowledgeHit("k1", "snippet", 0.9)));
@@ -76,7 +81,7 @@ class ChatServiceTest {
         assertThat(ctx.getMessages().get(1).role()).isEqualTo(MessageRole.ASSISTANT);
         assertThat(ctx.getMessages().get(1).content()).isEqualTo("hi there");
 
-        var ordered = inOrder(conversationContextStore, knowledgeBase, aiEngine);
+        var ordered = inOrder(tenantConfigurationStore, conversationContextStore, knowledgeBase, aiEngine);
         ordered.verify(conversationContextStore).load(tenantId, conversationId);
         ordered.verify(knowledgeBase).findTopThreeRelevantFragments(tenantId, "hello");
         ordered.verify(aiEngine).complete(any(AICompletionRequest.class));
@@ -90,6 +95,7 @@ class ChatServiceTest {
                 .conversationId(conversationId)
                 .messages(List.of(Message.userMessage("prev")))
                 .build();
+        when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.empty());
         when(conversationContextStore.load(tenantId, conversationId)).thenReturn(Optional.of(existing));
         when(knowledgeBase.findTopThreeRelevantFragments(tenantId, "next")).thenReturn(List.of());
         when(aiEngine.complete(any(AICompletionRequest.class)))

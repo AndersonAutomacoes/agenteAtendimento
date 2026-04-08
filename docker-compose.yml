@@ -26,11 +26,20 @@
 # "role ... does not exist", o data dir já foi inicializado: pare e remova o volume
 #   docker compose down -v
 #   docker compose up -d
+#
+# Webhook Evolution → cerebro-api: use http://api:8080/... ou http://cerebro-api:8080/...
+# (alias DNS no serviço api). Dentro do container evolution_api, localhost NÃO é o Spring.
+
+networks:
+  cerebro_internal:
+    driver: bridge
 
 services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: cerebro-postgres
+    networks:
+      - cerebro_internal
     environment:
       POSTGRES_USER: cerebro
       POSTGRES_PASSWORD: cerebro
@@ -48,6 +57,8 @@ services:
   redis:
     image: redis:7-alpine
     container_name: cerebro-redis
+    networks:
+      - cerebro_internal
     ports:
       - "6379:6379"
     command: ["redis-server", "--requirepass", "cerebroredis"]
@@ -56,12 +67,28 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+  evolution-api:
+    container_name: evolution_api
+    image: evoapicloud/evolution-api:v2.3.6
+    restart: always
+    networks:
+      - cerebro_internal
+    ports:
+      - "8083:8080"
+    env_file:
+      - .env
+    volumes:
+      - evolution_instances:/evolution/instances
 
   api:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: cerebro-api
+    networks:
+      cerebro_internal:
+        aliases:
+          - cerebro-api
     ports:
       - "8080:8080"
     environment:
@@ -81,11 +108,16 @@ services:
       SPRING_AI_GOOGLE_GENAI_EMBEDDING_API_KEY: ${GEMINI_API_KEY}
       # Ativa GoogleGenAiTextEmbeddingAutoConfiguration (evita falha sem EmbeddingModel se o JAR foi buildado com YAML antigo)
       SPRING_AI_MODEL_EMBEDDING_TEXT: google-genai
+      # Evolution: dentro do container não use localhost:8083; serviço Compose escuta na 8080.
+      CEREBRO_WHATSAPP_EVOLUTION_BASE_URL: http://evolution-api:8080
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      evolution-api:
+        condition: service_started
 
 volumes:
   cerebro_pgdata:
+  evolution_instances:

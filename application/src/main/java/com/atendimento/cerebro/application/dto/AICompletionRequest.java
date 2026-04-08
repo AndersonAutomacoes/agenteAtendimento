@@ -7,6 +7,7 @@ import com.atendimento.cerebro.domain.tenant.TenantId;
 import java.util.List;
 
 /**
+ * @param systemPrompt persona do tenant (vazio se não configurada na base).
  * @param chatProvider motor de chat a usar; {@code null} usa o default da aplicação ({@code cerebro.ai.default-chat-provider}).
  */
 public record AICompletionRequest(
@@ -14,6 +15,7 @@ public record AICompletionRequest(
         List<Message> conversationHistory,
         List<KnowledgeHit> knowledgeHits,
         String userMessage,
+        String systemPrompt,
         AiChatProvider chatProvider) {
 
     public AICompletionRequest {
@@ -22,6 +24,9 @@ public record AICompletionRequest(
         }
         if (userMessage == null || userMessage.isBlank()) {
             throw new IllegalArgumentException("userMessage must not be blank");
+        }
+        if (systemPrompt == null) {
+            systemPrompt = "";
         }
         if (chatProvider == null) {
             throw new IllegalArgumentException("chatProvider is required");

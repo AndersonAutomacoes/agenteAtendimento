@@ -107,6 +107,7 @@ public abstract class ChatServiceIntegrationBase {
         });
 
         jdbcTemplate.update("DELETE FROM conversation_message");
+        jdbcTemplate.update("DELETE FROM tenant_configuration");
         jdbcTemplate.update("DELETE FROM vector_store");
 
         vectorStore.add(List.of(new Document(

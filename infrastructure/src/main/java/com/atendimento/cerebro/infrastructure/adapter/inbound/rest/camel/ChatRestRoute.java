@@ -14,12 +14,15 @@ import org.apache.camel.model.rest.RestBindingMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StopWatch;
 
 @Component
+@Order(Ordered.HIGHEST_PRECEDENCE)
 public class ChatRestRoute extends RouteBuilder {
 
     private static final Logger LOG = LoggerFactory.getLogger(ChatRestRoute.class);

@@ -48,7 +48,7 @@ spring:
         chat:
           options:
             # No free tier, gemini-2.0-flash pode aparecer com quota 0 (429 limit:0). Use 1.5 Flash ou ative faturação.
-            model: ${GEMINI_CHAT_MODEL:gemini-2.5-flash}
+            model: ${GEMINI_CHAT_MODEL:gemini-2.5-flash-lite}
     vectorstore:
       pgvector:
         initialize-schema: ${SPRING_AI_VECTORSTORE_PGVECTOR_INITIALIZE_SCHEMA:false}
@@ -64,6 +64,21 @@ cerebro:
     default-chat-provider: GEMINI
     # Chat OpenAI (beans OpenAiChatModel) só se true; por defeito só Gemini — sem chamadas à API OpenAI.
     openai-chat-enabled: false
+  # Webhook WhatsApp: número (só dígitos) → tenantId (string). A persona do bot NÃO vem daqui:
+  # vem da tabela PostgreSQL tenant_configuration (system_prompt) para esse mesmo tenant_id.
+  # O valor à direita tem de coincidir com o tenantId usado no dashboard / PUT .../tenant/settings.
+  whatsapp:
+    # Versão do path Graph API (ex.: v21.0) para POST .../{phone-number-id}/messages
+    meta:
+      graph-api-version: ${CEREBRO_WHATSAPP_META_GRAPH_VERSION:v21.0}
+    # Se não vazio, substitui whatsapp_base_url do tenant nas chamadas HTTP à Evolution.
+    # Em Docker, use http://evolution-api:8080 — dentro do container cerebro-api, localhost não é o serviço Evolution.
+    evolution:
+      base-url-override: ${CEREBRO_WHATSAPP_EVOLUTION_BASE_URL:}
+    # Número (só dígitos) → tenantId. Por omissão tenta-se o interlocutor; se não existir entrada, usa-se o campo
+    # "sender" do webhook Evolution (telefone da linha/instância). Alinhe com os dígitos reais do Evolution Manager.
+    tenants:
+      "557196248348": "oficina"
 
 server:
   port: 8080
@@ -78,3 +93,11 @@ chat:
   circuit:
     # Inclui Redis + embedding (RAG) + chat Gemini + Redis; 15s pode disparar fallback com latência real.
     timeout-ms: 45000
+
+# Contrato único: classpath/static/openapi.yaml — UI em /swagger-ui/index.html
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    url: /openapi.yaml
+    path: /swagger-ui.html

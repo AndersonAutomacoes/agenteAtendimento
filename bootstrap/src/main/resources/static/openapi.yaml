@@ -1,0 +1,435 @@
+openapi: 3.0.3
+info:
+  title: Cerebro API
+  description: |
+    Contrato único dos endpoints HTTP expostos pela aplicação **até ao momento**.
+
+    - Rotas **Apache Camel** (servlet em `/api/*`): prefixo `/api/v1/...`.
+    - Rotas **Spring MVC** (DispatcherServlet na raiz): prefixo `/v1/...` (sem `/api`).
+
+    Autenticação: não há esquema global neste contrato; a API está aberta no MVP.
+  version: 0.1.0
+
+servers:
+  - url: http://localhost:8080
+    description: Desenvolvimento local
+
+tags:
+  - name: Chat
+    description: Atendimento com RAG (Camel)
+  - name: Tenant settings
+    description: Configuração do tenant e WhatsApp (Camel)
+  - name: WhatsApp webhook
+    description: Webhook inbound Meta / Evolution / testes (Camel)
+  - name: Ingestão
+    description: Upload de documentos para a base de conhecimento (Spring MVC)
+  - name: Bot
+    description: Personalidade do bot (Spring MVC)
+
+paths:
+  /api/v1/chat:
+    post:
+      tags: [Chat]
+      summary: Chat com o assistente
+      operationId: postChat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatHttpRequest"
+            examples:
+              padrao:
+                value:
+                  tenantId: oficina
+                  sessionId: sessao-1
+                  message: Qual o horário de atendimento?
+      responses:
+        "200":
+          description: Resposta do assistente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatResult"
+        "504":
+          description: Timeout do circuito (resposta de fallback no corpo)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatResult"
+        "503":
+          description: Erro no circuito / manutenção (corpo com mensagem de fallback)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatResult"
+
+  /api/v1/tenant/settings:
+    get:
+      tags: [Tenant settings]
+      summary: Obter configuração do tenant
+      operationId: getTenantSettings
+      parameters:
+        - name: tenantId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Identificador do tenant (ex. oficina)
+      responses:
+        "200":
+          description: Configuração atual
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantSettingsResponse"
+        "400":
+          description: tenantId em falta
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+    put:
+      tags: [Tenant settings]
+      summary: Atualizar configuração do tenant
+      operationId: putTenantSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantSettingsHttpRequest"
+      responses:
+        "204":
+          description: Atualizado com sucesso (sem corpo)
+        "400":
+          description: Validação ou tipo de provedor inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+
+  /api/v1/whatsapp/webhook:
+    post:
+      tags: [WhatsApp webhook]
+      summary: Webhook WhatsApp (corpo JSON)
+      description: |
+        Aceita JSON simples de teste, envelope **Meta** (`entry`) ou **Evolution** v2 (`event` + `data`).
+        Respostas `ignored` quando o evento não for tratado ou `processed` após fluxo de chat.
+      operationId: postWhatsAppWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/WhatsAppWebhookSimpleBody"
+                - $ref: "#/components/schemas/WhatsAppWebhookMetaEnvelope"
+                - $ref: "#/components/schemas/WhatsAppWebhookEvolutionMessagesUpsert"
+            examples:
+              testeSimples:
+                summary: Teste manual
+                value:
+                  from: "5511999999999"
+                  text: Olá
+              evolution:
+                summary: Evolution messages.upsert (simplificado)
+                value:
+                  event: messages.upsert
+                  data:
+                    key:
+                      remoteJid: "5511999999999@s.whatsapp.net"
+                      fromMe: false
+                    message:
+                      conversation: Olá
+                    messageType: conversation
+      responses:
+        "200":
+          description: Evento aceite (pode ser ignorado ou processado)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppWebhookResponse"
+        "400":
+          description: Mensagem inválida ou JSON ilegível
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        "404":
+          description: Número sem tenant associado (`cerebro.whatsapp.tenants` / configuração)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+
+  /api/v1/whatsapp/webhook/{event}:
+    post:
+      tags: [WhatsApp webhook]
+      summary: Webhook WhatsApp (path com nome do evento)
+      description: O mesmo processamento que `POST /api/v1/whatsapp/webhook`, para clientes que apendem o evento ao path (ex. Evolution “Webhook by Events”).
+      operationId: postWhatsAppWebhookWithEvent
+      parameters:
+        - name: event
+          in: path
+          required: true
+          schema:
+            type: string
+          examples:
+            MESSAGES_UPSERT:
+              value: MESSAGES_UPSERT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/WhatsAppWebhookSimpleBody"
+                - $ref: "#/components/schemas/WhatsAppWebhookMetaEnvelope"
+                - $ref: "#/components/schemas/WhatsAppWebhookEvolutionMessagesUpsert"
+      responses:
+        "200":
+          description: Evento aceite
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppWebhookResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+
+  /v1/ingest:
+    post:
+      tags: [Ingestão]
+      summary: Ingerir ficheiro (multipart)
+      description: |
+        `tenantId` vai na **query string**; o ficheiro no part `file`.
+        Endpoint Spring MVC (não usa o prefixo `/api`).
+      operationId: postIngest
+      parameters:
+        - name: tenantId
+          in: query
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Documento (PDF, texto, etc. conforme extração configurada)
+      responses:
+        "200":
+          description: Número de chunks gravados
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestHttpResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+
+  /v1/bot-settings:
+    put:
+      tags: [Bot]
+      summary: Atualizar só a personalidade (system prompt) do bot
+      description: Atualização parcial da persona; endpoint Spring MVC em `/v1` (sem `/api`).
+      operationId: putBotSettings
+      parameters:
+        - name: tenantId
+          in: query
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotSettingsPutRequest"
+      responses:
+        "204":
+          description: Atualizado com sucesso
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+
+components:
+  schemas:
+    ChatHttpRequest:
+      type: object
+      required: [tenantId, sessionId, message]
+      properties:
+        tenantId:
+          type: string
+        sessionId:
+          type: string
+          description: Alias JSON aceite — `conversationId`
+        message:
+          type: string
+          description: Alias JSON aceite — `userMessage`
+        topK:
+          type: integer
+          format: int32
+          description: Top-K para RAG (opcional)
+        aiProvider:
+          type: string
+          enum: [GEMINI, OPENAI]
+          description: Por defeito vem de `cerebro.ai.default-chat-provider`; OPENAI só se ativado no servidor
+
+    ChatResult:
+      type: object
+      required: [assistantMessage]
+      description: Resposta do modelo (inclui mensagens de fallback do circuito)
+      properties:
+        assistantMessage:
+          type: string
+
+    TenantSettingsResponse:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        systemPrompt:
+          type: string
+          nullable: true
+        whatsappProviderType:
+          type: string
+          description: SIMULATED, META ou EVOLUTION
+          nullable: true
+        whatsappApiKey:
+          type: string
+          nullable: true
+        whatsappInstanceId:
+          type: string
+          nullable: true
+        whatsappBaseUrl:
+          type: string
+          nullable: true
+
+    TenantSettingsHttpRequest:
+      type: object
+      required: [tenantId, systemPrompt]
+      properties:
+        tenantId:
+          type: string
+        systemPrompt:
+          type: string
+        whatsappProviderType:
+          type: string
+          nullable: true
+        whatsappApiKey:
+          type: string
+          nullable: true
+        whatsappInstanceId:
+          type: string
+          nullable: true
+        whatsappBaseUrl:
+          type: string
+          nullable: true
+
+    IngestErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    IngestHttpResponse:
+      type: object
+      required: [chunksIngested]
+      properties:
+        chunksIngested:
+          type: integer
+          format: int32
+
+    WhatsAppWebhookResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: processed
+          description: Valores comuns — `processed`, `ignored`
+
+    BotSettingsPutRequest:
+      type: object
+      required: [botPersonality]
+      properties:
+        botPersonality:
+          type: string
+          description: Texto mapeado para o system prompt do tenant
+
+    WhatsAppWebhookSimpleBody:
+      type: object
+      required: [from]
+      properties:
+        from:
+          type: string
+          description: Número do remetente (aceita máscara; servidor extrai dígitos)
+        text:
+          type: string
+        message:
+          type: string
+          description: Alternativa ao campo `text`
+
+    WhatsAppWebhookMetaEnvelope:
+      type: object
+      description: Subconjunto do webhook Cloud API da Meta (estrutura `entry/changes/value/messages`)
+      properties:
+        entry:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    WhatsAppWebhookEvolutionMessagesUpsert:
+      type: object
+      required: [event, data]
+      properties:
+        event:
+          type: string
+          example: messages.upsert
+        data:
+          type: object
+          required: [key, message]
+          properties:
+            key:
+              type: object
+              properties:
+                remoteJid:
+                  type: string
+                fromMe:
+                  type: boolean
+            message:
+              type: object
+              additionalProperties: true
+            messageType:
+              type: string

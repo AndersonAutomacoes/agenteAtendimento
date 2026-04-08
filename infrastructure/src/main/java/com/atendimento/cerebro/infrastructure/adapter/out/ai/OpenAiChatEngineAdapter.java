@@ -3,7 +3,6 @@ package com.atendimento.cerebro.infrastructure.adapter.out.ai;
 import com.atendimento.cerebro.application.dto.AICompletionRequest;
 import com.atendimento.cerebro.application.dto.AICompletionResponse;
 import com.atendimento.cerebro.domain.conversation.Message;
-import com.atendimento.cerebro.domain.knowledge.KnowledgeHit;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -25,11 +24,6 @@ import org.springframework.util.CollectionUtils;
 public class OpenAiChatEngineAdapter {
 
     public static final String DEFAULT_MODEL = "gpt-4o";
-
-    private static final String SYSTEM_PROMPT =
-            "Você é um assistente virtual especializado. Use APENAS as informações fornecidas na base de "
-                    + "conhecimento para responder. Se não souber, peça para o usuário aguardar um atendente humano. "
-                    + "Nunca invente dados.";
 
     private final OpenAiChatModel chatModel;
     private final String chatModelName;
@@ -66,20 +60,7 @@ public class OpenAiChatEngineAdapter {
     }
 
     private String buildSystemContent(AICompletionRequest request) {
-        return SYSTEM_PROMPT + "\n\n--- Base de conhecimento (use somente estes trechos) ---\n" + formatKnowledge(request);
-    }
-
-    private static String formatKnowledge(AICompletionRequest request) {
-        List<KnowledgeHit> hits = request.knowledgeHits();
-        if (hits == null || hits.isEmpty()) {
-            return "(Nenhum trecho foi recuperado da base de conhecimento para esta pergunta.)";
-        }
-        StringBuilder sb = new StringBuilder();
-        int i = 1;
-        for (KnowledgeHit h : hits) {
-            sb.append("[").append(i++).append("] ").append(h.content()).append("\n\n");
-        }
-        return sb.toString().strip();
+        return RagSystemPromptComposer.compose(request.systemPrompt(), request.knowledgeHits());
     }
 
     private static org.springframework.ai.chat.messages.Message toSpringMessage(Message m) {

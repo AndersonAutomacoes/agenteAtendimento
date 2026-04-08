@@ -29,7 +29,7 @@ export default function RootLayout({
   return (
     <html
       lang="pt"
-      className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${inter.variable} ${geistMono.variable} dark h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full font-sans">

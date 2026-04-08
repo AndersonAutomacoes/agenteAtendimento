@@ -29,16 +29,17 @@ function formatTime(d: Date) {
 }
 
 export default function TestChatPage() {
-  const sessionIdRef = React.useRef<string>(
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `sess-${Date.now()}`,
-  );
+  /** Estado definido só no cliente (useEffect) para o SSR e a 1.ª hidratação coincidirem. */
+  const [sessionId, setSessionId] = React.useState("");
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const [tenantId, setTenantId] = React.useState("");
   const [draft, setDraft] = React.useState("");
   const [messages, setMessages] = React.useState<ChatLine[]>([]);
   const [awaitingReply, setAwaitingReply] = React.useState(false);
+
+  React.useEffect(() => {
+    setSessionId(crypto.randomUUID());
+  }, []);
 
   React.useEffect(() => {
     try {
@@ -85,11 +86,16 @@ export default function TestChatPage() {
     setDraft("");
     setAwaitingReply(true);
 
+    const sid = sessionId || crypto.randomUUID();
+    if (!sessionId) {
+      setSessionId(sid);
+    }
+
     const dismiss = toast.loading("A gerar resposta…");
     try {
       const result = await postChat({
         tenantId: tid,
-        sessionId: sessionIdRef.current,
+        sessionId: sid,
         message: msg,
       });
       const assistantLine: ChatLine = {
@@ -123,7 +129,7 @@ export default function TestChatPage() {
           Ambiente tipo conversa: a sua mensagem à direita, a IA à esquerda.
         </p>
         <p className="mt-1 font-mono text-[11px] text-muted-foreground">
-          sessionId: {sessionIdRef.current}
+          sessionId: {sessionId || "—"}
         </p>
       </div>
 

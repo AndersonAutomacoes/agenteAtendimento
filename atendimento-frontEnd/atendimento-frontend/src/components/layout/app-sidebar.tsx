@@ -37,7 +37,7 @@ const items: {
     icon: MessageSquareText,
   },
   {
-    href: "/bot-settings",
+    href: "/settings",
     label: "Configurações",
     icon: Bot,
   },
