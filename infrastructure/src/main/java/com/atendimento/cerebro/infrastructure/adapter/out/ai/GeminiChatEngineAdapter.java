@@ -60,7 +60,10 @@ public class GeminiChatEngineAdapter {
     }
 
     private String buildSystemContent(AICompletionRequest request) {
-        return RagSystemPromptComposer.compose(request.systemPrompt(), request.knowledgeHits());
+        return RagSystemPromptComposer.compose(
+                request.systemPrompt(),
+                request.knowledgeHits(),
+                !request.conversationHistory().isEmpty());
     }
 
     private static org.springframework.ai.chat.messages.Message toSpringMessage(Message m) {

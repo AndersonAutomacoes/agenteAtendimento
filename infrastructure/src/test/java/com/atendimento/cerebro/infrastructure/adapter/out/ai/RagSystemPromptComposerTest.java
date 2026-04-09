@@ -12,7 +12,8 @@ class RagSystemPromptComposerTest {
     void compose_includesPersonaContextAndAdditionalInstruction() {
         String text = RagSystemPromptComposer.compose(
                 "Seja cordial",
-                List.of(new KnowledgeHit("id", "Trecho único sobre política.", 0.9)));
+                List.of(new KnowledgeHit("id", "Trecho único sobre política.", 0.9)),
+                false);
 
         assertThat(text)
                 .startsWith("Instrução de Personalidade: Seja cordial.\n\nContexto de Conhecimento:")
@@ -23,7 +24,15 @@ class RagSystemPromptComposerTest {
 
     @Test
     void compose_whenNoHits_showsExplicitEmptyMessage() {
-        String text = RagSystemPromptComposer.compose("x", List.of());
+        String text = RagSystemPromptComposer.compose("x", List.of(), false);
         assertThat(text).contains("Contexto de Conhecimento: (Nenhum trecho foi recuperado");
+    }
+
+    @Test
+    void compose_whenHasPriorTurns_addsContinuityInstruction() {
+        String text = RagSystemPromptComposer.compose("x", List.of(), true);
+        assertThat(text)
+                .contains("Continuidade da conversa:")
+                .contains("Contexto de Conhecimento:");
     }
 }

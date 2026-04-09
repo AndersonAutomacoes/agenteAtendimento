@@ -1,6 +1,7 @@
 package com.atendimento.cerebro.application.port.out;
 
 import com.atendimento.cerebro.domain.knowledge.KnowledgeDocument;
+import com.atendimento.cerebro.domain.knowledge.KnowledgeFileSummary;
 import com.atendimento.cerebro.domain.knowledge.KnowledgeHit;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import java.util.List;
@@ -27,4 +28,18 @@ public interface KnowledgeBasePort {
      * Persiste fragmentos na base vetorial; cada documento deve referenciar o tenant (metadados + contrato).
      */
     void persistKnowledgeDocuments(TenantId tenantId, List<KnowledgeDocument> documents);
+
+    /**
+     * Ficheiros indexados por conta (agrupados por {@link KnowledgeDocument#META_INGESTION_BATCH_ID}).
+     */
+    default List<KnowledgeFileSummary> listUploadedFiles(TenantId tenantId) {
+        return List.of();
+    }
+
+    /**
+     * Remove todos os vectores de um envio. Retorna quantas linhas foram apagadas.
+     */
+    default int deleteByBatchId(TenantId tenantId, String batchId) {
+        return 0;
+    }
 }

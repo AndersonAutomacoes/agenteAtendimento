@@ -9,6 +9,7 @@ public interface IngestionUseCase {
      * Extrai texto, divide em chunks e persiste com isolamento por {@code tenantId}.
      *
      * @param originalFilename nome original (extensão guia o detetor de tipo, ex.: PDF vs TXT)
+     * @param fileSizeBytes tamanho declarado do ficheiro (metadados na listagem)
      */
-    int ingest(TenantId tenantId, byte[] fileContent, String originalFilename);
+    int ingest(TenantId tenantId, byte[] fileContent, String originalFilename, long fileSizeBytes);
 }

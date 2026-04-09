@@ -24,4 +24,13 @@ public class CamelWhatsAppOutboundAdapter implements WhatsAppOutboundPort {
         headers.put(WhatsAppOutboundHeaders.TO, to);
         producerTemplate.sendBodyAndHeaders("direct:processWhatsAppResponse", text, headers);
     }
+
+    @Override
+    public void sendMessage(TenantId tenantId, String to, String text, long existingAssistantMessageId) {
+        Map<String, Object> headers = new HashMap<>();
+        headers.put(WhatsAppOutboundHeaders.TENANT_ID, tenantId.value());
+        headers.put(WhatsAppOutboundHeaders.TO, to);
+        headers.put(WhatsAppOutboundHeaders.ASSISTANT_MESSAGE_ID, existingAssistantMessageId);
+        producerTemplate.sendBodyAndHeaders("direct:processWhatsAppResponse", text, headers);
+    }
 }

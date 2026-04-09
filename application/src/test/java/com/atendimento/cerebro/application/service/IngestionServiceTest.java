@@ -36,7 +36,7 @@ class IngestionServiceTest {
 
     @Test
     void ingest_emptyFile_returnsZero() {
-        int n = service.ingest(new TenantId("t1"), new byte[0], "f.txt");
+        int n = service.ingest(new TenantId("t1"), new byte[0], "f.txt", 0L);
         assertThat(n).isZero();
     }
 
@@ -44,7 +44,7 @@ class IngestionServiceTest {
     void ingest_persistsChunks() {
         when(textExtractor.extract(any(), eq("doc.txt"))).thenReturn("a".repeat(1200));
 
-        int n = service.ingest(new TenantId("tenant-a"), "x".getBytes(), "doc.txt");
+        int n = service.ingest(new TenantId("tenant-a"), "x".getBytes(), "doc.txt", 4L);
 
         assertThat(n).isEqualTo(2);
         ArgumentCaptor<List<KnowledgeDocument>> captor = ArgumentCaptor.captor();
@@ -53,5 +53,10 @@ class IngestionServiceTest {
         assertThat(docs).hasSize(2);
         assertThat(docs.get(0).metadata().get(KnowledgeDocument.META_CHUNK_COUNT)).isEqualTo("2");
         assertThat(docs.get(1).metadata().get(KnowledgeDocument.META_CHUNK_INDEX)).isEqualTo("1");
+        String batch = docs.get(0).metadata().get(KnowledgeDocument.META_INGESTION_BATCH_ID);
+        assertThat(batch).isNotBlank();
+        assertThat(docs.get(1).metadata().get(KnowledgeDocument.META_INGESTION_BATCH_ID)).isEqualTo(batch);
+        assertThat(docs.get(0).metadata()).containsKey(KnowledgeDocument.META_UPLOADED_AT);
+        assertThat(docs.get(0).metadata().get(KnowledgeDocument.META_FILE_SIZE_BYTES)).isEqualTo("4");
     }
 }

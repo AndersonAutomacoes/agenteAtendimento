@@ -22,5 +22,13 @@ public final class WhatsAppOutboundHeaders {
 
     public static final String PROP_WA_TENANT_CONFIG = "waTenantConfig";
 
+    /**
+     * Se presente (reenvio), reutiliza este {@code chat_message.id} em vez de inserir nova linha ASSISTANT.
+     */
+    public static final String ASSISTANT_MESSAGE_ID = "assistantMessageId";
+
+    /** Property Camel: id da linha ASSISTANT em curso (novo insert ou reenvio). */
+    public static final String PROP_ASSISTANT_MESSAGE_ID = "assistantMessageRowId";
+
     private WhatsAppOutboundHeaders() {}
 }

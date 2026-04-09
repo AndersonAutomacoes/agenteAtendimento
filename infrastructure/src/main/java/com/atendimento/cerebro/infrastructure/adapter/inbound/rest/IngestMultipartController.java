@@ -24,7 +24,7 @@ import org.springframework.web.multipart.MultipartFile;
  * este endpoint usa o {@code DispatcherServlet} em {@code /v1/ingest}, onde o multipart do Spring funciona de
  * forma fiável.
  * <p>
- * URL: {@code POST /v1/ingest?tenantId=...} com {@code multipart/form-data}, campo de ficheiro {@code file}.
+ * URL: {@code POST /v1/ingest?tenantId=...} com {@code multipart/form-data}, campo de arquivo {@code file}.
  */
 @RestController
 @RequestMapping("/v1")
@@ -45,7 +45,7 @@ public class IngestMultipartController {
             return ResponseEntity.badRequest().body(new IngestErrorResponse("tenantId é obrigatório"));
         }
         if (file == null || file.isEmpty()) {
-            return ResponseEntity.badRequest().body(new IngestErrorResponse("ficheiro 'file' é obrigatório"));
+            return ResponseEntity.badRequest().body(new IngestErrorResponse("arquivo 'file' é obrigatório"));
         }
         try {
             String name = file.getOriginalFilename();
@@ -54,7 +54,8 @@ public class IngestMultipartController {
             }
             byte[] bytes = file.getBytes();
             LOG.info("ingest (Spring MVC) tenantId={} filename={} size={}", tenantId.strip(), name, bytes.length);
-            int n = ingestionUseCase.ingest(new TenantId(tenantId.strip()), bytes, name);
+            int n = ingestionUseCase.ingest(
+                    new TenantId(tenantId.strip()), bytes, name, file.getSize());
             return ResponseEntity.ok(new IngestHttpResponse(n));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(new IngestErrorResponse(e.getMessage()));

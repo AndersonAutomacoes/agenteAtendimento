@@ -13,17 +13,29 @@ public final class RagSystemPromptComposer {
             "Instrução Adicional: Use apenas o contexto fornecido para responder. Se não souber, diga que não "
                     + "possui essa informação.";
 
+    private static final String HISTORY_COHERENCE =
+            "Continuidade da conversa: seguem mensagens anteriores deste contacto (histórico recente). "
+                    + "Usa esse histórico para manter coerência, evitar repetir o que já foi dito sem necessidade "
+                    + "e responder em continuidade ao fluxo. Se algo no histórico conflitar com factos da base de "
+                    + "conhecimento abaixo, privilegia a informação factual da base quando for aplicável.";
+
     private RagSystemPromptComposer() {}
 
-    public static String compose(String systemPrompt, List<KnowledgeHit> knowledgeHits) {
+    public static String compose(
+            String systemPrompt, List<KnowledgeHit> knowledgeHits, boolean hasPriorConversationTurns) {
         String personality = systemPrompt != null ? systemPrompt : "";
-        return "Instrução de Personalidade: "
-                + personality
-                + ".\n\n"
-                + "Contexto de Conhecimento: "
-                + formatKnowledge(knowledgeHits)
-                + "\n\n"
-                + ADDITIONAL_INSTRUCTION;
+        StringBuilder sb = new StringBuilder();
+        sb.append("Instrução de Personalidade: ")
+                .append(personality)
+                .append(".\n\n");
+        if (hasPriorConversationTurns) {
+            sb.append(HISTORY_COHERENCE).append("\n\n");
+        }
+        sb.append("Contexto de Conhecimento: ")
+                .append(formatKnowledge(knowledgeHits))
+                .append("\n\n")
+                .append(ADDITIONAL_INSTRUCTION);
+        return sb.toString();
     }
 
     private static String formatKnowledge(List<KnowledgeHit> hits) {

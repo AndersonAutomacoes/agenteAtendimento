@@ -6,6 +6,7 @@ import com.atendimento.cerebro.application.port.out.KnowledgeBasePort;
 import com.atendimento.cerebro.application.port.out.TextExtractorPort;
 import com.atendimento.cerebro.domain.knowledge.KnowledgeDocument;
 import com.atendimento.cerebro.domain.tenant.TenantId;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -24,7 +25,7 @@ public class IngestionService implements IngestionUseCase {
     }
 
     @Override
-    public int ingest(TenantId tenantId, byte[] fileContent, String originalFilename) {
+    public int ingest(TenantId tenantId, byte[] fileContent, String originalFilename, long fileSizeBytes) {
         if (fileContent == null || fileContent.length == 0) {
             return 0;
         }
@@ -44,6 +45,10 @@ public class IngestionService implements IngestionUseCase {
             return 0;
         }
 
+        String batchId = UUID.randomUUID().toString();
+        String uploadedAt = Instant.now().toString();
+        String sizeStr = String.valueOf(Math.max(0L, fileSizeBytes));
+
         int total = pieces.size();
         List<KnowledgeDocument> documents = new ArrayList<>(total);
         for (int i = 0; i < total; i++) {
@@ -51,6 +56,9 @@ public class IngestionService implements IngestionUseCase {
             meta.put(KnowledgeDocument.META_SOURCE_FILENAME, name);
             meta.put(KnowledgeDocument.META_CHUNK_INDEX, String.valueOf(i));
             meta.put(KnowledgeDocument.META_CHUNK_COUNT, String.valueOf(total));
+            meta.put(KnowledgeDocument.META_INGESTION_BATCH_ID, batchId);
+            meta.put(KnowledgeDocument.META_UPLOADED_AT, uploadedAt);
+            meta.put(KnowledgeDocument.META_FILE_SIZE_BYTES, sizeStr);
 
             String id = UUID.randomUUID().toString();
             documents.add(new KnowledgeDocument(id, pieces.get(i), tenantId, meta, Optional.empty()));

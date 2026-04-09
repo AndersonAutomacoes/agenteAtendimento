@@ -19,6 +19,11 @@ public record KnowledgeDocument(
     public static final String META_SOURCE_FILENAME = "source_filename";
     public static final String META_CHUNK_INDEX = "chunk_index";
     public static final String META_CHUNK_COUNT = "chunk_count";
+    /** UUID único por envio — agrupa todos os chunks do mesmo ficheiro. */
+    public static final String META_INGESTION_BATCH_ID = "ingestion_batch_id";
+    /** Instant em ISO-8601 (texto). */
+    public static final String META_UPLOADED_AT = "uploaded_at";
+    public static final String META_FILE_SIZE_BYTES = "file_size_bytes";
 
     public KnowledgeDocument {
         if (id == null || id.isBlank()) {

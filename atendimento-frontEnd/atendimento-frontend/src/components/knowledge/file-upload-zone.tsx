@@ -2,6 +2,7 @@
 
 import { FileText, Upload } from "lucide-react";
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,6 @@ const ACCEPT = ".pdf,.txt,application/pdf,text/plain";
 
 type FileUploadZoneProps = {
   disabled?: boolean;
-  /** Ficheiro em preparação (envio pelo botão "Enviar" na página). */
   pendingFile: File | null;
   onFileChange: (file: File | null) => void;
 };
@@ -21,6 +21,7 @@ export function FileUploadZone({
   pendingFile,
   onFileChange,
 }: FileUploadZoneProps) {
+  const t = useTranslations("knowledgeUpload");
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = React.useState(false);
 
@@ -31,7 +32,7 @@ export function FileUploadZone({
     const file = list[0];
     const lower = file.name.toLowerCase();
     if (!lower.endsWith(".pdf") && !lower.endsWith(".txt")) {
-      toast.error("Apenas ficheiros .pdf ou .txt são aceites.");
+      toast.error(t("invalidType"));
       return;
     }
     onFileChange(file);
@@ -65,12 +66,8 @@ export function FileUploadZone({
           onChange={(e) => handleFiles(e.target.files)}
         />
         <Upload className="mx-auto h-10 w-10 text-muted-foreground" />
-        <p className="mt-3 text-sm font-medium">
-          Arraste PDF ou TXT para aqui, ou clique para escolher
-        </p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Depois use <strong>Enviar</strong> para indexar no servidor.
-        </p>
+        <p className="mt-3 text-sm font-medium">{t("dropTitle")}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{t("dropHint")}</p>
         <Button
           type="button"
           variant="secondary"
@@ -78,7 +75,7 @@ export function FileUploadZone({
           disabled={disabled}
           onClick={pick}
         >
-          Escolher ficheiro
+          {t("chooseFile")}
         </Button>
       </div>
 
@@ -88,7 +85,9 @@ export function FileUploadZone({
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{pendingFile.name}</p>
             <p className="text-xs text-muted-foreground">
-              {(pendingFile.size / 1024).toFixed(1)} KB · pronto a enviar
+              {t("readyKb", {
+                size: (pendingFile.size / 1024).toFixed(1),
+              })}
             </p>
           </div>
           <Button
@@ -99,7 +98,7 @@ export function FileUploadZone({
             disabled={disabled}
             onClick={() => onFileChange(null)}
           >
-            Remover
+            {t("remove")}
           </Button>
         </div>
       ) : null}

@@ -22,10 +22,35 @@ public class WhatsAppWebhookParser {
         /**
          * @param fromRaw Só dígitos do interlocutor (para resposta Evolution/Meta e conversa).
          * @param evolutionLineDigits Dígitos do {@code sender} no envelope Evolution (linha / instância), ou {@code null}.
+         * @param providerMessageId {@code data.key.id} (Evolution) ou {@code messages[].id} (Meta); {@code null} em JSON simples.
          */
-        record TextMessage(String fromRaw, String text, String evolutionLineDigits) implements Incoming {
+        record TextMessage(
+                String fromRaw,
+                String text,
+                String evolutionLineDigits,
+                String providerMessageId,
+                String contactDisplayName,
+                String contactProfilePicUrl)
+                implements Incoming {
             public TextMessage(String fromRaw, String text) {
-                this(fromRaw, text, null);
+                this(fromRaw, text, null, null, null, null);
+            }
+
+            public TextMessage(String fromRaw, String text, String evolutionLineDigits) {
+                this(fromRaw, text, evolutionLineDigits, null, null, null);
+            }
+
+            public TextMessage(String fromRaw, String text, String evolutionLineDigits, String providerMessageId) {
+                this(fromRaw, text, evolutionLineDigits, providerMessageId, null, null);
+            }
+
+            public TextMessage(
+                    String fromRaw,
+                    String text,
+                    String evolutionLineDigits,
+                    String providerMessageId,
+                    String contactDisplayName) {
+                this(fromRaw, text, evolutionLineDigits, providerMessageId, contactDisplayName, null);
             }
         }
     }
@@ -78,7 +103,69 @@ public class WhatsAppWebhookParser {
             return new Incoming.Ignored();
         }
         String lineDigits = evolutionWebhookLineDigits(root);
-        return new Incoming.TextMessage(fromDigits, text.strip(), lineDigits);
+        String contactName = evolutionContactDisplayName(root, data);
+        String profilePic = evolutionProfilePicUrl(root, data);
+        return new Incoming.TextMessage(
+                fromDigits, text.strip(), lineDigits, evolutionKeyId(key), contactName, profilePic);
+    }
+
+    /** URL pública da foto do perfil quando o payload Evolution a expõe. */
+    private static String evolutionProfilePicUrl(JsonNode root, JsonNode data) {
+        String u = firstHttpUrl(
+                data, "profilePicUrl", "profilePictureUrl", "imgUrl", "imageUrl", "profilePicture");
+        if (u != null) {
+            return u;
+        }
+        return firstHttpUrl(root, "profilePicUrl", "profilePictureUrl");
+    }
+
+    private static String firstHttpUrl(JsonNode node, String... fieldNames) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        for (String k : fieldNames) {
+            String raw = node.path(k).asText("").strip();
+            if (!raw.isEmpty()
+                    && (raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("data:image/"))) {
+                return raw;
+            }
+        }
+        return null;
+    }
+
+    /** Nome amigável enviado pela Evolution/Baileys em {@code data.pushName} (ou raiz). */
+    private static String evolutionContactDisplayName(JsonNode root, JsonNode data) {
+        if (data != null && !data.isMissingNode() && !data.isNull()) {
+            String n = data.path("pushName").asText("").strip();
+            if (!n.isEmpty()) {
+                return n;
+            }
+            n = data.path("notifyName").asText("").strip();
+            if (!n.isEmpty()) {
+                return n;
+            }
+        }
+        String rootName = root.path("pushName").asText("").strip();
+        return rootName.isEmpty() ? null : rootName;
+    }
+
+    /** {@code key.id} em webhooks Evolution/Baileys (string ou número). */
+    private static String evolutionKeyId(JsonNode key) {
+        if (key == null || key.isMissingNode() || key.isNull()) {
+            return null;
+        }
+        JsonNode idNode = key.get("id");
+        if (idNode == null || idNode.isNull() || idNode.isMissingNode()) {
+            return null;
+        }
+        if (idNode.isTextual()) {
+            String s = idNode.asText("").strip();
+            return s.isEmpty() ? null : s;
+        }
+        if (idNode.isNumber()) {
+            return idNode.asText();
+        }
+        return null;
     }
 
     /**
@@ -172,7 +259,8 @@ public class WhatsAppWebhookParser {
                     String from = message.path("from").asText("").strip();
                     String body = message.path("text").path("body").asText("");
                     if (!from.isBlank() && !body.isBlank()) {
-                        return new Incoming.TextMessage(from, body);
+                        String mid = message.path("id").asText("").strip();
+                        return new Incoming.TextMessage(from, body, null, mid.isEmpty() ? null : mid);
                     }
                 }
             }

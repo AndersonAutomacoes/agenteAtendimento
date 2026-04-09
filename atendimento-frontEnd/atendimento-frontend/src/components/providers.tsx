@@ -1,8 +1,7 @@
 "use client";
 
-import { Toaster } from "sonner";
-
 import { AppThemeProvider } from "@/components/theme/app-theme-provider";
+import { ToasterBridge } from "@/components/toaster-bridge";
 
 type ProvidersProps = {
   children: React.ReactNode;
@@ -13,7 +12,7 @@ export function Providers({ children }: ProvidersProps) {
   return (
     <AppThemeProvider>
       {children}
-      <Toaster richColors position="top-right" closeButton />
+      <ToasterBridge />
     </AppThemeProvider>
   );
 }

@@ -21,6 +21,14 @@ tags:
     description: Configuração do tenant e WhatsApp (Camel)
   - name: WhatsApp webhook
     description: Webhook inbound Meta / Evolution / testes (Camel)
+  - name: Monitoring
+    description: Histórico de mensagens para monitorização (Camel)
+  - name: Dashboard
+    description: Indicadores agregados do tenant (Camel)
+  - name: Analytics
+    description: Métricas de volume e sucesso para o dashboard (Camel)
+  - name: Knowledge base
+    description: Listagem e remoção de arquivos na base vetorial (Camel)
   - name: Ingestão
     description: Upload de documentos para a base de conhecimento (Spring MVC)
   - name: Bot
@@ -104,6 +112,304 @@ paths:
           description: Atualizado com sucesso (sem corpo)
         "400":
           description: Validação ou tipo de provedor inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+
+  /api/v1/knowledge-base:
+    get:
+      tags: [Knowledge base]
+      summary: Listar arquivos indexados na base vetorial
+      operationId: listKnowledgeBaseFiles
+      parameters:
+        - name: tenantId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Identificador do tenant (conta)
+      responses:
+        "200":
+          description: Lista agregada por envio (ingestion batch)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KnowledgeFileSummary"
+        "400":
+          description: tenantId em falta
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+
+  /api/v1/knowledge-base/{batchId}:
+    delete:
+      tags: [Knowledge base]
+      summary: Remover um arquivo indexado e todos os seus vetores
+      operationId: deleteKnowledgeBaseFile
+      parameters:
+        - name: batchId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID do envio (ingestion_batch_id nos metadados)
+        - name: tenantId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Vectores removidos
+        "400":
+          description: Parâmetros em falta
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        "404":
+          description: Nenhum vector encontrado para esse batch e tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+
+  /api/v1/dashboard/summary:
+    get:
+      tags: [Dashboard]
+      summary: Resumo para o painel (cartões, série temporal, atividades recentes)
+      operationId: getDashboardSummary
+      parameters:
+        - name: tenantId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: range
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [day, week, month]
+            default: day
+          description: day = últimas 24h (por hora); week = 7 dias; month = 30 dias
+      responses:
+        "200":
+          description: Métricas e série para Recharts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+        "400":
+          description: tenantId em falta
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+
+  /api/v1/messages:
+    get:
+      tags: [Monitoring]
+      summary: Últimas mensagens WhatsApp do tenant
+      operationId: getChatMessages
+      parameters:
+        - name: tenantId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Identificador do tenant
+      responses:
+        "200":
+          description: Até 50 mensagens mais recentes (ordem decrescente por data)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChatMessageItemResponse"
+        "400":
+          description: tenantId em falta
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+
+  /api/v1/messages/{id}/retry:
+    post:
+      tags: [Monitoring]
+      summary: Reenviar resposta ASSISTANT com status ERROR
+      description: |
+        Repõe o status para RECEIVED e volta a despachar o outbound WhatsApp para o mesmo conteúdo e número,
+        reutilizando o mesmo registo em `chat_message`.
+      operationId: retryChatMessage
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: ID da linha em `chat_message`
+        - name: tenantId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Deve coincidir com o tenant da mensagem
+      responses:
+        "204":
+          description: Reenvio aceite (processamento assíncrono via Camel)
+        "400":
+          description: tenantId em falta ou id inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        "404":
+          description: Mensagem inexistente para o tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        "409":
+          description: Mensagem não é ASSISTANT com status ERROR
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+
+  /api/v1/analytics/summary:
+    get:
+      tags: [Analytics]
+      summary: Sumário de analytics (últimas 24 horas)
+      description: |
+        Total de mensagens, contactos distintos (`phone_number`) e taxa de sucesso das respostas ASSISTANT
+        terminadas (SENT vs ERROR), para a janela `[agora − 24h, agora)`. Timestamps em UTC (ISO-8601).
+      operationId: getAnalyticsSummary
+      parameters:
+        - name: tenantId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Identificador do tenant
+      responses:
+        "200":
+          description: Métricas agregadas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsSummaryHttpResponse"
+        "400":
+          description: tenantId em falta
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+
+  /api/v1/analytics/hourly-messages:
+    get:
+      tags: [Analytics]
+      summary: Volume de mensagens por hora (UTC)
+      description: |
+        Série horária com buckets contínuos em UTC (zeros onde não houve mensagens). Janela `[agora − hours, agora)`.
+      operationId: getAnalyticsHourlyMessages
+      parameters:
+        - name: tenantId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: hours
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 24
+            minimum: 1
+            maximum: 168
+          description: Horas a incluir (1–168); por defeito 24
+      responses:
+        "200":
+          description: Pontos por hora
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsHourlyMessagesHttpResponse"
+        "400":
+          description: tenantId em falta ou hours inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+
+  /api/v1/analytics/intents:
+    get:
+      tags: [Analytics]
+      summary: Contagem por intenção principal (conversas classificadas)
+      description: |
+        Agrega linhas de `analytics_intents` por categoria na janela `[agora − days, agora)`.
+        A resposta inclui **todas** as categorias com contagem (zero quando não houver dados), para gráficos de pizza estáveis.
+      operationId: getAnalyticsIntents
+      parameters:
+        - name: tenantId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: days
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 30
+            minimum: 1
+            maximum: 366
+          description: Dias corridos a incluir (1–366); por defeito 30
+      responses:
+        "200":
+          description: Contagens por categoria
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsIntentsHttpResponse"
+        "400":
+          description: tenantId em falta ou days inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+
+  /api/v1/analytics/stats:
+    get:
+      tags: [Analytics]
+      summary: Contagens por intenção e sentimento (chat_analytics)
+      description: |
+        Agrega a tabela `chat_analytics` (último estado por conversa tenant + telefone), útil para gráficos de
+        intenção e sentimento classificados via Gemini após cada turno WhatsApp.
+      operationId: getAnalyticsChatStats
+      parameters:
+        - name: tenantId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Contagens com todas as categorias (zeros incluídos)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatAnalyticsStatsHttpResponse"
+        "400":
+          description: tenantId em falta
           content:
             application/json:
               schema:
@@ -208,9 +514,9 @@ paths:
   /v1/ingest:
     post:
       tags: [Ingestão]
-      summary: Ingerir ficheiro (multipart)
+      summary: Ingerir arquivo (multipart)
       description: |
-        `tenantId` vai na **query string**; o ficheiro no part `file`.
+        `tenantId` vai na **query string**; o arquivo no part `file`.
         Endpoint Spring MVC (não usa o prefixo `/api`).
       operationId: postIngest
       parameters:
@@ -303,6 +609,244 @@ components:
           type: string
           enum: [GEMINI, OPENAI]
           description: Por defeito vem de `cerebro.ai.default-chat-provider`; OPENAI só se ativado no servidor
+
+    KnowledgeFileSummary:
+      type: object
+      description: Item da lista GET /api/v1/knowledge-base (DTO JSON; uploadedAt em ISO-8601)
+      required: [batchId, fileName, uploadedAt, sizeBytes, chunkCount, status]
+      properties:
+        batchId:
+          type: string
+        fileName:
+          type: string
+        uploadedAt:
+          type: string
+          format: date-time
+        sizeBytes:
+          type: integer
+          format: int64
+        chunkCount:
+          type: integer
+          format: int32
+        status:
+          type: string
+          description: READY quando o envio já está indexado
+
+    DashboardSummary:
+      type: object
+      properties:
+        totalClients:
+          type: integer
+          format: int64
+        messagesToday:
+          type: integer
+          format: int64
+        aiRatePercent:
+          type: number
+          format: double
+          nullable: true
+        instanceStatus:
+          type: string
+          description: SIMULATED, CONFIGURED ou INCOMPLETE
+        series:
+          type: array
+          items:
+            $ref: "#/components/schemas/DashboardSeriesPoint"
+        recentInteractions:
+          type: array
+          items:
+            $ref: "#/components/schemas/DashboardRecentInteraction"
+
+    DashboardSeriesPoint:
+      type: object
+      properties:
+        bucketStart:
+          type: string
+          format: date-time
+        count:
+          type: integer
+          format: int64
+
+    DashboardRecentInteraction:
+      type: object
+      properties:
+        messageId:
+          type: integer
+          format: int64
+        phoneNumber:
+          type: string
+        contactDisplayName:
+          type: string
+          nullable: true
+        contactProfilePicUrl:
+          type: string
+          nullable: true
+        detectedIntent:
+          type: string
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+        content:
+          type: string
+
+    AnalyticsSummaryHttpResponse:
+      type: object
+      required:
+        [tenantId, periodStart, periodEnd, totalMessages, uniqueUsers]
+      properties:
+        tenantId:
+          type: string
+        periodStart:
+          type: string
+          format: date-time
+          description: Início da janela (UTC, ISO-8601)
+        periodEnd:
+          type: string
+          format: date-time
+          description: Fim exclusivo da janela (UTC, ISO-8601)
+        totalMessages:
+          type: integer
+          format: int64
+        uniqueUsers:
+          type: integer
+          format: int64
+          description: Número de `phone_number` distintos
+        successRatePercent:
+          type: number
+          format: double
+          nullable: true
+          description: ASSISTANT com status SENT / (SENT + ERROR); null se não houver amostra terminal
+
+    AnalyticsHourlyMessagesHttpResponse:
+      type: object
+      required: [tenantId, hours, periodStart, periodEnd, points]
+      properties:
+        tenantId:
+          type: string
+        hours:
+          type: integer
+          format: int32
+        periodStart:
+          type: string
+          format: date-time
+        periodEnd:
+          type: string
+          format: date-time
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/HourlyPointHttpResponse"
+
+    HourlyPointHttpResponse:
+      type: object
+      required: [bucketStartUtc, messageCount]
+      properties:
+        bucketStartUtc:
+          type: string
+          format: date-time
+          description: Início do bucket horário em UTC (ISO-8601)
+        messageCount:
+          type: integer
+          format: int64
+
+    AnalyticsIntentsHttpResponse:
+      type: object
+      required: [tenantId, days, periodStart, periodEnd, counts]
+      properties:
+        tenantId:
+          type: string
+        days:
+          type: integer
+          format: int32
+        periodStart:
+          type: string
+          format: date-time
+          description: Início inclusivo da janela (UTC, ISO-8601)
+        periodEnd:
+          type: string
+          format: date-time
+          description: Fim exclusivo da janela (UTC, ISO-8601)
+        counts:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntentCategoryCountHttp"
+
+    IntentCategoryCountHttp:
+      type: object
+      required: [category, count]
+      properties:
+        category:
+          type: string
+          enum: [ORCAMENTO, AGENDAMENTO, DUVIDA_TECNICA, RECLAMACAO, OUTRO]
+        count:
+          type: integer
+          format: int64
+
+    ChatAnalyticsStatsHttpResponse:
+      type: object
+      required: [tenantId, generatedAt, intents, sentiments]
+      properties:
+        tenantId:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+          description: Momento da agregação (UTC, ISO-8601)
+        intents:
+          type: array
+          description: Contagem por intenção (Venda, Suporte, Orçamento, Agendamento, Outros)
+          items:
+            $ref: "#/components/schemas/ChatAnalyticsLabelCountHttp"
+        sentiments:
+          type: array
+          description: Contagem por sentimento (Positivo, Neutro, Negativo)
+          items:
+            $ref: "#/components/schemas/ChatAnalyticsLabelCountHttp"
+
+    ChatAnalyticsLabelCountHttp:
+      type: object
+      required: [category, count]
+      properties:
+        category:
+          type: string
+        count:
+          type: integer
+          format: int64
+
+    ChatMessageItemResponse:
+      type: object
+      required: [id, tenantId, phoneNumber, role, content, status, timestamp]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenantId:
+          type: string
+        phoneNumber:
+          type: string
+        contactDisplayName:
+          type: string
+          nullable: true
+          description: Nome do contacto (ex. Evolution pushName), quando disponível
+        contactProfilePicUrl:
+          type: string
+          nullable: true
+        detectedIntent:
+          type: string
+          nullable: true
+          description: Etiqueta de intenção inferida pela IA para mensagens USER
+        role:
+          type: string
+          enum: [USER, ASSISTANT]
+        content:
+          type: string
+        status:
+          type: string
+          enum: [RECEIVED, SENT, ERROR]
+        timestamp:
+          type: string
+          format: date-time
 
     ChatResult:
       type: object

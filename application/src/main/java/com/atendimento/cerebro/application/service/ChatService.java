@@ -74,8 +74,13 @@ public class ChatService implements ChatUseCase {
 
         Message userMessage = Message.userMessage(userText);
 
+        List<Message> historyForAi = context.getMessages();
+        if (!command.whatsAppHistoryPriorTurns().isEmpty()) {
+            historyForAi = command.whatsAppHistoryPriorTurns();
+        }
+
         var aiRequest = new AICompletionRequest(
-                tenantId, context.getMessages(), knowledgeHits, userText, systemPrompt, provider);
+                tenantId, historyForAi, knowledgeHits, userText, systemPrompt, provider);
         var aiResponse = aiEngine.complete(aiRequest);
 
         Message assistantMessage = Message.assistantMessage(aiResponse.content());

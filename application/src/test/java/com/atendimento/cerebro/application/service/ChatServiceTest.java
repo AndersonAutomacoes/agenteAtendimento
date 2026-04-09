@@ -114,4 +114,27 @@ class ChatServiceTest {
         assertThat(saved.getValue().getMessages()).hasSize(3);
         assertThat(saved.getValue().getMessages().get(2).content()).isEqualTo("ok");
     }
+
+    @Test
+    void chat_whenWhatsAppHistoryProvided_usesItForAiInsteadOfContextStore() {
+        ConversationContext existing = ConversationContext.builder()
+                .tenantId(tenantId)
+                .conversationId(conversationId)
+                .messages(List.of(Message.userMessage("from-store")))
+                .build();
+        List<Message> wa = List.of(Message.userMessage("wa-a"), Message.assistantMessage("wa-b"));
+        when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.empty());
+        when(conversationContextStore.load(tenantId, conversationId)).thenReturn(Optional.of(existing));
+        when(knowledgeBase.findTopThreeRelevantFragments(tenantId, "next")).thenReturn(List.of());
+        when(aiEngine.complete(any(AICompletionRequest.class)))
+                .thenReturn(new AICompletionResponse("ok"));
+
+        chatService.chat(
+                new ChatCommand(
+                        tenantId, conversationId, "next", null, AiChatProvider.GEMINI, wa));
+
+        ArgumentCaptor<AICompletionRequest> aiReq = ArgumentCaptor.forClass(AICompletionRequest.class);
+        verify(aiEngine).complete(aiReq.capture());
+        assertThat(aiReq.getValue().conversationHistory()).isEqualTo(wa);
+    }
 }

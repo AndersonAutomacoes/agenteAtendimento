@@ -7,6 +7,7 @@ import com.atendimento.cerebro.application.dto.ChatResult;
 import com.atendimento.cerebro.application.port.in.ChatUseCase;
 import com.atendimento.cerebro.domain.conversation.ConversationId;
 import com.atendimento.cerebro.domain.tenant.TenantId;
+import java.util.List;
 import java.util.Locale;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
@@ -131,7 +132,8 @@ public class ChatRestRoute extends RouteBuilder {
                         new ConversationId(req.sessionId()),
                         req.message(),
                         req.topK(),
-                        chatProvider));
+                        chatProvider,
+                        List.of()));
     }
 
     private void executarChat(Exchange exchange) {

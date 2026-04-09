@@ -1,11 +1,16 @@
 package com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel;
 
+import com.atendimento.cerebro.application.port.out.ChatMessageRepository;
 import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort;
+import com.atendimento.cerebro.domain.monitoring.ChatMessage;
+import com.atendimento.cerebro.domain.monitoring.ChatMessageRole;
+import com.atendimento.cerebro.domain.monitoring.ChatMessageStatus;
 import com.atendimento.cerebro.domain.tenant.TenantConfiguration;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import com.atendimento.cerebro.domain.tenant.WhatsAppProviderType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.time.Instant;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,6 +34,7 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
     private static final String PROP_EVOLUTION_URL = "evolutionFullUrl";
 
     private final TenantConfigurationStorePort tenantConfigurationStore;
+    private final ChatMessageRepository chatMessageRepository;
     private final ObjectMapper objectMapper;
     private final String metaGraphApiVersion;
     /** Se não vazio, substitui {@link TenantConfiguration#whatsappBaseUrl()} ao montar a URL Evolution (ex.: rede Docker). */
@@ -36,10 +42,12 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
 
     public WhatsAppOutboundRoutes(
             TenantConfigurationStorePort tenantConfigurationStore,
+            ChatMessageRepository chatMessageRepository,
             ObjectMapper objectMapper,
             @Value("${cerebro.whatsapp.meta.graph-api-version:v21.0}") String metaGraphApiVersion,
             @Value("${cerebro.whatsapp.evolution.base-url-override:}") String evolutionBaseUrlOverride) {
         this.tenantConfigurationStore = tenantConfigurationStore;
+        this.chatMessageRepository = chatMessageRepository;
         this.objectMapper = objectMapper;
         this.metaGraphApiVersion = metaGraphApiVersion;
         this.evolutionBaseUrlOverride = evolutionBaseUrlOverride != null ? evolutionBaseUrlOverride : "";
@@ -51,6 +59,7 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         from("direct:processWhatsAppResponse")
                 .routeId("processWhatsAppResponse")
                 .process(this::loadTenantAndHeaders)
+                .process(this::persistAssistantMessageBeforeProviderSend)
                 .choice()
                     .when(header(WhatsAppOutboundHeaders.PROVIDER).isEqualTo(WhatsAppProviderType.META.name()))
                         .to("direct:sendToMeta")
@@ -108,6 +117,69 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_TEXT, text != null ? text : "");
     }
 
+    /**
+     * Grava ASSISTANT como {@link ChatMessageStatus#RECEIVED} antes do envio, ou reutiliza o id num reenvio.
+     */
+    private void persistAssistantMessageBeforeProviderSend(Exchange exchange) {
+        Long reuseId = exchange.getIn().getHeader(WhatsAppOutboundHeaders.ASSISTANT_MESSAGE_ID, Long.class);
+        if (reuseId != null && reuseId > 0) {
+            exchange.setProperty(WhatsAppOutboundHeaders.PROP_ASSISTANT_MESSAGE_ID, reuseId);
+            return;
+        }
+        String tenantIdStr = exchange.getIn().getHeader(WhatsAppOutboundHeaders.TENANT_ID, String.class);
+        String to = exchange.getProperty(WhatsAppOutboundHeaders.PROP_WA_TO, String.class);
+        String text = exchange.getProperty(WhatsAppOutboundHeaders.PROP_WA_TEXT, String.class);
+        if (tenantIdStr == null || tenantIdStr.isBlank() || to == null || to.isBlank() || text == null || text.isBlank()) {
+            return;
+        }
+        try {
+            long id =
+                    chatMessageRepository.insertReturningId(
+                            new ChatMessage(
+                                    null,
+                                    new TenantId(tenantIdStr.strip()),
+                                    to.strip(),
+                                    ChatMessageRole.ASSISTANT,
+                                    text.strip(),
+                                    ChatMessageStatus.RECEIVED,
+                                    Instant.now(),
+                                    null,
+                                    null,
+                                    null));
+            exchange.setProperty(WhatsAppOutboundHeaders.PROP_ASSISTANT_MESSAGE_ID, id);
+        } catch (Exception e) {
+            LOG.warn(
+                    "falha ao persistir mensagem ASSISTANT (RECEIVED) antes do outbound tenant={} phone={}",
+                    tenantIdStr,
+                    to,
+                    e);
+        }
+    }
+
+    private void markAssistantSent(Exchange exchange) {
+        Long id = exchange.getProperty(WhatsAppOutboundHeaders.PROP_ASSISTANT_MESSAGE_ID, Long.class);
+        if (id == null) {
+            return;
+        }
+        try {
+            chatMessageRepository.updateStatus(id, ChatMessageStatus.SENT);
+        } catch (Exception e) {
+            LOG.warn("falha ao marcar mensagem ASSISTANT como SENT id={}", id, e);
+        }
+    }
+
+    private void markAssistantError(Exchange exchange) {
+        Long id = exchange.getProperty(WhatsAppOutboundHeaders.PROP_ASSISTANT_MESSAGE_ID, Long.class);
+        if (id == null) {
+            return;
+        }
+        try {
+            chatMessageRepository.updateStatus(id, ChatMessageStatus.ERROR);
+        } catch (Exception e) {
+            LOG.warn("falha ao marcar mensagem ASSISTANT como ERROR id={}", id, e);
+        }
+    }
+
     static WhatsAppProviderType effectiveProvider(TenantConfiguration c) {
         return switch (c.whatsappProviderType()) {
             case META -> (c.whatsappApiKey() != null && !c.whatsappApiKey().isBlank())
@@ -151,6 +223,7 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
     private void logMetaResponse(Exchange exchange) {
         Integer code = exchange.getMessage().getHeader(Exchange.HTTP_RESPONSE_CODE, Integer.class);
         LOG.debug("whatsapp Meta HTTP resposta código={}", code);
+        markAssistantSent(exchange);
     }
 
     private void prepareEvolutionHttp(Exchange exchange) throws Exception {
@@ -180,6 +253,7 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
     private void logEvolutionResponse(Exchange exchange) {
         Integer code = exchange.getMessage().getHeader(Exchange.HTTP_RESPONSE_CODE, Integer.class);
         LOG.debug("whatsapp Evolution HTTP resposta código={}", code);
+        markAssistantSent(exchange);
     }
 
     private void logOutboundFailure(Exchange exchange) {
@@ -192,12 +266,14 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         if (ex != null && LOG.isDebugEnabled()) {
             LOG.debug("whatsapp outbound stack", ex);
         }
+        markAssistantError(exchange);
     }
 
     private void logSimulation(Exchange exchange) {
         String to = exchange.getProperty(WhatsAppOutboundHeaders.PROP_WA_TO, String.class);
         String text = exchange.getProperty(WhatsAppOutboundHeaders.PROP_WA_TEXT, String.class);
         LOG.info("[Simulação WhatsApp para {}]: {}", to, text);
+        markAssistantSent(exchange);
     }
 
     private static String trimTrailingSlash(String url) {

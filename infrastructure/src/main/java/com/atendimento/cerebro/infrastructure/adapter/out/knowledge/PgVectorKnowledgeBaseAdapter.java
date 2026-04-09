@@ -2,9 +2,12 @@ package com.atendimento.cerebro.infrastructure.adapter.out.knowledge;
 
 import com.atendimento.cerebro.application.port.out.KnowledgeBasePort;
 import com.atendimento.cerebro.domain.knowledge.KnowledgeDocument;
+import com.atendimento.cerebro.domain.knowledge.KnowledgeFileSummary;
 import com.atendimento.cerebro.domain.knowledge.KnowledgeHit;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import com.pgvector.PGvector;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -139,5 +142,78 @@ public class PgVectorKnowledgeBaseAdapter implements KnowledgeBasePort {
     private static KnowledgeHit toKnowledgeHit(Document doc) {
         String text = doc.isText() && doc.getText() != null ? doc.getText() : "";
         return new KnowledgeHit(doc.getId(), text, doc.getScore());
+    }
+
+    @Override
+    public List<KnowledgeFileSummary> listUploadedFiles(TenantId tenantId) {
+        /*
+         * metadata no Spring AI pode ser json ou jsonb; normalizar com ::jsonb evita falhas de operador
+         * e alinha-se ao DELETE abaixo.
+         */
+        String sql =
+                """
+                SELECT
+                  (metadata::jsonb)->>'ingestion_batch_id' AS batch_id,
+                  MAX((metadata::jsonb)->>'source_filename') AS file_name,
+                  MAX((metadata::jsonb)->>'uploaded_at') AS uploaded_at,
+                  COALESCE(MAX(
+                      CASE
+                        WHEN NULLIF((metadata::jsonb)->>'file_size_bytes', '') IS NOT NULL
+                        THEN ((metadata::jsonb)->>'file_size_bytes')::bigint
+                        ELSE 0
+                      END
+                  ), 0) AS size_bytes,
+                  COUNT(*)::int AS chunk_count
+                FROM """
+                        + " "
+                        + qualifiedVectorTable
+                        + """
+                 WHERE (metadata::jsonb)->>'tenant_id' = ?
+                   AND COALESCE((metadata::jsonb)->>'ingestion_batch_id', '') <> ''
+                 GROUP BY (metadata::jsonb)->>'ingestion_batch_id'
+                 ORDER BY MAX((metadata::jsonb)->>'uploaded_at') DESC NULLS LAST
+                """;
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> {
+                    String batchId = rs.getString("batch_id");
+                    String fileName = rs.getString("file_name");
+                    String uploadedAtRaw = rs.getString("uploaded_at");
+                    Instant uploadedAt = parseUploadedAt(uploadedAtRaw);
+                    long sizeBytes = rs.getLong("size_bytes");
+                    int chunkCount = rs.getInt("chunk_count");
+                    return new KnowledgeFileSummary(
+                            batchId,
+                            fileName != null ? fileName : "",
+                            uploadedAt,
+                            sizeBytes,
+                            chunkCount,
+                            KnowledgeFileSummary.STATUS_READY);
+                },
+                tenantId.value());
+    }
+
+    private static Instant parseUploadedAt(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return Instant.EPOCH;
+        }
+        try {
+            return Instant.parse(raw.strip());
+        } catch (DateTimeParseException e) {
+            return Instant.EPOCH;
+        }
+    }
+
+    @Override
+    public int deleteByBatchId(TenantId tenantId, String batchId) {
+        if (batchId == null || batchId.isBlank()) {
+            return 0;
+        }
+        String trimmedBatch = batchId.strip();
+        String sql =
+                "DELETE FROM "
+                        + qualifiedVectorTable
+                        + " WHERE metadata::jsonb @> jsonb_build_object('tenant_id', ?, 'ingestion_batch_id', ?)";
+        return jdbcTemplate.update(sql, tenantId.value(), trimmedBatch);
     }
 }

@@ -60,6 +60,25 @@ spring:
         distance-type: COSINE_DISTANCE    
 
 cerebro:
+  analytics:
+    categorization:
+      enabled: true
+      max-conversations-per-run: 500
+      max-user-text-chars: 4000
+    chat:
+      enabled: true
+      history-lookback-days: 2
+      max-history-messages: 20
+      max-transcript-chars: 12000
+    intents:
+      enabled: true
+      message-threshold: 6
+      session-lookback-days: 7
+      max-transcript-messages: 48
+      max-transcript-chars: 12000
+      inactivity-classification-enabled: true
+      inactivity-minutes: 30
+      max-classifications-per-run: 200
   ai:
     default-chat-provider: GEMINI
     # Chat OpenAI (beans OpenAiChatModel) só se true; por defeito só Gemini — sem chamadas à API OpenAI.
@@ -75,6 +94,11 @@ cerebro:
     # Em Docker, use http://evolution-api:8080 — dentro do container cerebro-api, localhost não é o serviço Evolution.
     evolution:
       base-url-override: ${CEREBRO_WHATSAPP_EVOLUTION_BASE_URL:}
+    # Idempotência: mesmo id de mensagem (Evolution key.id / Meta) não processa duas vezes (reentregas / retries).
+    inbound-dedupe:
+      enabled: ${CEREBRO_WHATSAPP_INBOUND_DEDUPE_ENABLED:true}
+      ttl-seconds: ${CEREBRO_WHATSAPP_INBOUND_DEDUPE_TTL_SECONDS:172800}
+      key-prefix: ${CEREBRO_WHATSAPP_INBOUND_DEDUPE_KEY_PREFIX:wa:in}
     # Número (só dígitos) → tenantId. Por omissão tenta-se o interlocutor; se não existir entrada, usa-se o campo
     # "sender" do webhook Evolution (telefone da linha/instância). Alinhe com os dígitos reais do Evolution Manager.
     tenants:

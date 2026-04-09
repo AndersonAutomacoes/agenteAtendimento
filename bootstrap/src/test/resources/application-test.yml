@@ -1,4 +1,7 @@
 spring:
+  task:
+    scheduling:
+      enabled: false
   autoconfigure:
     exclude:
       - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
@@ -23,5 +26,10 @@ spring:
         dimensions: 768
 
 cerebro:
+  analytics:
+    chat:
+      enabled: false
+    categorization:
+      enabled: false
   ai:
     default-chat-provider: GEMINI

@@ -7,44 +7,40 @@ import {
   Brain,
   LayoutDashboard,
   MessageSquareText,
+  MonitorDot,
 } from "lucide-react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 import { Separator } from "@/components/ui/separator";
+import { Link, usePathname } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
-
-const items: {
-  href: string;
-  label: string;
-  sub?: string;
-  icon: LucideIcon;
-}[] = [
-  {
-    href: "/",
-    label: "Dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    href: "/knowledge",
-    label: "Base de Conhecimento",
-    sub: "Upload",
-    icon: BookOpen,
-  },
-  {
-    href: "/test-chat",
-    label: "Chat de Teste",
-    icon: MessageSquareText,
-  },
-  {
-    href: "/settings",
-    label: "Configurações",
-    icon: Bot,
-  },
-];
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const t = useTranslations("nav");
+
+  const items: {
+    href: string;
+    labelKey: "dashboard" | "knowledge" | "testChat" | "monitoring" | "settings";
+    subKey?: "knowledgeSub" | "monitoringSub";
+    icon: LucideIcon;
+  }[] = [
+    { href: "/", labelKey: "dashboard", icon: LayoutDashboard },
+    {
+      href: "/knowledge",
+      labelKey: "knowledge",
+      subKey: "knowledgeSub",
+      icon: BookOpen,
+    },
+    { href: "/test-chat", labelKey: "testChat", icon: MessageSquareText },
+    {
+      href: "/dashboard/monitoramento",
+      labelKey: "monitoring",
+      subKey: "monitoringSub",
+      icon: MonitorDot,
+    },
+    { href: "/settings", labelKey: "settings", icon: Bot },
+  ];
 
   return (
     <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-[4px_0_24px_-8px_rgba(0,0,0,0.35)]">
@@ -53,16 +49,21 @@ export function AppSidebar() {
           <Brain className="h-5 w-5" aria-hidden />
         </div>
         <div className="min-w-0">
-          <Link href="/" className="block truncate font-semibold tracking-tight">
-            Cérebro
+          <Link
+            href="/"
+            className="block truncate font-semibold tracking-tight"
+          >
+            {t("brand")}
           </Link>
           <p className="truncate text-[11px] text-muted-foreground">
-            Gestão IA
+            {t("brandSubtitle")}
           </p>
         </div>
       </div>
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-3">
-        {items.map(({ href, label, sub, icon: Icon }) => {
+        {items.map(({ href, labelKey, subKey, icon: Icon }) => {
+          const label = t(labelKey);
+          const sub = subKey ? t(subKey) : undefined;
           const active =
             href === "/"
               ? pathname === "/"
@@ -93,7 +94,7 @@ export function AppSidebar() {
       </nav>
       <Separator className="bg-sidebar-border" />
       <p className="p-4 text-xs leading-relaxed text-muted-foreground">
-        Plataforma pensada para pequenas equipas — simples de usar.
+        {t("footer")}
       </p>
     </aside>
   );
