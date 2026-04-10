@@ -3,6 +3,7 @@ package com.atendimento.cerebro.infrastructure.adapter.out.dedupe;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -28,7 +29,7 @@ class InboundWhatsAppDeduperTest {
 
     @BeforeEach
     void setUp() {
-        when(redis.opsForValue()).thenReturn(valueOps);
+        lenient().when(redis.opsForValue()).thenReturn(valueOps);
         deduper = new InboundWhatsAppDeduper(redis, true, 3600, "wa:test");
     }
 

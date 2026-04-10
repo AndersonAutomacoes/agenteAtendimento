@@ -19,15 +19,26 @@ public final class RagSystemPromptComposer {
                     + "e responder em continuidade ao fluxo. Se algo no histórico conflitar com factos da base de "
                     + "conhecimento abaixo, privilegia a informação factual da base quando for aplicável.";
 
+    private static final String RESUME_AFTER_HUMAN =
+            "Você está retomando um atendimento que foi conduzido temporariamente por um humano. Analise as "
+                    + "mensagens marcadas como atendente humano no histórico recente e siga as orientações ou "
+                    + "acordos feitos por ele (como preços, descontos ou agendamentos).";
+
     private RagSystemPromptComposer() {}
 
     public static String compose(
-            String systemPrompt, List<KnowledgeHit> knowledgeHits, boolean hasPriorConversationTurns) {
+            String systemPrompt,
+            List<KnowledgeHit> knowledgeHits,
+            boolean hasPriorConversationTurns,
+            boolean resumeAfterHumanIntervention) {
         String personality = systemPrompt != null ? systemPrompt : "";
         StringBuilder sb = new StringBuilder();
         sb.append("Instrução de Personalidade: ")
                 .append(personality)
                 .append(".\n\n");
+        if (resumeAfterHumanIntervention) {
+            sb.append(RESUME_AFTER_HUMAN).append("\n\n");
+        }
         if (hasPriorConversationTurns) {
             sb.append(HISTORY_COHERENCE).append("\n\n");
         }

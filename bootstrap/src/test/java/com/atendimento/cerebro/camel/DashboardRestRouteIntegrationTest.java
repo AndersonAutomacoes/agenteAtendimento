@@ -111,4 +111,19 @@ class DashboardRestRouteIntegrationTest {
         ResponseEntity<String> response = restTemplate.getForEntity("/api/v1/dashboard/summary", String.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
+
+    @Test
+    void getDashboardSummary_withStartDateAndEndDate_returnsSeries() {
+        Instant start = Instant.now().minus(2, ChronoUnit.HOURS);
+        Instant end = Instant.now();
+        String q = String.format(
+                "/api/v1/dashboard/summary?tenantId=tenant-dashboard&startDate=%s&endDate=%s",
+                start, end);
+
+        ResponseEntity<DashboardSummary> response = restTemplate.getForEntity(q, DashboardSummary.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().series()).isNotEmpty();
+    }
 }

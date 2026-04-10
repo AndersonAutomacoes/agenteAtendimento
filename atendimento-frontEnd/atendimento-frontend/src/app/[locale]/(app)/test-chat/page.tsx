@@ -8,10 +8,11 @@ import { toast } from "sonner";
 import { ChatBubble } from "@/components/chat/chat-bubble";
 import { ChatSkeleton } from "@/components/chat/chat-skeleton";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toBcp47ForDates } from "@/lib/intl-locale";
+import { cn } from "@/lib/utils";
+import { randomUuid } from "@/lib/random-uuid";
 import { postChat, toUserFacingApiError } from "@/services/apiService";
 
 const TENANT_STORAGE_KEY = "cerebro-tenant-id";
@@ -44,31 +45,30 @@ export default function TestChatPage() {
   const [awaitingReply, setAwaitingReply] = React.useState(false);
 
   React.useEffect(() => {
-    setSessionId(crypto.randomUUID());
+    setSessionId(randomUuid());
   }, []);
 
-  React.useEffect(() => {
+  const readTenantFromStorage = React.useCallback(() => {
     try {
-      const v = localStorage.getItem(TENANT_STORAGE_KEY);
-      if (v) setTenantId(v);
+      setTenantId(localStorage.getItem(TENANT_STORAGE_KEY) ?? "");
     } catch {
       /* ignore */
     }
   }, []);
+
+  React.useEffect(() => {
+    readTenantFromStorage();
+  }, [readTenantFromStorage]);
+
+  React.useEffect(() => {
+    window.addEventListener("focus", readTenantFromStorage);
+    return () => window.removeEventListener("focus", readTenantFromStorage);
+  }, [readTenantFromStorage]);
 
   React.useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, awaitingReply]);
-
-  const persistTenant = (value: string) => {
-    setTenantId(value);
-    try {
-      localStorage.setItem(TENANT_STORAGE_KEY, value);
-    } catch {
-      /* ignore */
-    }
-  };
 
   const send = async () => {
     const tid = tenantId.trim();
@@ -137,16 +137,17 @@ export default function TestChatPage() {
         </p>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="chat-tenant">{t("accountId")}</Label>
-        <Input
-          id="chat-tenant"
-          placeholder={t("placeholderTenant")}
-          value={tenantId}
-          onChange={(e) => persistTenant(e.target.value)}
-          autoComplete="off"
-          className="rounded-xl"
-        />
+      <div className="space-y-1">
+        <Label className="text-muted-foreground">{t("accountId")}</Label>
+        <p
+          className={cn(
+            "min-h-9 font-mono text-base font-semibold tracking-tight text-foreground sm:text-lg",
+            !tenantId.trim() && "font-normal text-muted-foreground",
+          )}
+          aria-label={t("accountId")}
+        >
+          {tenantId.trim() || "—"}
+        </p>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border/80 bg-card/50 shadow-lg ring-1 ring-black/5 dark:ring-white/10">
@@ -201,7 +202,7 @@ export default function TestChatPage() {
           <div className="flex justify-end">
             <Button
               type="button"
-              className="rounded-xl shadow-md"
+              className="min-h-11 w-full touch-manipulation rounded-xl shadow-md sm:w-auto"
               disabled={awaitingReply}
               onClick={() => void send()}
             >

@@ -1,18 +1,22 @@
 "use client";
 
-import { RefreshCw } from "lucide-react";
+import { Hand, RefreshCw } from "lucide-react";
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import { ChatBubble } from "@/components/chat/chat-bubble";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toBcp47ForDates } from "@/lib/intl-locale";
 import { cn } from "@/lib/utils";
 import {
+  enableBotForConversation,
   getChatMessages,
+  humanHandoffConversation,
   retryChatMessage,
+  sendHumanMonitorMessage,
   toUserFacingApiError,
   type ChatMessageItem,
 } from "@/services/apiService";
@@ -26,6 +30,8 @@ type MonitorContact = {
   displayTitle: string;
   lastPreview: string;
   lastMessageAt: string;
+  /** false = atendimento humano (IA pausada) */
+  botEnabled: boolean;
 };
 
 type UiThreadMessage = {
@@ -74,6 +80,7 @@ function isConversationPending(
 
 function buildContactsFromMessages(
   messages: ChatMessageItem[],
+  botEnabledByPhone: Record<string, boolean>,
 ): MonitorContact[] {
   const agg = new Map<
     string,
@@ -94,12 +101,14 @@ function buildContactsFromMessages(
     .map(([phoneNumber, v]) => {
       const formatted = formatPhoneDisplay(phoneNumber);
       const name = latestContactNameForPhone(messages, phoneNumber);
+      const botEnabled = botEnabledByPhone[phoneNumber] !== false;
       return {
         phoneNumber,
         displayPhone: formatted,
         displayTitle: name ?? formatted,
         lastPreview: v.preview,
         lastMessageAt: v.lastIso,
+        botEnabled,
       };
     })
     .sort(
@@ -184,6 +193,9 @@ export default function MonitoramentoConversasPage() {
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const [tenantId, setTenantId] = React.useState("");
   const [rawMessages, setRawMessages] = React.useState<ChatMessageItem[]>([]);
+  const [botEnabledByPhone, setBotEnabledByPhone] = React.useState<
+    Record<string, boolean>
+  >({});
   const [selectedPhone, setSelectedPhone] = React.useState<string | null>(null);
   const [contactFilter, setContactFilter] = React.useState<"all" | "pending">("all");
   const [retryingId, setRetryingId] = React.useState<string | null>(null);
@@ -191,15 +203,28 @@ export default function MonitoramentoConversasPage() {
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [hasSyncedOnce, setHasSyncedOnce] = React.useState(false);
+  const [conversationActionPhone, setConversationActionPhone] = React.useState<
+    string | null
+  >(null);
+  const [humanDraft, setHumanDraft] = React.useState("");
+  const [sendingHuman, setSendingHuman] = React.useState(false);
 
-  React.useEffect(() => {
+  const readTenantFromStorage = React.useCallback(() => {
     try {
-      const v = localStorage.getItem(TENANT_STORAGE_KEY);
-      if (v) setTenantId(v);
+      setTenantId(localStorage.getItem(TENANT_STORAGE_KEY) ?? "");
     } catch {
       /* ignore */
     }
   }, []);
+
+  React.useEffect(() => {
+    readTenantFromStorage();
+  }, [readTenantFromStorage]);
+
+  React.useEffect(() => {
+    window.addEventListener("focus", readTenantFromStorage);
+    return () => window.removeEventListener("focus", readTenantFromStorage);
+  }, [readTenantFromStorage]);
 
   React.useEffect(() => {
     if (!tenantId.trim()) {
@@ -207,18 +232,9 @@ export default function MonitoramentoConversasPage() {
     }
   }, [tenantId]);
 
-  const persistTenant = (value: string) => {
-    setTenantId(value);
-    try {
-      localStorage.setItem(TENANT_STORAGE_KEY, value);
-    } catch {
-      /* ignore */
-    }
-  };
-
   const contacts = React.useMemo(
-    () => buildContactsFromMessages(rawMessages),
-    [rawMessages],
+    () => buildContactsFromMessages(rawMessages, botEnabledByPhone),
+    [rawMessages, botEnabledByPhone],
   );
 
   const pendingCount = React.useMemo(
@@ -243,10 +259,21 @@ export default function MonitoramentoConversasPage() {
     [rawMessages, selectedPhone],
   );
 
+  const humanChatEnabled = Boolean(
+    tenantId.trim() &&
+      selectedPhone &&
+      botEnabledByPhone[selectedPhone] === false,
+  );
+
+  React.useEffect(() => {
+    setHumanDraft("");
+  }, [selectedPhone]);
+
   const refresh = React.useCallback(async () => {
     const tid = tenantId.trim();
     if (!tid) {
       setRawMessages([]);
+      setBotEnabledByPhone({});
       setLastSyncedAt(null);
       setLoadError(null);
       setHasSyncedOnce(false);
@@ -255,8 +282,9 @@ export default function MonitoramentoConversasPage() {
     setIsRefreshing(true);
     setLoadError(null);
     try {
-      const list = await getChatMessages(tid);
-      setRawMessages(list);
+      const payload = await getChatMessages(tid);
+      setRawMessages(payload.messages);
+      setBotEnabledByPhone(payload.botEnabledByPhone);
       setLastSyncedAt(new Date());
     } catch (e: unknown) {
       const msg = toUserFacingApiError(e, translateApi);
@@ -284,6 +312,75 @@ export default function MonitoramentoConversasPage() {
       }
     },
     [tenantId, refresh, translateApi, t],
+  );
+
+  const handleHumanHandoff = React.useCallback(
+    async (phoneNumber: string) => {
+      const tid = tenantId.trim();
+      if (!tid) return;
+      setConversationActionPhone(phoneNumber);
+      try {
+        await humanHandoffConversation(tid, phoneNumber);
+        toast.success(t("handoffSuccess"));
+        await refresh();
+      } catch (e: unknown) {
+        toast.error(toUserFacingApiError(e, translateApi));
+      } finally {
+        setConversationActionPhone(null);
+      }
+    },
+    [tenantId, refresh, translateApi, t],
+  );
+
+  const handleEnableBot = React.useCallback(
+    async (phoneNumber: string) => {
+      const tid = tenantId.trim();
+      if (!tid) return;
+      setConversationActionPhone(phoneNumber);
+      try {
+        await enableBotForConversation(tid, phoneNumber);
+        toast.success(t("enableBotSuccess"));
+        await refresh();
+      } catch (e: unknown) {
+        toast.error(toUserFacingApiError(e, translateApi));
+      } finally {
+        setConversationActionPhone(null);
+      }
+    },
+    [tenantId, refresh, translateApi, t],
+  );
+
+  const handleSendHumanMessage = React.useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      const tid = tenantId.trim();
+      if (!tid || !selectedPhone || !humanChatEnabled) return;
+      const body = humanDraft.trim();
+      if (!body) {
+        toast.error(t("activeChatNeedMessage"));
+        return;
+      }
+      setSendingHuman(true);
+      try {
+        await sendHumanMonitorMessage(tid, selectedPhone, body);
+        setHumanDraft("");
+        toast.success(t("humanReplySuccess"));
+        await refresh();
+      } catch (err: unknown) {
+        toast.error(toUserFacingApiError(err, translateApi));
+      } finally {
+        setSendingHuman(false);
+      }
+    },
+    [
+      tenantId,
+      selectedPhone,
+      humanChatEnabled,
+      humanDraft,
+      refresh,
+      translateApi,
+      t,
+    ],
   );
 
   React.useEffect(() => {
@@ -319,35 +416,36 @@ export default function MonitoramentoConversasPage() {
   }, [messages, selectedPhone]);
 
   return (
-    <div className="flex h-[calc(100dvh-3.5rem-3rem)] min-h-[420px] flex-col gap-4">
+    <div className="flex h-[calc(100dvh-3.5rem-2rem)] min-h-[420px] flex-col gap-4">
       <div className="shrink-0">
         <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
         <p className="text-muted-foreground">
           {t("subtitle", { seconds: POLL_MS / 1000 })}
         </p>
-        <div className="mt-3 max-w-md space-y-2">
-          <Label htmlFor="monitor-tenant">{t("accountId")}</Label>
-          <Input
-            id="monitor-tenant"
-            placeholder={t("placeholderTenant")}
-            value={tenantId}
-            onChange={(e) => persistTenant(e.target.value)}
-            autoComplete="off"
-            className="rounded-xl font-mono text-sm"
-          />
+        <div className="mt-3 max-w-md space-y-1">
+          <Label className="text-muted-foreground">{t("accountId")}</Label>
+          <p
+            className={cn(
+              "min-h-9 font-mono text-base font-semibold tracking-tight text-foreground sm:text-lg",
+              !tenantId.trim() && "font-normal text-muted-foreground",
+            )}
+            aria-label={t("accountId")}
+          >
+            {tenantId.trim() || "—"}
+          </p>
           {!tenantId.trim() ? (
-            <p className="text-xs text-amber-600 dark:text-amber-400/90">
+            <p className="pt-1 text-xs text-amber-600 dark:text-amber-400/90">
               {t("needAccountWarning")}
             </p>
           ) : null}
           {loadError ? (
-            <p className="text-xs text-destructive">{loadError}</p>
+            <p className="pt-1 text-xs text-destructive">{loadError}</p>
           ) : null}
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 gap-4 overflow-hidden rounded-2xl border border-border/80 bg-card/40 shadow-lg ring-1 ring-black/5 dark:ring-white/10">
-        <aside className="flex w-full max-w-[280px] shrink-0 flex-col border-r border-border/60 bg-sidebar/80">
+      <div className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden rounded-2xl border border-border/80 bg-card/40 shadow-lg ring-1 ring-black/5 dark:ring-white/10 md:flex-row md:gap-0">
+        <aside className="flex h-auto max-h-[42vh] min-h-[200px] w-full shrink-0 flex-col overflow-hidden border-b border-border/60 bg-sidebar/80 md:max-h-none md:w-full md:max-w-[280px] md:border-b-0 md:border-r">
           <div className="border-b border-border/60 px-3 py-3">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {t("contacts")}
@@ -373,7 +471,7 @@ export default function MonitoramentoConversasPage() {
                 aria-selected={contactFilter === "all"}
                 onClick={() => setContactFilter("all")}
                 className={cn(
-                  "flex-1 rounded-md px-2 py-1.5 text-center text-[11px] font-medium transition-colors",
+                  "min-h-11 flex-1 touch-manipulation rounded-md px-2 py-2 text-center text-[11px] font-medium transition-colors sm:min-h-0 sm:py-1.5",
                   contactFilter === "all"
                     ? "bg-background text-foreground shadow-sm dark:bg-card"
                     : "text-muted-foreground hover:text-foreground",
@@ -387,7 +485,7 @@ export default function MonitoramentoConversasPage() {
                 aria-selected={contactFilter === "pending"}
                 onClick={() => setContactFilter("pending")}
                 className={cn(
-                  "flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1.5 text-center text-[11px] font-medium transition-colors",
+                  "flex min-h-11 flex-1 touch-manipulation items-center justify-center gap-1 rounded-md px-2 py-2 text-center text-[11px] font-medium transition-colors sm:min-h-0 sm:py-1.5",
                   contactFilter === "pending"
                     ? "bg-background text-foreground shadow-sm dark:bg-card"
                     : "text-muted-foreground hover:text-foreground",
@@ -441,31 +539,86 @@ export default function MonitoramentoConversasPage() {
               <ul className="space-y-1">
                 {filteredContacts.map((c) => {
                   const active = c.phoneNumber === selectedPhone;
+                  const actionBusy = conversationActionPhone === c.phoneNumber;
                   return (
                     <li key={c.phoneNumber}>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedPhone(c.phoneNumber)}
+                      <div
                         className={cn(
-                          "flex w-full flex-col rounded-xl px-3 py-2.5 text-left text-sm transition-colors",
+                          "overflow-hidden rounded-xl transition-colors",
                           active
-                            ? "bg-primary/15 text-foreground ring-1 ring-primary/30"
-                            : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                            ? "bg-primary/15 ring-1 ring-primary/30"
+                            : "bg-transparent",
+                          !c.botEnabled &&
+                            "ring-2 ring-amber-400/90 ring-offset-2 ring-offset-background dark:ring-amber-500/70",
+                          !c.botEnabled && !active && "bg-amber-500/[0.07]",
                         )}
                       >
-                        <span className="font-medium">{c.displayTitle}</span>
-                        {c.displayTitle !== c.displayPhone ? (
-                          <span className="block text-[11px] tabular-nums text-muted-foreground/90">
-                            {c.displayPhone}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPhone(c.phoneNumber)}
+                          className={cn(
+                            "flex min-h-11 w-full touch-manipulation flex-col px-3 py-3 text-left text-sm transition-colors",
+                            active
+                              ? "text-foreground"
+                              : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                          )}
+                        >
+                          <span className="flex items-center gap-1.5 font-medium">
+                            {!c.botEnabled ? (
+                              <Hand
+                                className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
+                                aria-hidden
+                              />
+                            ) : null}
+                            {c.displayTitle}
                           </span>
-                        ) : null}
-                        <span className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
-                          {c.lastPreview}
-                        </span>
-                        <span className="mt-1 text-[10px] text-muted-foreground/80">
-                          {formatRelativeShort(c.lastMessageAt)}
-                        </span>
-                      </button>
+                          {c.displayTitle !== c.displayPhone ? (
+                            <span className="block text-[11px] tabular-nums text-muted-foreground/90">
+                              {c.displayPhone}
+                            </span>
+                          ) : null}
+                          <span className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+                            {c.lastPreview}
+                          </span>
+                          <span className="mt-1 text-[10px] text-muted-foreground/80">
+                            {formatRelativeShort(c.lastMessageAt)}
+                          </span>
+                        </button>
+                        <div
+                          className="flex items-center justify-between gap-2 border-t border-border/50 px-2 py-2"
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => e.stopPropagation()}
+                        >
+                          <span className="min-w-0 flex-1 text-[11px] leading-tight text-muted-foreground">
+                            {t("assumeConversationToggle")}
+                          </span>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={!c.botEnabled}
+                            aria-label={t("assumeConversationToggle")}
+                            disabled={!tenantId.trim() || actionBusy}
+                            className={cn(
+                              "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+                              !c.botEnabled
+                                ? "border-amber-600 bg-amber-500 dark:border-amber-500"
+                                : "border-border bg-muted",
+                            )}
+                            onClick={() => {
+                              if (actionBusy) return;
+                              if (c.botEnabled) void handleHumanHandoff(c.phoneNumber);
+                              else void handleEnableBot(c.phoneNumber);
+                            }}
+                          >
+                            <span
+                              className={cn(
+                                "pointer-events-none absolute top-0.5 left-0.5 block h-6 w-6 rounded-full bg-white shadow-sm ring-1 ring-black/10 transition-all duration-200 dark:bg-background dark:ring-white/10",
+                                !c.botEnabled && "left-[calc(100%-1.625rem)]",
+                              )}
+                            />
+                          </button>
+                        </div>
+                      </div>
                     </li>
                   );
                 })}
@@ -474,10 +627,26 @@ export default function MonitoramentoConversasPage() {
           </div>
         </aside>
 
-        <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="flex shrink-0 items-center justify-between border-b border-border/60 bg-muted/20 px-4 py-3">
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col md:min-h-0">
+          <div
+            className={cn(
+              "flex min-h-[52px] shrink-0 items-center justify-between border-b border-border/60 bg-muted/20 px-3 py-3 sm:px-4",
+              selectedPhone &&
+                contacts.find((x) => x.phoneNumber === selectedPhone)
+                  ?.botEnabled === false &&
+                "border-amber-500/40 bg-amber-500/[0.06]",
+            )}
+          >
             <div>
-              <p className="text-sm font-medium">
+              <p className="flex items-center gap-2 text-sm font-medium">
+                {selectedPhone &&
+                contacts.find((x) => x.phoneNumber === selectedPhone)
+                  ?.botEnabled === false ? (
+                  <Hand
+                    className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
+                    aria-hidden
+                  />
+                ) : null}
                 {selectedPhone
                   ? (() => {
                       const c = contacts.find(
@@ -559,6 +728,36 @@ export default function MonitoramentoConversasPage() {
               ))
             )}
           </div>
+
+          <form
+            className="shrink-0 border-t border-border/60 bg-muted/10 px-3 py-3 sm:px-4"
+            onSubmit={handleSendHumanMessage}
+          >
+            {tenantId.trim() && selectedPhone && !humanChatEnabled ? (
+              <p className="mb-2 text-[11px] text-muted-foreground">
+                {t("activeChatDisabledHint")}
+              </p>
+            ) : null}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Input
+                value={humanDraft}
+                onChange={(ev) => setHumanDraft(ev.target.value)}
+                placeholder={t("activeChatPlaceholder")}
+                disabled={!humanChatEnabled || sendingHuman}
+                maxLength={4096}
+                className="min-w-0 flex-1"
+                autoComplete="off"
+                aria-label={t("activeChatPlaceholder")}
+              />
+              <Button
+                type="submit"
+                disabled={!humanChatEnabled || sendingHuman}
+                className="shrink-0 sm:min-w-[7rem]"
+              >
+                {sendingHuman ? t("actionWorking") : t("activeChatSend")}
+              </Button>
+            </div>
+          </form>
         </section>
       </div>
     </div>

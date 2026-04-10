@@ -7,7 +7,8 @@ info:
     - Rotas **Apache Camel** (servlet em `/api/*`): prefixo `/api/v1/...`.
     - Rotas **Spring MVC** (DispatcherServlet na raiz): prefixo `/v1/...` (sem `/api`).
 
-    Autenticação: não há esquema global neste contrato; a API está aberta no MVP.
+    Autenticação: **Firebase ID Token** (Bearer) para dashboard, analytics e sessão; `POST /v1/auth/register` exige conta Firebase ainda sem tenant (convite).
+    Outras rotas Camel permanecem abertas salvo indicação em contrário.
   version: 0.1.0
 
 servers:
@@ -33,6 +34,8 @@ tags:
     description: Upload de documentos para a base de conhecimento (Spring MVC)
   - name: Bot
     description: Personalidade do bot (Spring MVC)
+  - name: Auth
+    description: Registo com convite e sessão portal (Spring MVC, Firebase ID Token)
 
 paths:
   /api/v1/chat:
@@ -183,6 +186,8 @@ paths:
       tags: [Dashboard]
       summary: Resumo para o painel (cartões, série temporal, atividades recentes)
       operationId: getDashboardSummary
+      security:
+        - bearerAuth: []
       parameters:
         - name: tenantId
           in: query
@@ -196,7 +201,21 @@ paths:
             type: string
             enum: [day, week, month]
             default: day
-          description: day = últimas 24h (por hora); week = 7 dias; month = 30 dias
+          description: day = últimas 24h (por hora); week = 7 dias; month = 30 dias (ignorado se startDate+endDate presentes)
+        - name: startDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: ISO-8601 instant; início meia-aberto com endDate — obrigatório em conjunto com endDate
+        - name: endDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: ISO-8601 instant; intervalo [startDate, endDate); máx. 366 dias
       responses:
         "200":
           description: Métricas e série para Recharts
@@ -210,6 +229,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IngestErrorResponse"
+        "401":
+          description: JWT em falta ou inválido
+        "403":
+          description: Perfil BASIC (requer PRO)
 
   /api/v1/messages:
     get:
@@ -225,15 +248,73 @@ paths:
           description: Identificador do tenant
       responses:
         "200":
-          description: Até 50 mensagens mais recentes (ordem decrescente por data)
+          description: Até 50 mensagens mais recentes (ordem decrescente por data) e estado `botEnabledByPhone` por contacto
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/ChatMessageItemResponse"
+                $ref: "#/components/schemas/ChatMessagesListResponse"
         "400":
           description: tenantId em falta
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+
+  /api/v1/conversations/human-handoff:
+    post:
+      tags: [Monitoring]
+      summary: Assumir conversa (desliga IA e notifica o cliente no WhatsApp)
+      operationId: humanHandoffConversation
+      parameters:
+        - name: tenantId
+          in: query
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConversationPhoneBody"
+      responses:
+        "204":
+          description: Estado gravado; notificação enviada apenas na primeira transição para modo humano
+        "400":
+          description: tenantId ou phoneNumber em falta
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        "502":
+          description: Falha ao enviar a mensagem WhatsApp de notificação
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+
+  /api/v1/conversations/enable-bot:
+    post:
+      tags: [Monitoring]
+      summary: Reativar IA para o contacto
+      operationId: enableBotForConversation
+      parameters:
+        - name: tenantId
+          in: query
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConversationPhoneBody"
+      responses:
+        "204":
+          description: IA voltará a responder a novas mensagens deste número
+        "400":
+          description: tenantId ou phoneNumber em falta
           content:
             application/json:
               schema:
@@ -291,6 +372,8 @@ paths:
         Total de mensagens, contactos distintos (`phone_number`) e taxa de sucesso das respostas ASSISTANT
         terminadas (SENT vs ERROR), para a janela `[agora − 24h, agora)`. Timestamps em UTC (ISO-8601).
       operationId: getAnalyticsSummary
+      security:
+        - bearerAuth: []
       parameters:
         - name: tenantId
           in: query
@@ -319,6 +402,8 @@ paths:
       description: |
         Série horária com buckets contínuos em UTC (zeros onde não houve mensagens). Janela `[agora − hours, agora)`.
       operationId: getAnalyticsHourlyMessages
+      security:
+        - bearerAuth: []
       parameters:
         - name: tenantId
           in: query
@@ -357,6 +442,8 @@ paths:
         Agrega linhas de `analytics_intents` por categoria na janela `[agora − days, agora)`.
         A resposta inclui **todas** as categorias com contagem (zero quando não houver dados), para gráficos de pizza estáveis.
       operationId: getAnalyticsIntents
+      security:
+        - bearerAuth: []
       parameters:
         - name: tenantId
           in: query
@@ -372,7 +459,19 @@ paths:
             default: 30
             minimum: 1
             maximum: 366
-          description: Dias corridos a incluir (1–366); por defeito 30
+          description: Dias corridos a incluir (1–366); ignorado se startDate+endDate estiverem presentes
+        - name: startDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
       responses:
         "200":
           description: Contagens por categoria
@@ -381,7 +480,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/AnalyticsIntentsHttpResponse"
         "400":
-          description: tenantId em falta ou days inválido
+          description: tenantId em falta, days inválido ou período ISO inválido
           content:
             application/json:
               schema:
@@ -395,12 +494,27 @@ paths:
         Agrega a tabela `chat_analytics` (último estado por conversa tenant + telefone), útil para gráficos de
         intenção e sentimento classificados via Gemini após cada turno WhatsApp.
       operationId: getAnalyticsChatStats
+      security:
+        - bearerAuth: []
       parameters:
         - name: tenantId
           in: query
           required: true
           schema:
             type: string
+        - name: startDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Filtra por last_updated em [startDate, endDate); opcional com endDate
+        - name: endDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
       responses:
         "200":
           description: Contagens com todas as categorias (zeros incluídos)
@@ -409,11 +523,68 @@ paths:
               schema:
                 $ref: "#/components/schemas/ChatAnalyticsStatsHttpResponse"
         "400":
-          description: tenantId em falta
+          description: tenantId em falta ou período inválido
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/IngestErrorResponse"
+
+  /api/v1/analytics/export:
+    get:
+      tags: [Analytics]
+      summary: Exportar relatório CSV ou PDF
+      description: |
+        Exige `startDate` e `endDate` (ISO-8601 instant), intervalo meia-aberto `[start, end)`, máximo 366 dias.
+        Cabeçalhos e textos seguem `locale` (pt-BR, en, es, zh-CN).
+        CSV requer perfil **PRO**; PDF requer **ULTRA**.
+      operationId: exportAnalyticsReport
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: startDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: format
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [csv, pdf]
+        - name: locale
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pt-BR, en, es, zh-CN]
+            default: pt-BR
+      responses:
+        "200":
+          description: Ficheiro em anexo
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Parâmetros em falta ou inválidos
 
   /api/v1/whatsapp/webhook:
     post:
@@ -511,6 +682,57 @@ paths:
               schema:
                 $ref: "#/components/schemas/IngestErrorResponse"
 
+  /v1/auth/register:
+    post:
+      tags: [Auth]
+      summary: Associar conta Firebase a um tenant (convite)
+      description: |
+        Requer `Authorization: Bearer` com ID Token Firebase de utilizador **ainda sem** linha em `portal_user`.
+        O corpo contém o código de convite em texto; o backend armazena apenas o hash SHA-256.
+      operationId: postPortalRegister
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalRegisterRequest"
+      responses:
+        "200":
+          description: Tenant associado e perfil inicial (BASIC)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalRegisterResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        "401":
+          description: Token em falta ou inválido
+        "403":
+          description: Conta já associada a um tenant
+        "409":
+          description: Utilizador já registado ou convite inválido
+
+  /v1/auth/me:
+    get:
+      tags: [Auth]
+      summary: Dados da sessão (ID Token Firebase)
+      operationId: getPortalSession
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalSessionResponse"
+        "401":
+          description: Token em falta ou inválido
+
   /v1/ingest:
     post:
       tags: [Ingestão]
@@ -588,7 +810,42 @@ paths:
                 $ref: "#/components/schemas/IngestErrorResponse"
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Firebase ID Token (claims `tenant_id` / `profile_level` após registo)
+
   schemas:
+    PortalRegisterRequest:
+      type: object
+      required: [inviteCode]
+      properties:
+        inviteCode:
+          type: string
+          description: Código de convite em texto claro
+
+    PortalRegisterResponse:
+      type: object
+      required: [tenantId, profileLevel]
+      properties:
+        tenantId:
+          type: string
+        profileLevel:
+          type: string
+          enum: [BASIC, PRO, ULTRA]
+
+    PortalSessionResponse:
+      type: object
+      required: [tenantId, profileLevel]
+      properties:
+        tenantId:
+          type: string
+        profileLevel:
+          type: string
+          enum: [BASIC, PRO, ULTRA]
+
     ChatHttpRequest:
       type: object
       required: [tenantId, sessionId, message]
@@ -814,6 +1071,28 @@ components:
           type: integer
           format: int64
 
+    ChatMessagesListResponse:
+      type: object
+      required: [messages, botEnabledByPhone]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatMessageItemResponse"
+        botEnabledByPhone:
+          type: object
+          additionalProperties:
+            type: boolean
+          description: Telefone (como em chat_message) → valor de `conversation.is_bot_enabled`; omissão de chave equivale a true
+
+    ConversationPhoneBody:
+      type: object
+      required: [phoneNumber]
+      properties:
+        phoneNumber:
+          type: string
+          description: Mesmo valor que em chat_message para o contacto
+
     ChatMessageItemResponse:
       type: object
       required: [id, tenantId, phoneNumber, role, content, status, timestamp]
@@ -861,6 +1140,9 @@ components:
       properties:
         tenantId:
           type: string
+        profileLevel:
+          type: string
+          enum: [BASIC, PRO, ULTRA]
         systemPrompt:
           type: string
           nullable: true

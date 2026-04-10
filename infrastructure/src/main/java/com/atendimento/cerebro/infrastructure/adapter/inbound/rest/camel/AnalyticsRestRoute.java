@@ -13,6 +13,7 @@ import com.atendimento.cerebro.application.port.out.ChatAnalyticsRepository;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
@@ -90,10 +91,9 @@ public class AnalyticsRestRoute extends RouteBuilder {
     }
 
     private void handleSummary(Exchange exchange) {
-        String tenantId = resolveTenantId(exchange);
+        String requested = parseRequestedTenantId(exchange);
+        String tenantId = CamelAuthSupport.authorizedTenantOrAbort(exchange, requested);
         if (tenantId == null) {
-            exchange.getIn().setBody(new IngestErrorResponse("tenantId é obrigatório"));
-            exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
             return;
         }
         var summary = analyticsQueryPort.summaryLast24Hours(new TenantId(tenantId));
@@ -111,10 +111,9 @@ public class AnalyticsRestRoute extends RouteBuilder {
     }
 
     private void handleHourly(Exchange exchange) {
-        String tenantId = resolveTenantId(exchange);
+        String requested = parseRequestedTenantId(exchange);
+        String tenantId = CamelAuthSupport.authorizedTenantOrAbort(exchange, requested);
         if (tenantId == null) {
-            exchange.getIn().setBody(new IngestErrorResponse("tenantId é obrigatório"));
-            exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
             return;
         }
         String query = exchange.getMessage().getHeader(Exchange.HTTP_QUERY, String.class);
@@ -148,13 +147,25 @@ public class AnalyticsRestRoute extends RouteBuilder {
     }
 
     private void handleChatStats(Exchange exchange) {
-        String tenantId = resolveTenantId(exchange);
+        String requested = parseRequestedTenantId(exchange);
+        String tenantId = CamelAuthSupport.authorizedTenantOrAbort(exchange, requested);
         if (tenantId == null) {
-            exchange.getIn().setBody(new IngestErrorResponse("tenantId é obrigatório"));
+            return;
+        }
+        String query = exchange.getMessage().getHeader(Exchange.HTTP_QUERY, String.class);
+        AnalyticsPeriodQuery period;
+        try {
+            period = AnalyticsPeriodQueryParser.parse(query);
+        } catch (IllegalArgumentException e) {
+            exchange.getIn().setBody(new IngestErrorResponse(e.getMessage()));
             exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
             return;
         }
-        var agg = chatAnalyticsRepository.aggregateForTenant(new TenantId(tenantId));
+        var agg =
+                period == null
+                        ? chatAnalyticsRepository.aggregateForTenant(new TenantId(tenantId))
+                        : chatAnalyticsRepository.aggregateForTenant(
+                                new TenantId(tenantId), period.start(), period.end());
         var intents =
                 java.util.Arrays.stream(ChatMainIntent.values())
                         .map(
@@ -178,27 +189,45 @@ public class AnalyticsRestRoute extends RouteBuilder {
     }
 
     private void handleIntents(Exchange exchange) {
-        String tenantId = resolveTenantId(exchange);
+        String requested = parseRequestedTenantId(exchange);
+        String tenantId = CamelAuthSupport.authorizedTenantOrAbort(exchange, requested);
         if (tenantId == null) {
-            exchange.getIn().setBody(new IngestErrorResponse("tenantId é obrigatório"));
-            exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
             return;
         }
         String query = exchange.getMessage().getHeader(Exchange.HTTP_QUERY, String.class);
-        int days = parseDaysOrDefault(query);
-        if (days < MIN_INTENT_DAYS || days > MAX_INTENT_DAYS) {
-            exchange.getIn()
-                    .setBody(
-                            new IngestErrorResponse(
-                                    "days deve estar entre " + MIN_INTENT_DAYS + " e " + MAX_INTENT_DAYS));
+        AnalyticsPeriodQuery explicit;
+        try {
+            explicit = AnalyticsPeriodQueryParser.parse(query);
+        } catch (IllegalArgumentException e) {
+            exchange.getIn().setBody(new IngestErrorResponse(e.getMessage()));
             exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
             return;
         }
         TenantId tenant = new TenantId(tenantId);
-        Instant periodEnd = Instant.now();
-        Instant periodStart = periodEnd.minus(days, ChronoUnit.DAYS);
+        final int reportDays;
+        final Instant periodStart;
+        final Instant periodEnd;
+        if (explicit != null) {
+            periodStart = explicit.start();
+            periodEnd = explicit.end();
+            reportDays = (int) Math.max(1L, Duration.between(periodStart, periodEnd).toDays());
+        } else {
+            int days = parseDaysOrDefault(query);
+            if (days < MIN_INTENT_DAYS || days > MAX_INTENT_DAYS) {
+                exchange.getIn()
+                        .setBody(
+                                new IngestErrorResponse(
+                                        "days deve estar entre " + MIN_INTENT_DAYS + " e " + MAX_INTENT_DAYS));
+                exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
+                return;
+            }
+            periodEnd = Instant.now();
+            periodStart = periodEnd.minus(days, ChronoUnit.DAYS);
+            reportDays = days;
+        }
+        Duration windowLen = Duration.between(periodStart, periodEnd);
         Instant previousPeriodEnd = periodStart;
-        Instant previousPeriodStart = periodStart.minus(days, ChronoUnit.DAYS);
+        Instant previousPeriodStart = periodStart.minus(windowLen);
 
         EnumMap<PrimaryIntentCategory, Long> perCat = newZeroIntentCounts();
         for (PrimaryIntentCount row :
@@ -233,7 +262,7 @@ public class AnalyticsRestRoute extends RouteBuilder {
         var body =
                 new AnalyticsIntentsHttpResponse(
                         tenantId,
-                        days,
+                        reportDays,
                         ISO_INSTANT.format(periodStart),
                         ISO_INSTANT.format(periodEnd),
                         counts,
@@ -271,7 +300,7 @@ public class AnalyticsRestRoute extends RouteBuilder {
         return new InstantRange(start, end);
     }
 
-    private static String resolveTenantId(Exchange exchange) {
+    private static String parseRequestedTenantId(Exchange exchange) {
         String tenantId = exchange.getMessage().getHeader("tenantId", String.class);
         if (tenantId == null || tenantId.isBlank()) {
             tenantId = parseQueryParam(exchange.getMessage().getHeader(Exchange.HTTP_QUERY, String.class), "tenantId");

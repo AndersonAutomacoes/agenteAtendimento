@@ -3,6 +3,17 @@
     "title": "Cérebro — 管理",
     "description": "AI 客服自动化平台"
   },
+  "pwa": {
+    "title": "在手机上安装 InteliZap",
+    "subtitle": "从主屏幕快速打开，在网络不稳定时更稳定（渐进式 Web 应用）。",
+    "installCta": "安装 InteliZap",
+    "iosInstructions": "在 iPhone 或 iPad 上：轻点“分享”，然后选择“添加到主屏幕”。",
+    "fallbackHint": "在浏览器菜单中查找“安装应用”“添加到主屏幕”或安装图标 (⊕)。",
+    "showManual": "没有安装按钮时如何操作",
+    "hideManual": "隐藏说明",
+    "dismissAria": "关闭提示",
+    "socialTitle": "InteliZap"
+  },
   "nav": {
     "dashboard": "仪表盘",
     "knowledge": "知识库",
@@ -13,7 +24,59 @@
     "settings": "设置",
     "brand": "Cérebro",
     "brandSubtitle": "AI 管理",
-    "footer": "为小型团队设计——简单易用。"
+    "footer": "为小型团队设计——简单易用。",
+    "openMenu": "打开菜单",
+    "closeMenu": "关闭菜单",
+    "menuTitle": "主导航",
+    "login": "登录",
+    "logout": "退出登录"
+  },
+  "loginPage": {
+    "title": "登录控制台",
+    "subtitle": "使用 Firebase 账号（邮箱与密码）登录。",
+    "email": "邮箱",
+    "password": "密码",
+    "forgotPassword": "忘记密码",
+    "noAccount": "使用邀请码注册",
+    "submit": "登录",
+    "success": "已登录",
+    "backHome": "返回首页",
+    "firebaseNotConfigured": "未配置 Firebase（NEXT_PUBLIC_FIREBASE_* 环境变量）。"
+  },
+  "registerPage": {
+    "title": "创建账号",
+    "subtitle": "请输入有效邀请码。初始档案为 BASIC。",
+    "inviteCode": "邀请码",
+    "email": "邮箱",
+    "password": "密码（至少 6 位）",
+    "submit": "注册并关联租户",
+    "success": "账号已创建并关联租户",
+    "hasAccount": "已有账号？去登录",
+    "backHome": "返回首页",
+    "firebaseNotConfigured": "未配置 Firebase（NEXT_PUBLIC_FIREBASE_* 环境变量）。"
+  },
+  "forgotPasswordPage": {
+    "title": "重置密码",
+    "subtitle": "我们将发送重置链接到邮箱（Firebase Authentication）。",
+    "email": "邮箱",
+    "submit": "发送邮件",
+    "success": "若邮箱存在，您将很快收到说明。",
+    "error": "无法发送邮件，请重试。",
+    "backLogin": "返回登录",
+    "firebaseNotConfigured": "未配置 Firebase（NEXT_PUBLIC_FIREBASE_* 环境变量）。"
+  },
+  "plan": {
+    "lockedTitle": "此功能需要相应套餐",
+    "lockedAria": "根据订阅计划，此区域已锁定",
+    "upgradeCta": "升级套餐",
+    "navLockedHint": "更高套餐可用。",
+    "exportDialogTitle": "导出报表",
+    "exportDialogDescription": "CSV 与 PDF 导出仅在企业版套餐中提供。",
+    "requiredPlanHint": {
+      "starter": "请升级套餐以使用此功能。",
+      "pro": "升级到专业版或企业版可查看这些图表。",
+      "enterprise": "CSV 与 PDF 导出仅在企业版套餐中提供。"
+    }
   },
   "localeNames": {
     "pt-BR": "Português (Brasil)",
@@ -33,14 +96,31 @@
     "title": "仪表盘",
     "subtitle": "按账户的实时指标：客户、消息量、AI 表现与 WhatsApp 渠道状态。",
     "accountId": "账户 ID",
-    "tenantHint": "保存在本浏览器本地；请与「设置」「监控」使用相同值。",
+    "tenantHint": "账户 ID 在「设置」中配置（与「监控」等区域共用）。",
     "placeholderTenant": "例如：tenant-demo",
     "needAccount": "请填写账户 ID 以加载指标。",
     "loading": "正在加载指标…",
     "refresh": "刷新面板",
+    "refreshButton": "刷新",
     "periodDay": "总计",
     "periodWeek": "周",
     "periodMonth": "月",
+    "periodToday": "今天",
+    "periodLast7": "最近7天",
+    "periodThisMonth": "本月",
+    "periodCustom": "自定义",
+    "periodCustomFrom": "开始",
+    "periodCustomTo": "结束",
+    "periodCustomInvalid": "请填写有效的开始与结束时间（结束晚于开始）。",
+    "periodCustomDialogTitle": "自定义时间段",
+    "periodCustomDialogHint": "设置开始与结束时间，应用后将刷新数据。",
+    "periodCustomApply": "应用",
+    "periodCustomCancel": "取消",
+    "export": {
+      "button": "导出",
+      "csv": "导出 CSV",
+      "pdf": "生成 PDF 报表"
+    },
     "cards": {
       "clientsTitle": "客户总数",
       "clientsDesc": "所选时间窗口内的不同联系人（总计 / 周 / 月）。",
@@ -238,7 +318,18 @@
     "relativeNow": "刚刚",
     "relativeMin": "{n} 分钟",
     "relativeHours": "{n} 小时",
-    "retryStarted": "已开始重试"
+    "retryStarted": "已开始重试",
+    "assumeConversation": "接管会话",
+    "assumeConversationToggle": "接管会话",
+    "reactivateAi": "重新启用 AI",
+    "handoffSuccess": "已切换为人工模式；已通知客户。",
+    "enableBotSuccess": "已为此会话重新启用 AI。",
+    "actionWorking": "请稍候…",
+    "activeChatPlaceholder": "向客户输入消息…",
+    "activeChatSend": "发送",
+    "activeChatDisabledHint": "请先接管会话（关闭 AI）后再发送消息。",
+    "activeChatNeedMessage": "发送前请输入消息。",
+    "humanReplySuccess": "消息已发送。"
   },
   "chatBubble": {
     "statusReceived": "正在处理发送——等待服务器确认",
@@ -268,7 +359,17 @@
       "loadDashboardFailed": "无法加载仪表盘摘要。",
       "invalidDashboardSummary": "仪表盘响应格式无效",
       "loadAnalyticsIntentsFailed": "无法加载意图分布。",
-      "invalidAnalyticsIntents": "意图分析响应格式无效"
+      "invalidAnalyticsIntents": "意图分析响应格式无效",
+      "exportFailed": "无法导出报表。",
+      "loginFailed": "登录失败，请检查邮箱与密码。",
+      "registerFailed": "注册失败，请检查邀请码。",
+      "invalidRegisterResponse": "注册响应无效",
+      "invalidLoginResponse": "登录响应无效",
+      "sessionFailed": "会话无效或已过期。",
+      "invalidSessionResponse": "会话响应无效",
+      "invalidMessagesEnvelope": "消息响应格式无效",
+      "conversationActionFailed": "无法更改会话模式。",
+      "humanReplyFailed": "无法通过 WhatsApp 发送消息。"
     }
   }
 }

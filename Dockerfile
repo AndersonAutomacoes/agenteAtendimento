@@ -8,8 +8,9 @@ COPY application ./application
 COPY infrastructure ./infrastructure
 COPY bootstrap ./bootstrap
 
+# clean evita ficheiros órfãos em target/ (ex.: migração Flyway renomeada) que duplicariam versões no JAR.
 # -am compila dependências; se a imagem ficar sem spring-ai-google-genai após mudar deps de IA, faça build --no-cache.
-RUN mvn -pl bootstrap -am package -DskipTests -B \
+RUN mvn -pl bootstrap -am clean package -DskipTests -B \
     && cp /app/bootstrap/target/bootstrap-*.jar /app/app.jar
 
 FROM eclipse-temurin:21-jre-alpine

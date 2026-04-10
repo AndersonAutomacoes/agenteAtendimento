@@ -5,6 +5,7 @@ import com.atendimento.cerebro.application.dto.ChatCommand;
 import com.atendimento.cerebro.application.dto.ChatResult;
 import com.atendimento.cerebro.application.port.in.ChatUseCase;
 import com.atendimento.cerebro.application.port.out.ChatMessageRepository;
+import com.atendimento.cerebro.application.port.out.ConversationBotStatePort;
 import com.atendimento.cerebro.application.port.out.InboundWhatsAppDeduperPort;
 import com.atendimento.cerebro.application.port.out.IntentDetectionPort;
 import com.atendimento.cerebro.application.port.out.WhatsAppOutboundPort;
@@ -61,7 +62,7 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
     private static final String PROP_CHAT_RESULT = "whatsappChatResult";
 
     /** Máximo de mensagens anteriores (USER/ASSISTANT) enviadas ao modelo, excluindo o turno atual. */
-    private static final int WHATSAPP_HISTORY_MAX_TURNS = 6;
+    private static final int WHATSAPP_HISTORY_MAX_TURNS = 15;
 
     private static final int WHATSAPP_HISTORY_FETCH = WHATSAPP_HISTORY_MAX_TURNS + 1;
 
@@ -79,6 +80,7 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
     private final WhatsAppOutboundPort whatsAppOutboundPort;
     private final InboundWhatsAppDeduperPort inboundWhatsAppDeduper;
     private final ChatMessageRepository chatMessageRepository;
+    private final ConversationBotStatePort conversationBotStatePort;
     private final IntentDetectionPort intentDetectionPort;
     private final PrimaryIntentTurnNotifier primaryIntentTurnNotifier;
     private final ChatAnalyticsAfterTurnNotifier chatAnalyticsAfterTurnNotifier;
@@ -92,6 +94,7 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
             WhatsAppOutboundPort whatsAppOutboundPort,
             InboundWhatsAppDeduperPort inboundWhatsAppDeduper,
             ChatMessageRepository chatMessageRepository,
+            ConversationBotStatePort conversationBotStatePort,
             @Autowired(required = false) IntentDetectionPort intentDetectionPort,
             @Autowired(required = false) PrimaryIntentTurnNotifier primaryIntentTurnNotifier,
             @Autowired(required = false) ChatAnalyticsAfterTurnNotifier chatAnalyticsAfterTurnNotifier,
@@ -103,6 +106,7 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
         this.whatsAppOutboundPort = whatsAppOutboundPort;
         this.inboundWhatsAppDeduper = inboundWhatsAppDeduper;
         this.chatMessageRepository = chatMessageRepository;
+        this.conversationBotStatePort = conversationBotStatePort;
         this.intentDetectionPort = intentDetectionPort;
         this.primaryIntentTurnNotifier = primaryIntentTurnNotifier;
         this.chatAnalyticsAfterTurnNotifier = chatAnalyticsAfterTurnNotifier;
@@ -205,10 +209,15 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
                     return;
                 }
             }
-            exchange.setProperty(PROP_DECISION, DECISION_CHAT);
             exchange.setProperty(PROP_PHONE_RAW, tm.fromRaw());
             exchange.setProperty(PROP_TENANT_ID, tenant.get().value());
             persistInboundUserMessage(tenant.get(), tm);
+            if (!conversationBotStatePort.isBotEnabled(tenant.get(), tm.fromRaw())) {
+                exchange.getIn().setBody(new WhatsAppWebhookResponse("human_handoff"));
+                exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.OK.value());
+                return;
+            }
+            exchange.setProperty(PROP_DECISION, DECISION_CHAT);
             exchange.getIn().setBody(tm);
             return;
         }

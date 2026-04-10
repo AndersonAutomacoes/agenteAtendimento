@@ -18,7 +18,12 @@ export function ThemeToggle() {
 
   if (!mounted) {
     return (
-      <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={t("toggle")}>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-11 w-11 touch-manipulation sm:h-9 sm:w-9"
+        aria-label={t("toggle")}
+      >
         <Sun className="h-4 w-4 opacity-50" />
       </Button>
     );
@@ -28,7 +33,7 @@ export function ThemeToggle() {
     <Button
       variant="ghost"
       size="icon"
-      className="h-9 w-9"
+      className="h-11 w-11 touch-manipulation sm:h-9 sm:w-9"
       aria-label={
         resolvedTheme === "dark" ? t("light") : t("dark")
       }

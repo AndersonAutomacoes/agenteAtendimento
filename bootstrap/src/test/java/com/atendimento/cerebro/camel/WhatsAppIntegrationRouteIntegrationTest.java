@@ -10,11 +10,13 @@ import static org.mockito.Mockito.when;
 import com.atendimento.cerebro.application.dto.ChatCommand;
 import com.atendimento.cerebro.application.dto.ChatResult;
 import com.atendimento.cerebro.application.port.in.ChatUseCase;
+import com.atendimento.cerebro.application.port.out.ConversationBotStatePort;
 import com.atendimento.cerebro.application.port.out.WhatsAppOutboundPort;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel.ChatFallbackMessages;
 import com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel.IngestErrorResponse;
 import com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel.WhatsAppWebhookResponse;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -53,11 +55,19 @@ class WhatsAppIntegrationRouteIntegrationTest {
     @Autowired
     private TestRestTemplate restTemplate;
 
+    @Autowired
+    private ConversationBotStatePort conversationBotStatePort;
+
     @MockitoBean
     private ChatUseCase chatUseCase;
 
     @MockitoBean
     private WhatsAppOutboundPort whatsAppOutboundPort;
+
+    @AfterEach
+    void resetConversationBotState() {
+        conversationBotStatePort.setBotEnabled(new TenantId("tenant-wa"), "5511999999999", true);
+    }
 
     @Test
     void postWhatsApp_simpleJson_returnsProcessed() {
@@ -157,6 +167,19 @@ class WhatsAppIntegrationRouteIntegrationTest {
                         eq(new TenantId("tenant-wa")),
                         eq("5511999999999"),
                         eq(ChatFallbackMessages.MAINTENANCE));
+    }
+
+    @Test
+    void postWhatsApp_botDisabled_skipsChatAndSendsHumanHandoffStatus() {
+        conversationBotStatePort.setBotEnabled(new TenantId("tenant-wa"), "5511999999999", false);
+
+        ResponseEntity<WhatsAppWebhookResponse> response =
+                postWebhook("{\"from\":\"5511999999999\",\"text\":\"Olá\"}", WhatsAppWebhookResponse.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull().extracting(WhatsAppWebhookResponse::status).isEqualTo("human_handoff");
+        verifyNoInteractions(chatUseCase);
+        verifyNoInteractions(whatsAppOutboundPort);
     }
 
     private <T> ResponseEntity<T> postWebhook(String jsonBody, Class<T> responseType) {

@@ -17,6 +17,7 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -55,6 +56,21 @@ public class JdbcDashboardSummaryRepository implements DashboardSummaryPort {
         List<DashboardRecentInteraction> recent = loadRecent(tenant);
 
         return new DashboardSummary(totalClients, messagesToday, aiRate, instanceStatus, series, recent);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DashboardSummary loadForPeriod(TenantId tenantId, Instant start, Instant end) {
+        String tenant = tenantId.value();
+        long totalClients = countDistinctPhonesHalfOpen(tenant, start, end);
+        long userMessagesInRange = countUserMessagesHalfOpen(tenant, start, end);
+        Double aiRate = computeAiRateHalfOpen(tenant, start, end);
+        String instanceStatus =
+                deriveInstanceStatus(tenantConfigurationStore.findByTenantId(tenantId).orElse(null));
+        List<DashboardSeriesPoint> series = loadSeriesForExplicitWindow(tenant, start, end);
+        List<DashboardRecentInteraction> recent = loadRecent(tenant);
+        return new DashboardSummary(
+                totalClients, userMessagesInRange, aiRate, instanceStatus, series, recent);
     }
 
     private Window windowFor(DashboardRange range, Instant now) {
@@ -153,6 +169,151 @@ public class JdbcDashboardSummaryRepository implements DashboardSummaryPort {
             out.add(new DashboardSeriesPoint(ISO_INSTANT_MS.format(bucketStart), c));
         }
         return out;
+    }
+
+    private List<DashboardSeriesPoint> loadSeriesForExplicitWindow(String tenant, Instant start, Instant end) {
+        if (!end.isAfter(start)) {
+            return List.of();
+        }
+        long hours = Duration.between(start, end).toHours();
+        if (hours <= 48L) {
+            return hourlySeriesHalfOpen(tenant, start, end);
+        }
+        return dailySeriesHalfOpen(tenant, start, end);
+    }
+
+    private List<DashboardSeriesPoint> hourlySeriesHalfOpen(String tenant, Instant start, Instant end) {
+        Map<Long, Long> counts = new HashMap<>();
+        jdbcClient
+                .sql(
+                        """
+                        SELECT date_trunc('hour', occurred_at) AS b, COUNT(*)::bigint AS c
+                        FROM chat_message
+                        WHERE tenant_id = ? AND occurred_at >= ? AND occurred_at < ?
+                        GROUP BY b ORDER BY b
+                        """)
+                .param(tenant)
+                .param(Timestamp.from(start))
+                .param(Timestamp.from(end))
+                .query(
+                        (rs, rowNum) -> {
+                            Timestamp t = rs.getTimestamp(1);
+                            if (t != null) {
+                                counts.put(t.toInstant().getEpochSecond(), rs.getLong(2));
+                            }
+                            return rowNum;
+                        })
+                .list();
+
+        List<DashboardSeriesPoint> out = new ArrayList<>();
+        Instant bucket = start.truncatedTo(ChronoUnit.HOURS);
+        while (bucket.isBefore(end)) {
+            long c = counts.getOrDefault(bucket.getEpochSecond(), 0L);
+            out.add(new DashboardSeriesPoint(ISO_INSTANT_MS.format(bucket), c));
+            bucket = bucket.plus(1, ChronoUnit.HOURS);
+        }
+        return out;
+    }
+
+    private List<DashboardSeriesPoint> dailySeriesHalfOpen(String tenant, Instant start, Instant end) {
+        Map<String, Long> counts = new HashMap<>();
+        jdbcClient
+                .sql(
+                        """
+                        SELECT (occurred_at AT TIME ZONE 'UTC')::date AS d, COUNT(*)::bigint AS c
+                        FROM chat_message
+                        WHERE tenant_id = ? AND occurred_at >= ? AND occurred_at < ?
+                        GROUP BY d ORDER BY d
+                        """)
+                .param(tenant)
+                .param(Timestamp.from(start))
+                .param(Timestamp.from(end))
+                .query(
+                        (rs, rowNum) -> {
+                            java.sql.Date d = rs.getDate(1);
+                            if (d != null) {
+                                counts.put(d.toLocalDate().toString(), rs.getLong(2));
+                            }
+                            return rowNum;
+                        })
+                .list();
+
+        LocalDate first = LocalDate.ofInstant(start, ZoneOffset.UTC);
+        LocalDate last = LocalDate.ofInstant(end.minusNanos(1), ZoneOffset.UTC);
+        if (last.isBefore(first)) {
+            last = first;
+        }
+        List<DashboardSeriesPoint> out = new ArrayList<>();
+        for (LocalDate d = first; !d.isAfter(last); d = d.plusDays(1)) {
+            long c = counts.getOrDefault(d.toString(), 0L);
+            Instant bucketStart = d.atStartOfDay(ZoneOffset.UTC).toInstant();
+            out.add(new DashboardSeriesPoint(ISO_INSTANT_MS.format(bucketStart), c));
+        }
+        return out;
+    }
+
+    private long countDistinctPhonesHalfOpen(String tenant, Instant start, Instant end) {
+        Long n =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT COUNT(DISTINCT phone_number)::bigint
+                                FROM chat_message
+                                WHERE tenant_id = ? AND occurred_at >= ? AND occurred_at < ?
+                                """)
+                        .param(tenant)
+                        .param(Timestamp.from(start))
+                        .param(Timestamp.from(end))
+                        .query(Long.class)
+                        .optional()
+                        .orElse(0L);
+        return n;
+    }
+
+    private long countUserMessagesHalfOpen(String tenant, Instant start, Instant end) {
+        Long n =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT COUNT(*)::bigint FROM chat_message
+                                WHERE tenant_id = ? AND role = 'USER'
+                                  AND occurred_at >= ? AND occurred_at < ?
+                                """)
+                        .param(tenant)
+                        .param(Timestamp.from(start))
+                        .param(Timestamp.from(end))
+                        .query(Long.class)
+                        .optional()
+                        .orElse(0L);
+        return n;
+    }
+
+    private Double computeAiRateHalfOpen(String tenant, Instant start, Instant end) {
+        record Counts(long users, long assistants) {}
+
+        Counts row =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT
+                                  COALESCE(SUM(CASE WHEN role = 'USER' THEN 1 ELSE 0 END), 0)::bigint AS u,
+                                  COALESCE(SUM(CASE WHEN role = 'ASSISTANT' AND status = 'SENT' THEN 1 ELSE 0 END), 0)::bigint AS a
+                                FROM chat_message
+                                WHERE tenant_id = ? AND occurred_at >= ? AND occurred_at < ?
+                                """)
+                        .param(tenant)
+                        .param(Timestamp.from(start))
+                        .param(Timestamp.from(end))
+                        .query(
+                                (rs, rowNum) ->
+                                        new Counts(rs.getLong("u"), rs.getLong("a")))
+                        .single();
+
+        if (row.users() == 0) {
+            return null;
+        }
+        double p = 100.0 * row.assistants() / row.users();
+        return Math.min(100.0, Math.round(p * 10.0) / 10.0);
     }
 
     private long countDistinctPhones(String tenant, Instant start, Instant end) {

@@ -3,6 +3,17 @@
     "title": "Cérebro — Gestão",
     "description": "Plataforma de automação de atendimento por IA"
   },
+  "pwa": {
+    "title": "Instalar InteliZap no seu celular",
+    "subtitle": "Acesso rápido na tela inicial e maior estabilidade com internet instável (app web).",
+    "installCta": "Instalar InteliZap",
+    "iosInstructions": "No iPhone ou iPad: toque em Compartilhar (quadrado com seta) e escolha Adicionar à Tela de Início.",
+    "fallbackHint": "No menu do navegador, procure \"Instalar aplicativo\", \"Adicionar à tela inicial\" ou um ícone de instalação (⊕).",
+    "showManual": "Como instalar sem o botão",
+    "hideManual": "Ocultar instruções",
+    "dismissAria": "Dispensar sugestão",
+    "socialTitle": "InteliZap"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "knowledge": "Base de conhecimento",
@@ -13,7 +24,59 @@
     "settings": "Configurações",
     "brand": "Cérebro",
     "brandSubtitle": "Gestão de IA",
-    "footer": "Plataforma pensada para pequenas equipes — simples de usar."
+    "footer": "Plataforma pensada para pequenas equipes — simples de usar.",
+    "openMenu": "Abrir menu",
+    "closeMenu": "Fechar menu",
+    "menuTitle": "Navegação principal",
+    "login": "Entrar",
+    "logout": "Sair"
+  },
+  "loginPage": {
+    "title": "Painel de controle",
+    "subtitle": "Entre com a sua conta Firebase (email e senha).",
+    "email": "Email",
+    "password": "Senha",
+    "forgotPassword": "Esqueci minha senha",
+    "noAccount": "Criar conta com convite",
+    "submit": "Entrar",
+    "success": "Sessão iniciada",
+    "backHome": "Voltar ao início",
+    "firebaseNotConfigured": "Firebase não está configurado (variáveis NEXT_PUBLIC_FIREBASE_*)."
+  },
+  "registerPage": {
+    "title": "Criar conta",
+    "subtitle": "Utilize um código de convite válido. O perfil inicial é BASIC.",
+    "inviteCode": "Código de convite",
+    "email": "Email",
+    "password": "Senha (mín. 6 caracteres)",
+    "submit": "Registar e associar ao tenant",
+    "success": "Conta criada e associada ao tenant",
+    "hasAccount": "Já tem conta? Entrar",
+    "backHome": "Voltar ao início",
+    "firebaseNotConfigured": "Firebase não está configurado (variáveis NEXT_PUBLIC_FIREBASE_*)."
+  },
+  "forgotPasswordPage": {
+    "title": "Redefinir senha",
+    "subtitle": "Enviaremos um link por email (Firebase Authentication).",
+    "email": "Email",
+    "submit": "Enviar email",
+    "success": "Se o email existir, receberá instruções em breve.",
+    "error": "Não foi possível enviar o email. Tente novamente.",
+    "backLogin": "Voltar ao login",
+    "firebaseNotConfigured": "Firebase não está configurado (variáveis NEXT_PUBLIC_FIREBASE_*)."
+  },
+  "plan": {
+    "lockedTitle": "Conteúdo exclusivo do seu plano",
+    "lockedAria": "Área bloqueada conforme o plano da conta",
+    "upgradeCta": "Fazer upgrade",
+    "navLockedHint": "Disponível num plano superior.",
+    "exportDialogTitle": "Exportação de relatórios",
+    "exportDialogDescription": "As exportações CSV e PDF estão disponíveis no plano Enterprise.",
+    "requiredPlanHint": {
+      "starter": "Atualize o plano para desbloquear este recurso.",
+      "pro": "Inclua o plano Profissional ou Enterprise para ver estes gráficos.",
+      "enterprise": "As exportações CSV e PDF estão disponíveis no plano Enterprise."
+    }
   },
   "localeNames": {
     "pt-BR": "Português (Brasil)",
@@ -33,14 +96,31 @@
     "title": "Dashboard",
     "subtitle": "Indicadores em tempo real por conta: clientes, volume de mensagens, desempenho da IA e estado do canal WhatsApp.",
     "accountId": "ID da Conta",
-    "tenantHint": "Salvo localmente neste navegador; use o mesmo valor que em Configurações e Monitoramento.",
+    "tenantHint": "O ID da conta é definido em Configurações (mesmo valor em Monitoramento e noutras áreas).",
     "placeholderTenant": "ex.: tenant-demo",
     "needAccount": "Indique o ID da Conta para carregar métricas.",
     "loading": "Carregando indicadores…",
     "refresh": "Atualizar painel",
+    "refreshButton": "Atualizar",
     "periodDay": "Total",
     "periodWeek": "Semana",
     "periodMonth": "Mês",
+    "periodToday": "Hoje",
+    "periodLast7": "Últimos 7 dias",
+    "periodThisMonth": "Este mês",
+    "periodCustom": "Personalizado",
+    "periodCustomFrom": "Início",
+    "periodCustomTo": "Fim",
+    "periodCustomInvalid": "Defina início e fim válidos (fim após início).",
+    "periodCustomDialogTitle": "Período personalizado",
+    "periodCustomDialogHint": "Defina o início e o fim. Os dados serão atualizados ao aplicar.",
+    "periodCustomApply": "Aplicar",
+    "periodCustomCancel": "Cancelar",
+    "export": {
+      "button": "Exportar",
+      "csv": "Exportar CSV",
+      "pdf": "Gerar relatório PDF"
+    },
     "cards": {
       "clientsTitle": "Total de clientes",
       "clientsDesc": "Contactos distintos na janela selecionada (Total / Semana / Mês).",
@@ -238,7 +318,18 @@
     "relativeNow": "agora",
     "relativeMin": "{n} min",
     "relativeHours": "{n} h",
-    "retryStarted": "Reenvio iniciado"
+    "retryStarted": "Reenvio iniciado",
+    "assumeConversation": "Assumir conversa",
+    "assumeConversationToggle": "Assumir conversa",
+    "reactivateAi": "Reativar IA",
+    "handoffSuccess": "Modo humano activo; o cliente foi notificado.",
+    "enableBotSuccess": "IA reativada para esta conversa.",
+    "actionWorking": "A aguardar…",
+    "activeChatPlaceholder": "Escreva uma mensagem ao cliente…",
+    "activeChatSend": "Enviar",
+    "activeChatDisabledHint": "Assuma a conversa (desligue a IA) para enviar mensagens.",
+    "activeChatNeedMessage": "Escreva uma mensagem antes de enviar.",
+    "humanReplySuccess": "Mensagem enviada."
   },
   "chatBubble": {
     "statusReceived": "Processando envio — aguardando confirmação do servidor",
@@ -268,7 +359,17 @@
       "loadDashboardFailed": "Não foi possível carregar o resumo do painel.",
       "invalidDashboardSummary": "Resposta do painel com formato inválido",
       "loadAnalyticsIntentsFailed": "Não foi possível carregar a distribuição de intenções.",
-      "invalidAnalyticsIntents": "Resposta de intenções com formato inválido"
+      "invalidAnalyticsIntents": "Resposta de intenções com formato inválido",
+      "exportFailed": "Não foi possível exportar o relatório.",
+      "loginFailed": "Não foi possível iniciar sessão. Verifique email e senha.",
+      "registerFailed": "Não foi possível concluir o registo. Verifique o código de convite.",
+      "invalidRegisterResponse": "Resposta de registo inválida",
+      "invalidLoginResponse": "Resposta de login inválida",
+      "sessionFailed": "Sessão inválida ou expirada.",
+      "invalidSessionResponse": "Resposta de sessão inválida",
+      "invalidMessagesEnvelope": "Resposta de mensagens com formato inválido",
+      "conversationActionFailed": "Não foi possível alterar o modo da conversa.",
+      "humanReplyFailed": "Não foi possível enviar a mensagem pelo WhatsApp."
     }
   }
 }

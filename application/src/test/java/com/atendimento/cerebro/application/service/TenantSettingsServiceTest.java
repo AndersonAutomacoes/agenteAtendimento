@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import com.atendimento.cerebro.application.dto.TenantSettingsUpdateCommand;
 import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort;
+import com.atendimento.cerebro.domain.tenant.ProfileLevel;
 import com.atendimento.cerebro.domain.tenant.TenantConfiguration;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import com.atendimento.cerebro.domain.tenant.WhatsAppProviderType;
@@ -55,7 +56,15 @@ class TenantSettingsServiceTest {
     @Test
     void merge_so_persona_preserva_whatsapp_existente() {
         TenantConfiguration existing =
-                new TenantConfiguration(tenantId, "old", WhatsAppProviderType.EVOLUTION, "secret", "inst", "http://b");
+                new TenantConfiguration(
+                        tenantId,
+                        "old",
+                        WhatsAppProviderType.EVOLUTION,
+                        "secret",
+                        "inst",
+                        "http://b",
+                        ProfileLevel.BASIC,
+                        null);
         when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.of(existing));
 
         tenantSettingsService.updateTenantSettings(
@@ -74,7 +83,8 @@ class TenantSettingsServiceTest {
     @Test
     void string_vazia_limpa_campo_opcional() {
         TenantConfiguration existing =
-                new TenantConfiguration(tenantId, "p", WhatsAppProviderType.META, "k", "i", "u");
+                new TenantConfiguration(
+                        tenantId, "p", WhatsAppProviderType.META, "k", "i", "u", ProfileLevel.BASIC, null);
         when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.of(existing));
 
         tenantSettingsService.updateTenantSettings(
@@ -91,7 +101,8 @@ class TenantSettingsServiceTest {
     @Test
     void merge_altera_apenas_provider_quando_informado() {
         TenantConfiguration existing =
-                new TenantConfiguration(tenantId, "p", WhatsAppProviderType.SIMULATED, null, null, null);
+                new TenantConfiguration(
+                        tenantId, "p", WhatsAppProviderType.SIMULATED, null, null, null, ProfileLevel.BASIC, null);
         when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.of(existing));
 
         tenantSettingsService.updateTenantSettings(
@@ -100,5 +111,29 @@ class TenantSettingsServiceTest {
         ArgumentCaptor<TenantConfiguration> cap = ArgumentCaptor.forClass(TenantConfiguration.class);
         verify(tenantConfigurationStore).upsert(cap.capture());
         assertThat(cap.getValue().whatsappProviderType()).isEqualTo(WhatsAppProviderType.META);
+    }
+
+    @Test
+    void merge_preserva_profile_e_password_hash() {
+        TenantConfiguration existing =
+                new TenantConfiguration(
+                        tenantId,
+                        "old",
+                        WhatsAppProviderType.SIMULATED,
+                        null,
+                        null,
+                        null,
+                        ProfileLevel.PRO,
+                        "{bcrypt}x");
+        when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.of(existing));
+
+        tenantSettingsService.updateTenantSettings(
+                tenantId, new TenantSettingsUpdateCommand("newp", WhatsAppProviderType.META, "k", "i", "http://x"));
+
+        ArgumentCaptor<TenantConfiguration> cap = ArgumentCaptor.forClass(TenantConfiguration.class);
+        verify(tenantConfigurationStore).upsert(cap.capture());
+        TenantConfiguration saved = cap.getValue();
+        assertThat(saved.profileLevel()).isEqualTo(ProfileLevel.PRO);
+        assertThat(saved.portalPasswordHash()).isEqualTo("{bcrypt}x");
     }
 }

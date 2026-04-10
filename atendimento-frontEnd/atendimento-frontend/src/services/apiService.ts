@@ -18,6 +18,93 @@ export function getApiBaseUrl(): string {
   return normalizeBase(process.env.NEXT_PUBLIC_API_BASE);
 }
 
+/** ID token Firebase (Bearer) para RBAC analytics/dashboard/export. */
+export const CEREBRO_AUTH_TOKEN_KEY = "cerebro-access-token";
+
+export type ProfileLevel = "BASIC" | "PRO" | "ULTRA";
+
+export type PortalRegisterResponse = {
+  tenantId: string;
+  profileLevel: ProfileLevel;
+};
+
+export type PortalSession = {
+  tenantId: string;
+  profileLevel: ProfileLevel;
+};
+
+function authHeaders(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const t = localStorage.getItem(CEREBRO_AUTH_TOKEN_KEY);
+    return t ? { Authorization: `Bearer ${t}` } : {};
+  } catch {
+    return {};
+  }
+}
+
+function portalAuthRegisterUrl(): string {
+  const base = getApiBaseUrl();
+  return base ? `${base}/v1/auth/register` : "/api/v1/auth/register";
+}
+
+function portalAuthMeUrl(): string {
+  const base = getApiBaseUrl();
+  return base ? `${base}/v1/auth/me` : "/api/v1/auth/me";
+}
+
+export async function postPortalRegister(inviteCode: string): Promise<PortalRegisterResponse> {
+  const res = await fetch(portalAuthRegisterUrl(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify({ inviteCode: inviteCode.trim() }),
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(apiI18nKey("errors.serverUnavailable"));
+  }
+  if (!res.ok) {
+    throw new Error(httpErrorUserMessage(res.status, json, "errors.registerFailed"));
+  }
+  const o = json as Record<string, unknown>;
+  if (typeof o.tenantId !== "string" || typeof o.profileLevel !== "string") {
+    throw new Error(apiI18nKey("errors.invalidRegisterResponse"));
+  }
+  return {
+    tenantId: o.tenantId,
+    profileLevel: o.profileLevel as ProfileLevel,
+  };
+}
+
+export async function getPortalSession(): Promise<PortalSession> {
+  const res = await fetch(portalAuthMeUrl(), {
+    method: "GET",
+    headers: { Accept: "application/json", ...authHeaders() },
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(apiI18nKey("errors.serverUnavailable"));
+  }
+  if (!res.ok) {
+    throw new Error(httpErrorUserMessage(res.status, json, "errors.sessionFailed"));
+  }
+  const o = json as Record<string, unknown>;
+  if (typeof o.tenantId !== "string" || typeof o.profileLevel !== "string") {
+    throw new Error(apiI18nKey("errors.invalidSessionResponse"));
+  }
+  return { tenantId: o.tenantId, profileLevel: o.profileLevel as ProfileLevel };
+}
+
 function chatUrl(): string {
   const base = getApiBaseUrl();
   return base ? `${base}/api/v1/chat` : "/api/v1/chat";
@@ -205,6 +292,7 @@ export type WhatsAppProviderType = "SIMULATED" | "META" | "EVOLUTION";
 
 export type TenantSettings = {
   tenantId: string;
+  profileLevel: ProfileLevel;
   systemPrompt: string;
   whatsappProviderType: WhatsAppProviderType;
   whatsappApiKey: string | null;
@@ -244,7 +332,7 @@ function isWhatsAppProviderType(v: string): v is WhatsAppProviderType {
 export async function getTenantSettings(tenantId: string): Promise<TenantSettings> {
   const res = await fetch(tenantSettingsGetUrl(tenantId), {
     method: "GET",
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/json", ...authHeaders() },
   });
 
   const text = await res.text();
@@ -265,6 +353,9 @@ export async function getTenantSettings(tenantId: string): Promise<TenantSetting
   if (typeof o.tenantId !== "string" || typeof o.systemPrompt !== "string") {
     throw new Error(apiI18nKey("errors.invalidSettingsPayload"));
   }
+  const profileRaw = typeof o.profileLevel === "string" ? o.profileLevel : "BASIC";
+  const profileLevel: ProfileLevel =
+    profileRaw === "PRO" || profileRaw === "ULTRA" ? profileRaw : "BASIC";
   const raw = typeof o.whatsappProviderType === "string" ? o.whatsappProviderType : "SIMULATED";
   const whatsappProviderType: WhatsAppProviderType = isWhatsAppProviderType(raw)
     ? raw
@@ -272,6 +363,7 @@ export async function getTenantSettings(tenantId: string): Promise<TenantSetting
 
   return {
     tenantId: o.tenantId,
+    profileLevel,
     systemPrompt: o.systemPrompt,
     whatsappProviderType,
     whatsappApiKey: typeof o.whatsappApiKey === "string" ? o.whatsappApiKey : null,
@@ -294,6 +386,12 @@ export type ChatMessageItem = {
   status: "RECEIVED" | "SENT" | "ERROR";
   /** ISO-8601 */
   timestamp: string;
+};
+
+export type ChatMessagesPayload = {
+  messages: ChatMessageItem[];
+  /** Por telefone; omissão equivale a IA activa. */
+  botEnabledByPhone: Record<string, boolean>;
 };
 
 function chatMessagesUrl(tenantId: string): string {
@@ -328,7 +426,41 @@ function isChatMessageItem(v: unknown): v is ChatMessageItem {
   );
 }
 
-export async function getChatMessages(tenantId: string): Promise<ChatMessageItem[]> {
+function isBotEnabledByPhoneMap(v: unknown): v is Record<string, boolean> {
+  if (!v || typeof v !== "object") return false;
+  return Object.values(v as Record<string, unknown>).every(
+    (x) => typeof x === "boolean",
+  );
+}
+
+function conversationHumanHandoffUrl(tenantId: string): string {
+  const base = getApiBaseUrl();
+  const q = new URLSearchParams({ tenantId }).toString();
+  if (base) {
+    return `${base}/api/v1/conversations/human-handoff?${q}`;
+  }
+  return `/api/v1/conversations/human-handoff?${q}`;
+}
+
+function conversationEnableBotUrl(tenantId: string): string {
+  const base = getApiBaseUrl();
+  const q = new URLSearchParams({ tenantId }).toString();
+  if (base) {
+    return `${base}/api/v1/conversations/enable-bot?${q}`;
+  }
+  return `/api/v1/conversations/enable-bot?${q}`;
+}
+
+function messagesHumanReplyUrl(tenantId: string): string {
+  const base = getApiBaseUrl();
+  const q = new URLSearchParams({ tenantId }).toString();
+  if (base) {
+    return `${base}/api/v1/messages/human-reply?${q}`;
+  }
+  return `/api/v1/messages/human-reply?${q}`;
+}
+
+export async function getChatMessages(tenantId: string): Promise<ChatMessagesPayload> {
   const res = await fetch(chatMessagesUrl(tenantId), {
     method: "GET",
     headers: { Accept: "application/json" },
@@ -348,21 +480,115 @@ export async function getChatMessages(tenantId: string): Promise<ChatMessageItem
     );
   }
 
-  if (!Array.isArray(json)) {
-    throw new Error(apiI18nKey("errors.invalidMessagesArray"));
+  if (Array.isArray(json)) {
+    const out: ChatMessageItem[] = [];
+    for (const el of json) {
+      if (isChatMessageItem(el)) out.push(el);
+    }
+    if (out.length !== json.length) {
+      throw new Error(apiI18nKey("errors.invalidMessagesShape"));
+    }
+    return { messages: out, botEnabledByPhone: {} };
   }
 
-  const out: ChatMessageItem[] = [];
-  for (const el of json) {
-    if (isChatMessageItem(el)) out.push(el);
+  if (!json || typeof json !== "object") {
+    throw new Error(apiI18nKey("errors.invalidMessagesEnvelope"));
   }
-  if (out.length !== json.length) {
+  const o = json as Record<string, unknown>;
+  const rawMessages = o.messages;
+  const rawBot = o.botEnabledByPhone;
+  if (!Array.isArray(rawMessages) || !isBotEnabledByPhoneMap(rawBot)) {
+    throw new Error(apiI18nKey("errors.invalidMessagesEnvelope"));
+  }
+  const messages: ChatMessageItem[] = [];
+  for (const el of rawMessages) {
+    if (isChatMessageItem(el)) messages.push(el);
+  }
+  if (messages.length !== rawMessages.length) {
     throw new Error(apiI18nKey("errors.invalidMessagesShape"));
   }
-  return out;
+  return { messages, botEnabledByPhone: rawBot };
 }
 
-export type DashboardRange = "day" | "week" | "month";
+export async function humanHandoffConversation(
+  tenantId: string,
+  phoneNumber: string,
+): Promise<void> {
+  const res = await fetch(conversationHumanHandoffUrl(tenantId), {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ phoneNumber }),
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = null;
+  }
+  if (!res.ok) {
+    throw new Error(
+      httpErrorUserMessage(res.status, json, "errors.conversationActionFailed"),
+    );
+  }
+}
+
+export async function enableBotForConversation(
+  tenantId: string,
+  phoneNumber: string,
+): Promise<void> {
+  const res = await fetch(conversationEnableBotUrl(tenantId), {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ phoneNumber }),
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = null;
+  }
+  if (!res.ok) {
+    throw new Error(
+      httpErrorUserMessage(res.status, json, "errors.conversationActionFailed"),
+    );
+  }
+}
+
+/** Envio manual pelo monitor (bot desligado) — Evolution via backend + persistência em chat_message. */
+export async function sendHumanMonitorMessage(
+  tenantId: string,
+  phoneNumber: string,
+  text: string,
+): Promise<void> {
+  const res = await fetch(messagesHumanReplyUrl(tenantId), {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ phoneNumber, text }),
+  });
+  const bodyText = await res.text();
+  let json: unknown;
+  try {
+    json = bodyText ? JSON.parse(bodyText) : null;
+  } catch {
+    json = null;
+  }
+  if (!res.ok) {
+    throw new Error(
+      httpErrorUserMessage(res.status, json, "errors.humanReplyFailed"),
+    );
+  }
+}
 
 export type DashboardSeriesPoint = {
   bucketStart: string;
@@ -420,9 +646,9 @@ export type AnalyticsIntentsResponse = {
   sentimentCounts: AnalyticsSentimentCount[];
 };
 
-function dashboardSummaryUrl(tenantId: string, range: DashboardRange): string {
+function dashboardSummaryUrl(tenantId: string, startDate: string, endDate: string): string {
   const base = getApiBaseUrl();
-  const q = new URLSearchParams({ tenantId, range }).toString();
+  const q = new URLSearchParams({ tenantId, startDate, endDate }).toString();
   if (base) {
     return `${base}/api/v1/dashboard/summary?${q}`;
   }
@@ -467,14 +693,15 @@ function isDashboardSummary(v: unknown): v is DashboardSummary {
   return true;
 }
 
-/** Camel GET {@code /api/v1/dashboard/summary?tenantId=&range=}. */
+/** Camel GET {@code /api/v1/dashboard/summary?tenantId=&startDate=&endDate=}. */
 export async function getDashboardSummary(
   tenantId: string,
-  range: DashboardRange,
+  startDate: string,
+  endDate: string,
 ): Promise<DashboardSummary> {
-  const res = await fetch(dashboardSummaryUrl(tenantId, range), {
+  const res = await fetch(dashboardSummaryUrl(tenantId, startDate, endDate), {
     method: "GET",
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/json", ...authHeaders() },
   });
 
   const text = await res.text();
@@ -505,11 +732,12 @@ const PRIMARY_INTENT_CATEGORIES: readonly PrimaryIntentCategory[] = [
   "OUTRO",
 ];
 
-function analyticsIntentsUrl(tenantId: string, days: number): string {
+function analyticsIntentsUrl(tenantId: string, startDate: string, endDate: string): string {
   const base = getApiBaseUrl();
   const q = new URLSearchParams({
     tenantId,
-    days: String(days),
+    startDate,
+    endDate,
   }).toString();
   if (base) {
     return `${base}/api/v1/analytics/intents?${q}`;
@@ -567,14 +795,15 @@ function isAnalyticsIntentsResponse(v: unknown): v is AnalyticsIntentsResponse {
   return true;
 }
 
-/** Camel GET {@code /api/v1/analytics/intents?tenantId=&days=}. */
+/** Camel GET {@code /api/v1/analytics/intents?tenantId=&startDate=&endDate=}. */
 export async function getAnalyticsIntents(
   tenantId: string,
-  days: number,
+  startDate: string,
+  endDate: string,
 ): Promise<AnalyticsIntentsResponse> {
-  const res = await fetch(analyticsIntentsUrl(tenantId, days), {
+  const res = await fetch(analyticsIntentsUrl(tenantId, startDate, endDate), {
     method: "GET",
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/json", ...authHeaders() },
   });
 
   const text = await res.text();
@@ -595,6 +824,58 @@ export async function getAnalyticsIntents(
     throw new Error(apiI18nKey("errors.invalidAnalyticsIntents"));
   }
   return json;
+}
+
+export type AnalyticsExportFormat = "csv" | "pdf";
+
+function analyticsExportUrl(
+  tenantId: string,
+  startDate: string,
+  endDate: string,
+  locale: string,
+  format: AnalyticsExportFormat,
+): string {
+  const base = getApiBaseUrl();
+  const q = new URLSearchParams({
+    tenantId,
+    startDate,
+    endDate,
+    locale,
+    format,
+  }).toString();
+  if (base) {
+    return `${base}/api/v1/analytics/export?${q}`;
+  }
+  return `/api/v1/analytics/export?${q}`;
+}
+
+export async function exportAnalyticsReport(
+  tenantId: string,
+  startDate: string,
+  endDate: string,
+  locale: string,
+  format: AnalyticsExportFormat,
+): Promise<Blob> {
+  const res = await fetch(analyticsExportUrl(tenantId, startDate, endDate, locale, format), {
+    method: "GET",
+    headers: { Accept: "*/*", ...authHeaders() },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    let msg = apiI18nKey("errors.exportFailed");
+    try {
+      const j = text ? JSON.parse(text) : {};
+      if (j && typeof j === "object") {
+        const o = j as { error?: string; message?: string };
+        if (typeof o.error === "string" && o.error.length > 0) msg = o.error;
+        else if (typeof o.message === "string" && o.message.length > 0) msg = o.message;
+      }
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg);
+  }
+  return res.blob();
 }
 
 /** Arquivos indexados (Camel GET {@code /api/v1/knowledge-base?tenantId=}). */

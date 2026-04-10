@@ -8,8 +8,8 @@ import { DeleteFileDialog } from "@/components/knowledge/delete-file-dialog";
 import { FileUploadZone } from "@/components/knowledge/file-upload-zone";
 import { KnowledgeBaseFilesTable } from "@/components/knowledge/uploaded-files-list";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import {
   deleteKnowledgeFile,
   getKnowledgeBase,
@@ -43,23 +43,22 @@ export default function KnowledgePage() {
     string | null
   >(null);
 
-  React.useEffect(() => {
+  const readTenantFromStorage = React.useCallback(() => {
     try {
-      const v = localStorage.getItem(TENANT_STORAGE_KEY);
-      if (v) setTenantId(v);
+      setTenantId(localStorage.getItem(TENANT_STORAGE_KEY) ?? "");
     } catch {
       /* ignore */
     }
   }, []);
 
-  const persistTenant = (value: string) => {
-    setTenantId(value);
-    try {
-      localStorage.setItem(TENANT_STORAGE_KEY, value);
-    } catch {
-      /* ignore */
-    }
-  };
+  React.useEffect(() => {
+    readTenantFromStorage();
+  }, [readTenantFromStorage]);
+
+  React.useEffect(() => {
+    window.addEventListener("focus", readTenantFromStorage);
+    return () => window.removeEventListener("focus", readTenantFromStorage);
+  }, [readTenantFromStorage]);
 
   const fetchList = React.useCallback(async (tid: string) => {
     setListLoading(true);
@@ -149,17 +148,17 @@ export default function KnowledgePage() {
         <p className="text-muted-foreground">{t("intro")}</p>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="tenantId">{t("accountId")}</Label>
-        <Input
-          id="tenantId"
-          placeholder={t("placeholderTenant")}
-          value={tenantId}
-          onChange={(e) => persistTenant(e.target.value)}
-          autoComplete="off"
-          className="rounded-xl"
-        />
-        <p className="text-xs text-muted-foreground">{t("tenantHint")}</p>
+      <div className="space-y-1">
+        <Label className="text-muted-foreground">{t("accountId")}</Label>
+        <p
+          className={cn(
+            "min-h-9 text-base font-semibold tracking-tight text-foreground sm:text-lg",
+            !tenantId.trim() && "font-normal text-muted-foreground",
+          )}
+          aria-label={t("accountId")}
+        >
+          {tenantId.trim() || "—"}
+        </p>
       </div>
 
       <FileUploadZone

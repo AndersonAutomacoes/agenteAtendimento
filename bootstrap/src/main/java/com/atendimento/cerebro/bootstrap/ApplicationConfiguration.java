@@ -8,6 +8,7 @@ import com.atendimento.cerebro.application.port.out.AnalyticsIntentsRepository;
 import com.atendimento.cerebro.application.port.out.AnalyticsStatsRepository;
 import com.atendimento.cerebro.application.port.out.ChatAnalyticsRepository;
 import com.atendimento.cerebro.application.port.out.ChatMessageRepository;
+import com.atendimento.cerebro.application.port.out.ConversationBotStatePort;
 import com.atendimento.cerebro.application.port.out.ConversationContextStorePort;
 import com.atendimento.cerebro.application.port.out.KnowledgeBasePort;
 import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort;
@@ -17,6 +18,10 @@ import com.atendimento.cerebro.application.service.ChatService;
 import com.atendimento.cerebro.application.service.ConversationCategoryAnalyticsService;
 import com.atendimento.cerebro.application.service.ConversationPrimaryIntentService;
 import com.atendimento.cerebro.application.service.IngestionService;
+import com.atendimento.cerebro.application.port.out.FirebaseCustomClaimsPort;
+import com.atendimento.cerebro.application.port.out.PortalUserStorePort;
+import com.atendimento.cerebro.application.port.out.TenantInviteStorePort;
+import com.atendimento.cerebro.application.service.PortalRegistrationService;
 import com.atendimento.cerebro.application.service.TenantSettingsService;
 import com.atendimento.cerebro.infrastructure.config.AnalyticsCategorizationProperties;
 import com.atendimento.cerebro.infrastructure.config.AnalyticsIntentClassificationProperties;
@@ -32,8 +37,10 @@ public class ApplicationConfiguration {
             ConversationContextStorePort conversationContextStore,
             KnowledgeBasePort knowledgeBase,
             AIEnginePort aiEngine,
-            TenantConfigurationStorePort tenantConfigurationStore) {
-        return new ChatService(conversationContextStore, knowledgeBase, aiEngine, tenantConfigurationStore);
+            TenantConfigurationStorePort tenantConfigurationStore,
+            ConversationBotStatePort conversationBotStatePort) {
+        return new ChatService(
+                conversationContextStore, knowledgeBase, aiEngine, tenantConfigurationStore, conversationBotStatePort);
     }
 
     @Bean
@@ -44,6 +51,14 @@ public class ApplicationConfiguration {
     @Bean
     public UpdateTenantSettingsUseCase updateTenantSettingsUseCase(TenantConfigurationStorePort tenantConfigurationStore) {
         return new TenantSettingsService(tenantConfigurationStore);
+    }
+
+    @Bean
+    public PortalRegistrationService portalRegistrationService(
+            TenantInviteStorePort tenantInviteStore,
+            PortalUserStorePort portalUserStore,
+            FirebaseCustomClaimsPort firebaseCustomClaims) {
+        return new PortalRegistrationService(tenantInviteStore, portalUserStore, firebaseCustomClaims);
     }
 
     @Bean

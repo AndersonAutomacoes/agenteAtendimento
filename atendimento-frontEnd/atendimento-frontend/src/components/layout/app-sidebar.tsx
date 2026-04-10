@@ -1,52 +1,22 @@
 "use client";
 
-import type { LucideIcon } from "lucide-react";
-import {
-  BookOpen,
-  Bot,
-  Brain,
-  LayoutDashboard,
-  MessageSquareText,
-  MonitorDot,
-} from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Separator } from "@/components/ui/separator";
-import { Link, usePathname } from "@/i18n/navigation";
-import { cn } from "@/lib/utils";
+import { Link } from "@/i18n/navigation";
+
+import { AppNavEntry } from "./app-nav-entry";
+import { NavAuthFooter } from "./nav-auth-footer";
+import { APP_NAV_ITEMS, NAV_BRAIN_ICON } from "./nav-config";
 
 export function AppSidebar() {
-  const pathname = usePathname();
   const t = useTranslations("nav");
-
-  const items: {
-    href: string;
-    labelKey: "dashboard" | "knowledge" | "testChat" | "monitoring" | "settings";
-    subKey?: "knowledgeSub" | "monitoringSub";
-    icon: LucideIcon;
-  }[] = [
-    { href: "/", labelKey: "dashboard", icon: LayoutDashboard },
-    {
-      href: "/knowledge",
-      labelKey: "knowledge",
-      subKey: "knowledgeSub",
-      icon: BookOpen,
-    },
-    { href: "/test-chat", labelKey: "testChat", icon: MessageSquareText },
-    {
-      href: "/dashboard/monitoramento",
-      labelKey: "monitoring",
-      subKey: "monitoringSub",
-      icon: MonitorDot,
-    },
-    { href: "/settings", labelKey: "settings", icon: Bot },
-  ];
 
   return (
     <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-[4px_0_24px_-8px_rgba(0,0,0,0.35)]">
       <div className="flex h-16 items-center gap-2 border-b border-sidebar-border px-4">
         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary">
-          <Brain className="h-5 w-5" aria-hidden />
+          <NAV_BRAIN_ICON className="h-5 w-5" aria-hidden />
         </div>
         <div className="min-w-0">
           <Link
@@ -61,37 +31,13 @@ export function AppSidebar() {
         </div>
       </div>
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-3">
-        {items.map(({ href, labelKey, subKey, icon: Icon }) => {
-          const label = t(labelKey);
-          const sub = subKey ? t(subKey) : undefined;
-          const active =
-            href === "/"
-              ? pathname === "/"
-              : pathname === href || pathname.startsWith(`${href}/`);
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
-                active
-                  ? "bg-primary/15 text-foreground shadow-sm ring-1 ring-primary/25"
-                  : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-              )}
-            >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span className="flex min-w-0 flex-col leading-tight">
-                <span>{label}</span>
-                {sub ? (
-                  <span className="text-[11px] font-normal text-muted-foreground">
-                    {sub}
-                  </span>
-                ) : null}
-              </span>
-            </Link>
-          );
-        })}
+        {APP_NAV_ITEMS.map((item) => (
+          <AppNavEntry key={item.href} item={item} />
+        ))}
       </nav>
+      <div className="px-3 pb-2">
+        <NavAuthFooter variant="sidebar" />
+      </div>
       <Separator className="bg-sidebar-border" />
       <p className="p-4 text-xs leading-relaxed text-muted-foreground">
         {t("footer")}

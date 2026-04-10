@@ -26,6 +26,8 @@ spring:
         dimensions: 768
 
 cerebro:
+  firebase:
+    enabled: false
   analytics:
     chat:
       enabled: false

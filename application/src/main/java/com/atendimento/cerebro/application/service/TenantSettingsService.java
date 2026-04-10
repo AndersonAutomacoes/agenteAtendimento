@@ -31,7 +31,14 @@ public class TenantSettingsService implements UpdateTenantSettingsUseCase {
         var baseUrl = c.whatsappBaseUrl() != null ? nullIfBlankToNull(c.whatsappBaseUrl()) : base.whatsappBaseUrl();
 
         return new TenantConfiguration(
-                base.tenantId(), c.systemPrompt(), type, apiKey, instanceId, baseUrl);
+                base.tenantId(),
+                c.systemPrompt(),
+                type,
+                apiKey,
+                instanceId,
+                baseUrl,
+                base.profileLevel(),
+                base.portalPasswordHash());
     }
 
     /**

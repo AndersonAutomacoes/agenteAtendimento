@@ -9,7 +9,9 @@ public record TenantConfiguration(
         WhatsAppProviderType whatsappProviderType,
         String whatsappApiKey,
         String whatsappInstanceId,
-        String whatsappBaseUrl) {
+        String whatsappBaseUrl,
+        ProfileLevel profileLevel,
+        String portalPasswordHash) {
 
     public TenantConfiguration {
         if (tenantId == null) {
@@ -21,13 +23,17 @@ public record TenantConfiguration(
         if (whatsappProviderType == null) {
             throw new IllegalArgumentException("whatsappProviderType must not be null");
         }
+        if (profileLevel == null) {
+            throw new IllegalArgumentException("profileLevel must not be null");
+        }
     }
 
     /**
      * Configuração inicial quando ainda não existe linha em {@code tenant_configuration}.
      */
     public static TenantConfiguration defaults(TenantId tenantId) {
-        return new TenantConfiguration(tenantId, "", WhatsAppProviderType.SIMULATED, null, null, null);
+        return new TenantConfiguration(
+                tenantId, "", WhatsAppProviderType.SIMULATED, null, null, null, ProfileLevel.BASIC, null);
     }
 
     public TenantConfiguration withSystemPrompt(String newSystemPrompt) {
@@ -35,6 +41,13 @@ public record TenantConfiguration(
             throw new IllegalArgumentException("systemPrompt must not be null");
         }
         return new TenantConfiguration(
-                tenantId, newSystemPrompt, whatsappProviderType, whatsappApiKey, whatsappInstanceId, whatsappBaseUrl);
+                tenantId,
+                newSystemPrompt,
+                whatsappProviderType,
+                whatsappApiKey,
+                whatsappInstanceId,
+                whatsappBaseUrl,
+                profileLevel,
+                portalPasswordHash);
     }
 }

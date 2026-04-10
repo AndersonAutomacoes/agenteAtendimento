@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="izap" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#34d399"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#14151c"/>
+  <g transform="translate(256 256)">
+    <path fill="url(#izap)" d="M-120-40c0-66 54-120 120-120s120 54 120 120c0 48-28 90-72 108l16 104-88-72-96 56 32-112c-40-18-64-58-64-104z" opacity="0.98"/>
+    <path fill="#14151c" d="M-24-88c32 0 58 26 58 58s-26 58-58 58-58-26-58-58 26-58 58-58z" opacity="0.35"/>
+  </g>
+</svg>

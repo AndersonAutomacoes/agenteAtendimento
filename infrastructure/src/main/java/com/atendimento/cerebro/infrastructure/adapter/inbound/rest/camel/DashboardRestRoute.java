@@ -37,17 +37,29 @@ public class DashboardRestRoute extends RouteBuilder {
     }
 
     private void handleGet(Exchange exchange) {
-        String tenantId = parseQueryParam(exchange.getMessage().getHeader(Exchange.HTTP_QUERY, String.class), "tenantId");
-        if (tenantId == null || tenantId.isBlank()) {
-            exchange.getIn().setBody(new IngestErrorResponse("tenantId é obrigatório"));
+        String query = exchange.getMessage().getHeader(Exchange.HTTP_QUERY, String.class);
+        String requested = parseQueryParam(query, "tenantId");
+        String tenantId = CamelAuthSupport.authorizedTenantOrAbort(exchange, requested);
+        if (tenantId == null) {
+            return;
+        }
+        AnalyticsPeriodQuery period;
+        try {
+            period = AnalyticsPeriodQueryParser.parse(query);
+        } catch (IllegalArgumentException e) {
+            exchange.getIn().setBody(new IngestErrorResponse(e.getMessage()));
             exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
             return;
         }
-        tenantId = tenantId.strip();
-        String rangeRaw = parseQueryParam(exchange.getMessage().getHeader(Exchange.HTTP_QUERY, String.class), "range");
-        DashboardRange range = parseRange(rangeRaw);
 
-        DashboardSummary summary = dashboardSummaryPort.load(new TenantId(tenantId), range);
+        DashboardSummary summary;
+        if (period != null) {
+            summary = dashboardSummaryPort.loadForPeriod(new TenantId(tenantId), period.start(), period.end());
+        } else {
+            String rangeRaw = parseQueryParam(query, "range");
+            DashboardRange range = parseRange(rangeRaw);
+            summary = dashboardSummaryPort.load(new TenantId(tenantId), range);
+        }
         exchange.getMessage().setBody(summary);
         exchange.getMessage().setHeader(Exchange.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
         exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.OK.value());

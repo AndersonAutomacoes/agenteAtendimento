@@ -3,6 +3,17 @@
     "title": "Cérebro — Gestión",
     "description": "Plataforma de automatización de atención con IA"
   },
+  "pwa": {
+    "title": "Instalar InteliZap en el móvil",
+    "subtitle": "Acceso rápido desde la pantalla de inicio y más estabilidad con redes inestables (app web).",
+    "installCta": "Instalar InteliZap",
+    "iosInstructions": "En iPhone o iPad: toca Compartir (cuadrado con flecha) y elige Añadir a la pantalla de inicio.",
+    "fallbackHint": "En el menú del navegador, busca \"Instalar aplicación\", \"Añadir a la pantalla de inicio\" o un icono de instalación (⊕).",
+    "showManual": "Cómo instalar sin el botón",
+    "hideManual": "Ocultar instrucciones",
+    "dismissAria": "Descartar sugerencia",
+    "socialTitle": "InteliZap"
+  },
   "nav": {
     "dashboard": "Panel",
     "knowledge": "Base de conocimiento",
@@ -13,7 +24,59 @@
     "settings": "Configuración",
     "brand": "Cérebro",
     "brandSubtitle": "Gestión de IA",
-    "footer": "Plataforma pensada para equipos pequeños — fácil de usar."
+    "footer": "Plataforma pensada para equipos pequeños — fácil de usar.",
+    "openMenu": "Abrir menú",
+    "closeMenu": "Cerrar menú",
+    "menuTitle": "Navegación principal",
+    "login": "Entrar",
+    "logout": "Cerrar sesión"
+  },
+  "loginPage": {
+    "title": "Iniciar sesión",
+    "subtitle": "Use su cuenta Firebase (email y contraseña).",
+    "email": "Email",
+    "password": "Contraseña",
+    "forgotPassword": "Olvidé mi contraseña",
+    "noAccount": "Crear cuenta con invitación",
+    "submit": "Entrar",
+    "success": "Sesión iniciada",
+    "backHome": "Volver al inicio",
+    "firebaseNotConfigured": "Firebase no está configurado (variables NEXT_PUBLIC_FIREBASE_*)."
+  },
+  "registerPage": {
+    "title": "Crear cuenta",
+    "subtitle": "Use un código de invitación válido. El perfil inicial es BASIC.",
+    "inviteCode": "Código de invitación",
+    "email": "Email",
+    "password": "Contraseña (mín. 6 caracteres)",
+    "submit": "Registrarse y asociar al tenant",
+    "success": "Cuenta creada y asociada al tenant",
+    "hasAccount": "¿Ya tiene cuenta? Entrar",
+    "backHome": "Volver al inicio",
+    "firebaseNotConfigured": "Firebase no está configurado (variables NEXT_PUBLIC_FIREBASE_*)."
+  },
+  "forgotPasswordPage": {
+    "title": "Restablecer contraseña",
+    "subtitle": "Enviaremos un enlace por email (Firebase Authentication).",
+    "email": "Email",
+    "submit": "Enviar email",
+    "success": "Si el email existe, recibirá instrucciones pronto.",
+    "error": "No se pudo enviar el email. Inténtelo de nuevo.",
+    "backLogin": "Volver al inicio de sesión",
+    "firebaseNotConfigured": "Firebase no está configurado (variables NEXT_PUBLIC_FIREBASE_*)."
+  },
+  "plan": {
+    "lockedTitle": "Disponible en tu plan",
+    "lockedAria": "Zona bloqueada según tu suscripción",
+    "upgradeCta": "Mejorar plan",
+    "navLockedHint": "Disponible en un plan superior.",
+    "exportDialogTitle": "Exportación de informes",
+    "exportDialogDescription": "Las exportaciones CSV y PDF están disponibles en el plan Enterprise.",
+    "requiredPlanHint": {
+      "starter": "Mejora tu plan para desbloquear esta función.",
+      "pro": "Pasa a Professional o Enterprise para ver estos gráficos.",
+      "enterprise": "Las exportaciones CSV y PDF están disponibles en el plan Enterprise."
+    }
   },
   "localeNames": {
     "pt-BR": "Português (Brasil)",
@@ -33,14 +96,31 @@
     "title": "Panel",
     "subtitle": "Indicadores en tiempo real por cuenta: clientes, volumen de mensajes, rendimiento de la IA y estado del canal WhatsApp.",
     "accountId": "ID de cuenta",
-    "tenantHint": "Guardado localmente en este navegador; use el mismo valor que en Configuración y Monitorización.",
+    "tenantHint": "El ID de cuenta se define en Configuración (el mismo en Monitorización y otras áreas).",
     "placeholderTenant": "ej.: tenant-demo",
     "needAccount": "Indique el ID de cuenta para cargar métricas.",
     "loading": "Cargando métricas…",
     "refresh": "Actualizar panel",
+    "refreshButton": "Actualizar",
     "periodDay": "Total",
     "periodWeek": "Semana",
     "periodMonth": "Mes",
+    "periodToday": "Hoy",
+    "periodLast7": "Últimos 7 días",
+    "periodThisMonth": "Este mes",
+    "periodCustom": "Personalizado",
+    "periodCustomFrom": "Inicio",
+    "periodCustomTo": "Fin",
+    "periodCustomInvalid": "Indique inicio y fin válidos (fin posterior al inicio).",
+    "periodCustomDialogTitle": "Periodo personalizado",
+    "periodCustomDialogHint": "Indique inicio y fin. Los datos se actualizarán al aplicar.",
+    "periodCustomApply": "Aplicar",
+    "periodCustomCancel": "Cancelar",
+    "export": {
+      "button": "Exportar",
+      "csv": "Exportar CSV",
+      "pdf": "Generar informe PDF"
+    },
     "cards": {
       "clientsTitle": "Total de clientes",
       "clientsDesc": "Contactos distintos en la ventana seleccionada (Total / Semana / Mes).",
@@ -238,7 +318,18 @@
     "relativeNow": "ahora",
     "relativeMin": "{n} min",
     "relativeHours": "{n} h",
-    "retryStarted": "Reenvío iniciado"
+    "retryStarted": "Reenvío iniciado",
+    "assumeConversation": "Tomar conversación",
+    "assumeConversationToggle": "Tomar conversación",
+    "reactivateAi": "Reactivar IA",
+    "handoffSuccess": "Modo humano activo; se notificó al cliente.",
+    "enableBotSuccess": "IA reactivada para esta conversación.",
+    "actionWorking": "Espere…",
+    "activeChatPlaceholder": "Escriba un mensaje al cliente…",
+    "activeChatSend": "Enviar",
+    "activeChatDisabledHint": "Tome la conversación (desactive la IA) para enviar mensajes.",
+    "activeChatNeedMessage": "Escriba un mensaje antes de enviar.",
+    "humanReplySuccess": "Mensaje enviado."
   },
   "chatBubble": {
     "statusReceived": "Procesando envío — esperando confirmación del servidor",
@@ -268,7 +359,17 @@
       "loadDashboardFailed": "No se pudo cargar el resumen del panel.",
       "invalidDashboardSummary": "Formato de respuesta del panel inválido",
       "loadAnalyticsIntentsFailed": "No se pudo cargar la distribución de intenciones.",
-      "invalidAnalyticsIntents": "Formato de respuesta de intenciones inválido"
+      "invalidAnalyticsIntents": "Formato de respuesta de intenciones inválido",
+      "exportFailed": "No fue posible exportar el informe.",
+      "loginFailed": "No se pudo iniciar sesión. Verifique email y contraseña.",
+      "registerFailed": "No se pudo completar el registro. Verifique el código de invitación.",
+      "invalidRegisterResponse": "Respuesta de registro inválida",
+      "invalidLoginResponse": "Respuesta de login inválida",
+      "sessionFailed": "Sesión inválida o expirada.",
+      "invalidSessionResponse": "Respuesta de sesión inválida",
+      "invalidMessagesEnvelope": "Formato de respuesta de mensajes inválido",
+      "conversationActionFailed": "No se pudo cambiar el modo de la conversación.",
+      "humanReplyFailed": "No se pudo enviar el mensaje por WhatsApp."
     }
   }
 }

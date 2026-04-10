@@ -2,6 +2,7 @@ package com.atendimento.cerebro;
 
 import com.atendimento.cerebro.infrastructure.config.AnalyticsCategorizationProperties;
 import com.atendimento.cerebro.infrastructure.config.AnalyticsIntentClassificationProperties;
+import com.atendimento.cerebro.infrastructure.config.FirebaseProperties;
 import com.atendimento.cerebro.infrastructure.config.ChatAnalyticsProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -13,7 +14,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableConfigurationProperties({
     AnalyticsCategorizationProperties.class,
     AnalyticsIntentClassificationProperties.class,
-    ChatAnalyticsProperties.class
+    ChatAnalyticsProperties.class,
+    FirebaseProperties.class
 })
 public class CerebroApplication {
 

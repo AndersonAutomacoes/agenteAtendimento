@@ -60,6 +60,12 @@ spring:
         distance-type: COSINE_DISTANCE    
 
 cerebro:
+  firebase:
+    # true = inicializa o SDK (conta de serviço / ADC obrigatórios). false = não arranca o Firebase (Docker/local sem credenciais).
+    # Em produção com Auth: CEREBRO_FIREBASE_ENABLED=true + GOOGLE_APPLICATION_CREDENTIALS ou FIREBASE_SERVICE_ACCOUNT_JSON_PATH.
+    enabled: ${CEREBRO_FIREBASE_ENABLED:true}
+    project-id: ${FIREBASE_PROJECT_ID:}
+    service-account-json-path: ${FIREBASE_SERVICE_ACCOUNT_JSON_PATH:}
   analytics:
     categorization:
       enabled: true

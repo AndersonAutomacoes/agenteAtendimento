@@ -110,6 +110,12 @@ services:
       SPRING_AI_MODEL_EMBEDDING_TEXT: google-genai
       # Evolution: dentro do container não use localhost:8083; serviço Compose escuta na 8080.
       CEREBRO_WHATSAPP_EVOLUTION_BASE_URL: http://evolution-api:8080
+      # Local: por defeito false (sem credenciais no container). Para portal Auth: no .env use
+      # CEREBRO_FIREBASE_ENABLED=true + FIREBASE_PROJECT_ID + montar o JSON (ver .env.example).
+      CEREBRO_FIREBASE_ENABLED: ${CEREBRO_FIREBASE_ENABLED:-true}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      # Alinhar com o volume em ./secrets/...:/run/firebase.json — sem isto o Spring usa ADC (inexistente no container).
+      FIREBASE_SERVICE_ACCOUNT_JSON_PATH: ${FIREBASE_SERVICE_ACCOUNT_JSON_PATH:-/run/firebase.json}
     depends_on:
       postgres:
         condition: service_healthy
@@ -117,6 +123,8 @@ services:
         condition: service_healthy
       evolution-api:
         condition: service_started
+    volumes:
+      - ./secrets/gen-lang-client-0922152835-firebase-adminsdk-fbsvc-525d75aa1f.json:/run/firebase.json:ro
 
 volumes:
   cerebro_pgdata:

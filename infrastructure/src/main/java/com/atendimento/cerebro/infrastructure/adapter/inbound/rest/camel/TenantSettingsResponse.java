@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record TenantSettingsResponse(
         String tenantId,
+        String profileLevel,
         String systemPrompt,
         String whatsappProviderType,
         String whatsappApiKey,

@@ -3,6 +3,17 @@
     "title": "Cérebro — Management",
     "description": "AI-powered customer support automation platform"
   },
+  "pwa": {
+    "title": "Install InteliZap on your phone",
+    "subtitle": "Faster access from your home screen and better resilience on flaky networks (web app).",
+    "installCta": "Install InteliZap",
+    "iosInstructions": "On iPhone or iPad: tap Share (square with arrow) and choose Add to Home Screen.",
+    "fallbackHint": "In your browser menu, look for \"Install app\", \"Add to Home screen\", or an install icon (⊕).",
+    "showManual": "How to install without the button",
+    "hideManual": "Hide instructions",
+    "dismissAria": "Dismiss suggestion",
+    "socialTitle": "InteliZap"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "knowledge": "Knowledge base",
@@ -13,7 +24,59 @@
     "settings": "Settings",
     "brand": "Cérebro",
     "brandSubtitle": "AI management",
-    "footer": "Built for small teams — easy to use."
+    "footer": "Built for small teams — easy to use.",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu",
+    "menuTitle": "Main navigation",
+    "login": "Sign in",
+    "logout": "Sign out"
+  },
+  "loginPage": {
+    "title": "Sign in to the dashboard",
+    "subtitle": "Sign in with your Firebase account (email and password).",
+    "email": "Email",
+    "password": "Password",
+    "forgotPassword": "Forgot password",
+    "noAccount": "Create account with invite",
+    "submit": "Sign in",
+    "success": "Signed in",
+    "backHome": "Back to home",
+    "firebaseNotConfigured": "Firebase is not configured (NEXT_PUBLIC_FIREBASE_* env vars)."
+  },
+  "registerPage": {
+    "title": "Create account",
+    "subtitle": "Use a valid invite code. Initial profile is BASIC.",
+    "inviteCode": "Invite code",
+    "email": "Email",
+    "password": "Password (min. 6 characters)",
+    "submit": "Register and link to tenant",
+    "success": "Account created and linked to tenant",
+    "hasAccount": "Already have an account? Sign in",
+    "backHome": "Back to home",
+    "firebaseNotConfigured": "Firebase is not configured (NEXT_PUBLIC_FIREBASE_* env vars)."
+  },
+  "forgotPasswordPage": {
+    "title": "Reset password",
+    "subtitle": "We will send a reset link by email (Firebase Authentication).",
+    "email": "Email",
+    "submit": "Send email",
+    "success": "If the email exists, you will receive instructions shortly.",
+    "error": "Could not send the email. Please try again.",
+    "backLogin": "Back to sign in",
+    "firebaseNotConfigured": "Firebase is not configured (NEXT_PUBLIC_FIREBASE_* env vars)."
+  },
+  "plan": {
+    "lockedTitle": "This feature requires a higher plan",
+    "lockedAria": "Area locked based on your subscription",
+    "upgradeCta": "Upgrade plan",
+    "navLockedHint": "Available on a higher tier.",
+    "exportDialogTitle": "Report export",
+    "exportDialogDescription": "CSV and PDF exports are available on the Enterprise plan.",
+    "requiredPlanHint": {
+      "starter": "Upgrade your plan to unlock this feature.",
+      "pro": "Upgrade to Professional or Enterprise to view these charts.",
+      "enterprise": "CSV and PDF exports are available on the Enterprise plan."
+    }
   },
   "localeNames": {
     "pt-BR": "Português (Brasil)",
@@ -33,14 +96,31 @@
     "title": "Dashboard",
     "subtitle": "Real-time metrics per account: customers, message volume, AI performance, and WhatsApp channel status.",
     "accountId": "Account ID",
-    "tenantHint": "Saved locally in this browser; use the same value as in Settings and Monitoring.",
+    "tenantHint": "Account ID is set in Settings (shared with Monitoring and other areas).",
     "placeholderTenant": "e.g. tenant-demo",
     "needAccount": "Enter the Account ID to load metrics.",
     "loading": "Loading metrics…",
     "refresh": "Refresh dashboard",
+    "refreshButton": "Refresh",
     "periodDay": "Total",
     "periodWeek": "Week",
     "periodMonth": "Month",
+    "periodToday": "Today",
+    "periodLast7": "Last 7 days",
+    "periodThisMonth": "This month",
+    "periodCustom": "Custom",
+    "periodCustomFrom": "Start",
+    "periodCustomTo": "End",
+    "periodCustomInvalid": "Choose a valid start and end (end after start).",
+    "periodCustomDialogTitle": "Custom range",
+    "periodCustomDialogHint": "Set start and end. Data refreshes when you apply.",
+    "periodCustomApply": "Apply",
+    "periodCustomCancel": "Cancel",
+    "export": {
+      "button": "Export",
+      "csv": "Export CSV",
+      "pdf": "Generate PDF report"
+    },
     "cards": {
       "clientsTitle": "Total customers",
       "clientsDesc": "Distinct contacts in the selected window (Total / Week / Month).",
@@ -238,7 +318,18 @@
     "relativeNow": "now",
     "relativeMin": "{n} min",
     "relativeHours": "{n} h",
-    "retryStarted": "Retry started"
+    "retryStarted": "Retry started",
+    "assumeConversation": "Take over chat",
+    "assumeConversationToggle": "Take over chat",
+    "reactivateAi": "Re-enable AI",
+    "handoffSuccess": "Human mode on; the customer was notified.",
+    "enableBotSuccess": "AI re-enabled for this chat.",
+    "actionWorking": "Please wait…",
+    "activeChatPlaceholder": "Write a message to the customer…",
+    "activeChatSend": "Send",
+    "activeChatDisabledHint": "Take over the chat (turn off the AI) to send messages.",
+    "activeChatNeedMessage": "Write a message before sending.",
+    "humanReplySuccess": "Message sent."
   },
   "chatBubble": {
     "statusReceived": "Processing delivery — waiting for server confirmation",
@@ -268,7 +359,17 @@
       "loadDashboardFailed": "Could not load dashboard summary.",
       "invalidDashboardSummary": "Invalid dashboard response shape",
       "loadAnalyticsIntentsFailed": "Could not load intent breakdown.",
-      "invalidAnalyticsIntents": "Invalid analytics intents response shape"
+      "invalidAnalyticsIntents": "Invalid analytics intents response shape",
+      "exportFailed": "Could not export the report.",
+      "loginFailed": "Could not sign in. Check email and password.",
+      "registerFailed": "Could not complete registration. Check your invite code.",
+      "invalidRegisterResponse": "Invalid registration response",
+      "invalidLoginResponse": "Invalid login response",
+      "sessionFailed": "Session invalid or expired.",
+      "invalidSessionResponse": "Invalid session response",
+      "invalidMessagesEnvelope": "Invalid messages response format",
+      "conversationActionFailed": "Could not change conversation mode.",
+      "humanReplyFailed": "Could not send the message via WhatsApp."
     }
   }
 }

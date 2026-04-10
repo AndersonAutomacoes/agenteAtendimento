@@ -21,7 +21,7 @@ export function LocaleSwitcher() {
         router.replace(pathname, { locale: e.target.value });
       }}
       className={cn(
-        "h-9 rounded-lg border border-input bg-background px-2 text-xs font-medium",
+        "min-h-11 rounded-lg border border-input bg-background px-3 text-xs font-medium touch-manipulation sm:min-h-9",
         "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
       )}
     >

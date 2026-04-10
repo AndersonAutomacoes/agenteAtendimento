@@ -13,6 +13,7 @@ class RagSystemPromptComposerTest {
         String text = RagSystemPromptComposer.compose(
                 "Seja cordial",
                 List.of(new KnowledgeHit("id", "Trecho único sobre política.", 0.9)),
+                false,
                 false);
 
         assertThat(text)
@@ -24,15 +25,23 @@ class RagSystemPromptComposerTest {
 
     @Test
     void compose_whenNoHits_showsExplicitEmptyMessage() {
-        String text = RagSystemPromptComposer.compose("x", List.of(), false);
+        String text = RagSystemPromptComposer.compose("x", List.of(), false, false);
         assertThat(text).contains("Contexto de Conhecimento: (Nenhum trecho foi recuperado");
     }
 
     @Test
     void compose_whenHasPriorTurns_addsContinuityInstruction() {
-        String text = RagSystemPromptComposer.compose("x", List.of(), true);
+        String text = RagSystemPromptComposer.compose("x", List.of(), true, false);
         assertThat(text)
                 .contains("Continuidade da conversa:")
                 .contains("Contexto de Conhecimento:");
+    }
+
+    @Test
+    void compose_whenResumeAfterHuman_addsParagraph() {
+        String text = RagSystemPromptComposer.compose("x", List.of(), false, true);
+        assertThat(text)
+                .contains("retomando um atendimento")
+                .contains("atendente humano");
     }
 }

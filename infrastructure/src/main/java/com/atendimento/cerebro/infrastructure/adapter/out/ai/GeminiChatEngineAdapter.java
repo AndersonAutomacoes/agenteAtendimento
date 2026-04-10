@@ -3,6 +3,7 @@ package com.atendimento.cerebro.infrastructure.adapter.out.ai;
 import com.atendimento.cerebro.application.dto.AICompletionRequest;
 import com.atendimento.cerebro.application.dto.AICompletionResponse;
 import com.atendimento.cerebro.domain.conversation.Message;
+import com.atendimento.cerebro.domain.conversation.SenderType;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -63,10 +64,14 @@ public class GeminiChatEngineAdapter {
         return RagSystemPromptComposer.compose(
                 request.systemPrompt(),
                 request.knowledgeHits(),
-                !request.conversationHistory().isEmpty());
+                !request.conversationHistory().isEmpty(),
+                request.resumeAfterHumanIntervention());
     }
 
     private static org.springframework.ai.chat.messages.Message toSpringMessage(Message m) {
+        if (m.senderType() == SenderType.HUMAN_ADMIN) {
+            return new AssistantMessage("[Atendente humano] " + m.content());
+        }
         return switch (m.role()) {
             case USER -> new UserMessage(m.content());
             case ASSISTANT -> new AssistantMessage(m.content());

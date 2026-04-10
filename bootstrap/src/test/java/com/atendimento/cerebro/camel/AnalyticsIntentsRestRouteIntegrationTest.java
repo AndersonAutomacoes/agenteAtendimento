@@ -1,5 +1,6 @@
 package com.atendimento.cerebro.camel;
 
+import static com.atendimento.cerebro.testsupport.AnalyticsIntegrationTestSupport.get;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.atendimento.cerebro.application.analytics.AnalyticsIntentTrigger;
@@ -10,6 +11,8 @@ import com.atendimento.cerebro.domain.tenant.TenantId;
 import com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel.AnalyticsIntentsHttpResponse;
 import com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel.IntentCategoryCountHttp;
 import com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel.SentimentCountHttp;
+import com.atendimento.cerebro.testsupport.AnalyticsIntegrationAuth;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,6 +21,7 @@ import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -28,6 +32,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
         properties = "spring.ai.vectorstore.pgvector.initialize-schema=true")
 @Testcontainers(disabledWithoutDocker = true)
 @ActiveProfiles("test")
+@AnalyticsIntegrationAuth
 @DisabledIfEnvironmentVariable(named = "CEREBRO_IT_USE_LOCAL_PG", matches = "(?i)^\\s*true\\s*$")
 class AnalyticsIntentsRestRouteIntegrationTest {
 
@@ -40,6 +45,11 @@ class AnalyticsIntentsRestRouteIntegrationTest {
 
     @Autowired
     private AnalyticsIntentsRepository analyticsIntentsRepository;
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     @Test
     void getAnalyticsIntents_returnsCountsPerCategory() {
@@ -73,8 +83,10 @@ class AnalyticsIntentsRestRouteIntegrationTest {
                 "ORCAMENTO|POSITIVO");
 
         ResponseEntity<AnalyticsIntentsHttpResponse> response =
-                restTemplate.getForEntity(
+                get(
+                        restTemplate,
                         "/api/v1/analytics/intents?tenantId=tenant-intents-api&days=30",
+                        "tenant-intents-api",
                         AnalyticsIntentsHttpResponse.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -112,8 +124,8 @@ class AnalyticsIntentsRestRouteIntegrationTest {
     }
 
     @Test
-    void getAnalyticsIntents_withoutTenant_returns400() {
+    void getAnalyticsIntents_semAuthorization_retorna401() {
         ResponseEntity<String> response = restTemplate.getForEntity("/api/v1/analytics/intents", String.class);
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 }

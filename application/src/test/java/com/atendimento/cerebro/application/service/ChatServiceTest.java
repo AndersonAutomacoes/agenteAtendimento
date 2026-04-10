@@ -13,6 +13,7 @@ import com.atendimento.cerebro.application.dto.AICompletionRequest;
 import com.atendimento.cerebro.application.dto.AICompletionResponse;
 import com.atendimento.cerebro.application.dto.ChatCommand;
 import com.atendimento.cerebro.application.port.out.AIEnginePort;
+import com.atendimento.cerebro.application.port.out.ConversationBotStatePort;
 import com.atendimento.cerebro.application.port.out.ConversationContextStorePort;
 import com.atendimento.cerebro.application.port.out.KnowledgeBasePort;
 import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort;
@@ -46,6 +47,9 @@ class ChatServiceTest {
 
     @Mock
     private TenantConfigurationStorePort tenantConfigurationStore;
+
+    @Mock
+    private ConversationBotStatePort conversationBotStatePort;
 
     @InjectMocks
     private ChatService chatService;
@@ -116,15 +120,16 @@ class ChatServiceTest {
     }
 
     @Test
-    void chat_whenWhatsAppHistoryProvided_usesItForAiInsteadOfContextStore() {
-        ConversationContext existing = ConversationContext.builder()
-                .tenantId(tenantId)
-                .conversationId(conversationId)
-                .messages(List.of(Message.userMessage("from-store")))
-                .build();
+    void chat_whenConversationStoreEmpty_usesWhatsAppHistoryFallback() {
+        ConversationContext emptyStore =
+                ConversationContext.builder()
+                        .tenantId(tenantId)
+                        .conversationId(conversationId)
+                        .messages(List.of())
+                        .build();
         List<Message> wa = List.of(Message.userMessage("wa-a"), Message.assistantMessage("wa-b"));
         when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.empty());
-        when(conversationContextStore.load(tenantId, conversationId)).thenReturn(Optional.of(existing));
+        when(conversationContextStore.load(tenantId, conversationId)).thenReturn(Optional.of(emptyStore));
         when(knowledgeBase.findTopThreeRelevantFragments(tenantId, "next")).thenReturn(List.of());
         when(aiEngine.complete(any(AICompletionRequest.class)))
                 .thenReturn(new AICompletionResponse("ok"));

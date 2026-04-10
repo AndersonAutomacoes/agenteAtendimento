@@ -70,6 +70,7 @@ public class TenantSettingsRestRoute extends RouteBuilder {
                 tenantConfigurationStore.findByTenantId(tid).orElseGet(() -> TenantConfiguration.defaults(tid));
         TenantSettingsResponse body = new TenantSettingsResponse(
                 c.tenantId().value(),
+                c.profileLevel().name(),
                 c.systemPrompt(),
                 c.whatsappProviderType().name(),
                 c.whatsappApiKey(),

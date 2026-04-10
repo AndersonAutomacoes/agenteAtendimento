@@ -6,6 +6,7 @@ import com.atendimento.cerebro.application.dto.ChatCommand;
 import com.atendimento.cerebro.application.dto.ChatResult;
 import com.atendimento.cerebro.application.port.in.ChatUseCase;
 import com.atendimento.cerebro.application.port.out.AIEnginePort;
+import com.atendimento.cerebro.application.port.out.ConversationBotStatePort;
 import com.atendimento.cerebro.application.port.out.ConversationContextStorePort;
 import com.atendimento.cerebro.application.port.out.KnowledgeBasePort;
 import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort;
@@ -13,6 +14,7 @@ import com.atendimento.cerebro.domain.conversation.ConversationContext;
 import com.atendimento.cerebro.domain.conversation.Message;
 import com.atendimento.cerebro.domain.knowledge.KnowledgeHit;
 import com.atendimento.cerebro.domain.tenant.TenantConfiguration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -26,20 +28,26 @@ public class ChatService implements ChatUseCase {
 
     private static final Logger LOG = LoggerFactory.getLogger(ChatService.class);
 
+    /** Últimas mensagens em {@code conversation_message} enviadas ao modelo (incl. HUMAN_ADMIN). */
+    private static final int CONVERSATION_HISTORY_MAX_MESSAGES = 15;
+
     private final ConversationContextStorePort conversationContextStore;
     private final KnowledgeBasePort knowledgeBase;
     private final AIEnginePort aiEngine;
     private final TenantConfigurationStorePort tenantConfigurationStore;
+    private final ConversationBotStatePort conversationBotStatePort;
 
     public ChatService(
             ConversationContextStorePort conversationContextStore,
             KnowledgeBasePort knowledgeBase,
             AIEnginePort aiEngine,
-            TenantConfigurationStorePort tenantConfigurationStore) {
+            TenantConfigurationStorePort tenantConfigurationStore,
+            ConversationBotStatePort conversationBotStatePort) {
         this.conversationContextStore = conversationContextStore;
         this.knowledgeBase = knowledgeBase;
         this.aiEngine = aiEngine;
         this.tenantConfigurationStore = tenantConfigurationStore;
+        this.conversationBotStatePort = conversationBotStatePort;
     }
 
     @Override
@@ -74,13 +82,29 @@ public class ChatService implements ChatUseCase {
 
         Message userMessage = Message.userMessage(userText);
 
-        List<Message> historyForAi = context.getMessages();
-        if (!command.whatsAppHistoryPriorTurns().isEmpty()) {
-            historyForAi = command.whatsAppHistoryPriorTurns();
+        List<Message> fromStore = takeLast(context.getMessages(), CONVERSATION_HISTORY_MAX_MESSAGES);
+        List<Message> historyForAi = new ArrayList<>(fromStore);
+        if (historyForAi.isEmpty() && !command.whatsAppHistoryPriorTurns().isEmpty()) {
+            historyForAi = new ArrayList<>(takeLast(command.whatsAppHistoryPriorTurns(), CONVERSATION_HISTORY_MAX_MESSAGES));
         }
 
+        boolean resumeAfterHuman =
+                conversationId.waDigitsIfPresent()
+                        .map(
+                                digits ->
+                                        conversationBotStatePort.consumeResumeAiContextIfPending(
+                                                tenantId, digits))
+                        .orElse(false);
+
         var aiRequest = new AICompletionRequest(
-                tenantId, historyForAi, knowledgeHits, userText, systemPrompt, provider);
+                tenantId,
+                historyForAi,
+                knowledgeHits,
+                userText,
+                systemPrompt,
+                provider,
+                resumeAfterHuman);
+
         var aiResponse = aiEngine.complete(aiRequest);
 
         Message assistantMessage = Message.assistantMessage(aiResponse.content());
@@ -89,5 +113,15 @@ public class ChatService implements ChatUseCase {
         conversationContextStore.save(updated);
 
         return new ChatResult(aiResponse.content());
+    }
+
+    private static List<Message> takeLast(List<Message> messages, int max) {
+        if (messages == null || messages.isEmpty()) {
+            return List.of();
+        }
+        if (messages.size() <= max) {
+            return List.copyOf(messages);
+        }
+        return List.copyOf(messages.subList(messages.size() - max, messages.size()));
     }
 }

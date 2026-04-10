@@ -5,6 +5,7 @@ import com.atendimento.cerebro.domain.conversation.ConversationContext;
 import com.atendimento.cerebro.domain.conversation.ConversationId;
 import com.atendimento.cerebro.domain.conversation.Message;
 import com.atendimento.cerebro.domain.conversation.MessageRole;
+import com.atendimento.cerebro.domain.conversation.SenderType;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -34,7 +35,7 @@ public class PostgresConversationContextStore implements ConversationContextStor
         List<Message> messages = jdbcClient
                 .sql(
                         """
-                        SELECT role, content, occurred_at
+                        SELECT role, content, occurred_at, sender_type
                         FROM conversation_message
                         WHERE tenant_id = ?
                           AND conversation_id = ?
@@ -46,7 +47,8 @@ public class PostgresConversationContextStore implements ConversationContextStor
                     MessageRole role = MessageRole.valueOf(rs.getString("role"));
                     String content = rs.getString("content");
                     Instant at = readOccurredAt(rs);
-                    return new Message(role, content, at);
+                    SenderType senderType = SenderType.valueOf(rs.getString("sender_type"));
+                    return new Message(role, content, at, senderType);
                 })
                 .list();
 
@@ -78,14 +80,15 @@ public class PostgresConversationContextStore implements ConversationContextStor
                     .sql(
                             """
                             INSERT INTO conversation_message
-                                (tenant_id, conversation_id, role, content, occurred_at)
-                            VALUES (?, ?, ?, ?, ?)
+                                (tenant_id, conversation_id, role, content, occurred_at, sender_type)
+                            VALUES (?, ?, ?, ?, ?, ?)
                             """)
                     .param(tenant)
                     .param(session)
                     .param(message.role().name())
                     .param(message.content())
                     .param(Timestamp.from(message.timestamp()))
+                    .param(message.senderType().name())
                     .update();
         }
     }
