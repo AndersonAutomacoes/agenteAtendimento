@@ -7,7 +7,8 @@ import org.springframework.stereotype.Component;
  * Extrai remetente e texto de:
  * <ul>
  *   <li>WhatsApp Cloud API (Meta): envelope {@code entry/changes/...}</li>
- *   <li>Evolution API v2: {@code event = messages.upsert}, corpo em {@code data} (remoteJid, message, fromMe)</li>
+ *   <li>Evolution API v2: {@code event = messages.upsert}, corpo em {@code data} (remoteJid, message, fromMe); respostas a
+ *       botões (reply) expostas como texto do rótulo ou id do slot (ver {@code buttonsResponseMessage})</li>
  *   <li>JSON simples (testes): {@code {"from":"...","text":"..."}} ou {@code message} em vez de {@code text}</li>
  * </ul>
  */
@@ -199,6 +200,9 @@ public class WhatsAppWebhookParser {
         if (message == null || message.isMissingNode() || message.isNull()) {
             return "";
         }
+        if (message.has("buttonsResponseMessage")) {
+            return textFromButtonsResponse(message.path("buttonsResponseMessage"));
+        }
         if (message.has("conversation")) {
             return message.path("conversation").asText("");
         }
@@ -215,6 +219,34 @@ public class WhatsAppWebhookParser {
             return "";
         }
         return "";
+    }
+
+    /** Resposta a mensagem com botões (Baileys / Evolution). */
+    private static String textFromButtonsResponse(JsonNode br) {
+        if (br == null || br.isMissingNode() || br.isNull()) {
+            return "";
+        }
+        String t = br.path("selectedDisplayText").asText("").strip();
+        if (!t.isEmpty()) {
+            return t;
+        }
+        t = br.path("selectedButtonText").asText("").strip();
+        if (!t.isEmpty()) {
+            return t;
+        }
+        String id = br.path("selectedButtonId").asText("").strip();
+        return labelFromSlotButtonId(id);
+    }
+
+    /** Alinha com ids enviados em {@code sendButtons} (ex. {@code slot_09_00} → {@code 09:00}). */
+    static String labelFromSlotButtonId(String id) {
+        if (id == null || id.isEmpty()) {
+            return "";
+        }
+        if (id.startsWith("slot_")) {
+            return id.substring("slot_".length()).replace('_', ':');
+        }
+        return id;
     }
 
     private static String digitsOnly(String raw) {

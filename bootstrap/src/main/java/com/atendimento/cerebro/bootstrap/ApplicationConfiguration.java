@@ -10,11 +10,16 @@ import com.atendimento.cerebro.application.port.out.ChatAnalyticsRepository;
 import com.atendimento.cerebro.application.port.out.ChatMessageRepository;
 import com.atendimento.cerebro.application.port.out.ConversationBotStatePort;
 import com.atendimento.cerebro.application.port.out.ConversationContextStorePort;
+import com.atendimento.cerebro.application.port.out.CrmCustomerQueryPort;
+import com.atendimento.cerebro.application.port.out.CrmCustomerStorePort;
 import com.atendimento.cerebro.application.port.out.KnowledgeBasePort;
+import com.atendimento.cerebro.application.port.out.TenantAppointmentQueryPort;
 import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort;
 import com.atendimento.cerebro.application.port.out.TextExtractorPort;
 import com.atendimento.cerebro.application.service.AnalyticsService;
 import com.atendimento.cerebro.application.service.ChatService;
+import com.atendimento.cerebro.application.service.LeadScoringService;
+import com.atendimento.cerebro.application.service.CrmLeadIntentUpdater;
 import com.atendimento.cerebro.application.service.ConversationCategoryAnalyticsService;
 import com.atendimento.cerebro.application.service.ConversationPrimaryIntentService;
 import com.atendimento.cerebro.application.service.IngestionService;
@@ -26,6 +31,7 @@ import com.atendimento.cerebro.application.service.TenantSettingsService;
 import com.atendimento.cerebro.infrastructure.config.AnalyticsCategorizationProperties;
 import com.atendimento.cerebro.infrastructure.config.AnalyticsIntentClassificationProperties;
 import com.atendimento.cerebro.infrastructure.config.ChatAnalyticsProperties;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -38,9 +44,21 @@ public class ApplicationConfiguration {
             KnowledgeBasePort knowledgeBase,
             AIEnginePort aiEngine,
             TenantConfigurationStorePort tenantConfigurationStore,
-            ConversationBotStatePort conversationBotStatePort) {
+            ConversationBotStatePort conversationBotStatePort,
+            CrmCustomerStorePort crmCustomerStore,
+            CrmCustomerQueryPort crmCustomerQuery,
+            TenantAppointmentQueryPort tenantAppointmentQuery,
+            @Value("${cerebro.google.calendar.zone:America/Sao_Paulo}") String schedulingZoneId) {
         return new ChatService(
-                conversationContextStore, knowledgeBase, aiEngine, tenantConfigurationStore, conversationBotStatePort);
+                conversationContextStore,
+                knowledgeBase,
+                aiEngine,
+                tenantConfigurationStore,
+                conversationBotStatePort,
+                crmCustomerStore,
+                crmCustomerQuery,
+                tenantAppointmentQuery,
+                schedulingZoneId);
     }
 
     @Bean
@@ -76,13 +94,30 @@ public class ApplicationConfiguration {
     }
 
     @Bean
+    public CrmLeadIntentUpdater crmLeadIntentUpdater(CrmCustomerStorePort crmCustomerStore) {
+        return new CrmLeadIntentUpdater(crmCustomerStore);
+    }
+
+    @Bean
+    public LeadScoringService leadScoringService(
+            ChatAnalyticsRepository chatAnalyticsRepository,
+            ChatMessageRepository chatMessageRepository,
+            CrmCustomerStorePort crmCustomerStore) {
+        return new LeadScoringService(chatAnalyticsRepository, chatMessageRepository, crmCustomerStore);
+    }
+
+    @Bean
     public AnalyticsService analyticsService(
             ChatAnalyticsRepository chatAnalyticsRepository,
             AIEnginePort aiEngine,
+            CrmLeadIntentUpdater crmLeadIntentUpdater,
+            LeadScoringService leadScoringService,
             ChatAnalyticsProperties chatAnalyticsProperties) {
         return new AnalyticsService(
                 chatAnalyticsRepository,
                 aiEngine,
+                crmLeadIntentUpdater,
+                leadScoringService,
                 chatAnalyticsProperties.isEnabled(),
                 chatAnalyticsProperties.getMaxTranscriptChars());
     }

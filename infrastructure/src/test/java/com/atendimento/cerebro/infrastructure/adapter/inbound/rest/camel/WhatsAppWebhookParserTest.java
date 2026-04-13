@@ -134,6 +134,64 @@ class WhatsAppWebhookParserTest {
     }
 
     @Test
+    void evolution_messagesUpsert_buttonsResponse_usesDisplayText() throws Exception {
+        String json =
+                """
+                {
+                  "event": "messages.upsert",
+                  "data": {
+                    "key": {
+                      "remoteJid": "557196248348@s.whatsapp.net",
+                      "fromMe": false,
+                      "id": "BTN123"
+                    },
+                    "message": {
+                      "buttonsResponseMessage": {
+                        "selectedButtonId": "slot_09_00",
+                        "selectedDisplayText": "Agendar 09:00"
+                      }
+                    },
+                    "messageType": "buttonsResponseMessage"
+                  }
+                }
+                """;
+        JsonNode root = mapper.readTree(json);
+        var in = parser.parse(root);
+        assertThat(in).isInstanceOf(WhatsAppWebhookParser.Incoming.TextMessage.class);
+        var tm = (WhatsAppWebhookParser.Incoming.TextMessage) in;
+        assertThat(tm.text()).isEqualTo("Agendar 09:00");
+        assertThat(tm.providerMessageId()).isEqualTo("BTN123");
+    }
+
+    @Test
+    void evolution_messagesUpsert_buttonsResponse_fallbackFromSlotId() throws Exception {
+        String json =
+                """
+                {
+                  "event": "messages.upsert",
+                  "data": {
+                    "key": { "remoteJid": "557196248348@s.whatsapp.net", "fromMe": false },
+                    "message": {
+                      "buttonsResponseMessage": {
+                        "selectedButtonId": "slot_14_30"
+                      }
+                    },
+                    "messageType": "buttonsResponseMessage"
+                  }
+                }
+                """;
+        var in = parser.parse(mapper.readTree(json));
+        var tm = (WhatsAppWebhookParser.Incoming.TextMessage) in;
+        assertThat(tm.text()).isEqualTo("14:30");
+    }
+
+    @Test
+    void labelFromSlotButtonId_formatsSlotPrefix() {
+        assertThat(WhatsAppWebhookParser.labelFromSlotButtonId("slot_09_00")).isEqualTo("09:00");
+        assertThat(WhatsAppWebhookParser.labelFromSlotButtonId("x")).isEqualTo("x");
+    }
+
+    @Test
     void evolution_group_ignored() throws Exception {
         String json =
                 """

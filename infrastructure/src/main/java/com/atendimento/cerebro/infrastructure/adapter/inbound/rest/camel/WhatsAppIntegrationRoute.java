@@ -5,11 +5,13 @@ import com.atendimento.cerebro.application.dto.ChatCommand;
 import com.atendimento.cerebro.application.dto.ChatResult;
 import com.atendimento.cerebro.application.port.in.ChatUseCase;
 import com.atendimento.cerebro.application.port.out.ChatMessageRepository;
+import com.atendimento.cerebro.application.port.out.CrmCustomerStorePort;
 import com.atendimento.cerebro.application.port.out.ConversationBotStatePort;
 import com.atendimento.cerebro.application.port.out.InboundWhatsAppDeduperPort;
 import com.atendimento.cerebro.application.port.out.IntentDetectionPort;
 import com.atendimento.cerebro.application.port.out.WhatsAppOutboundPort;
 import com.atendimento.cerebro.application.port.out.WhatsAppTenantLookupPort;
+import com.atendimento.cerebro.application.service.LeadScoringService;
 import com.atendimento.cerebro.infrastructure.analytics.ChatAnalyticsAfterTurnNotifier;
 import com.atendimento.cerebro.infrastructure.analytics.PrimaryIntentTurnNotifier;
 import com.atendimento.cerebro.domain.conversation.ConversationId;
@@ -30,6 +32,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.model.rest.RestBindingMode;
@@ -80,10 +83,12 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
     private final WhatsAppOutboundPort whatsAppOutboundPort;
     private final InboundWhatsAppDeduperPort inboundWhatsAppDeduper;
     private final ChatMessageRepository chatMessageRepository;
+    private final CrmCustomerStorePort crmCustomerStore;
     private final ConversationBotStatePort conversationBotStatePort;
     private final IntentDetectionPort intentDetectionPort;
     private final PrimaryIntentTurnNotifier primaryIntentTurnNotifier;
     private final ChatAnalyticsAfterTurnNotifier chatAnalyticsAfterTurnNotifier;
+    private final LeadScoringService leadScoringService;
     private final int circuitTimeoutMs;
     private final ObjectMapper objectMapper;
 
@@ -94,7 +99,9 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
             WhatsAppOutboundPort whatsAppOutboundPort,
             InboundWhatsAppDeduperPort inboundWhatsAppDeduper,
             ChatMessageRepository chatMessageRepository,
+            CrmCustomerStorePort crmCustomerStore,
             ConversationBotStatePort conversationBotStatePort,
+            LeadScoringService leadScoringService,
             @Autowired(required = false) IntentDetectionPort intentDetectionPort,
             @Autowired(required = false) PrimaryIntentTurnNotifier primaryIntentTurnNotifier,
             @Autowired(required = false) ChatAnalyticsAfterTurnNotifier chatAnalyticsAfterTurnNotifier,
@@ -106,7 +113,9 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
         this.whatsAppOutboundPort = whatsAppOutboundPort;
         this.inboundWhatsAppDeduper = inboundWhatsAppDeduper;
         this.chatMessageRepository = chatMessageRepository;
+        this.crmCustomerStore = crmCustomerStore;
         this.conversationBotStatePort = conversationBotStatePort;
+        this.leadScoringService = leadScoringService;
         this.intentDetectionPort = intentDetectionPort;
         this.primaryIntentTurnNotifier = primaryIntentTurnNotifier;
         this.chatAnalyticsAfterTurnNotifier = chatAnalyticsAfterTurnNotifier;
@@ -366,6 +375,27 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
                     tenantId.value(),
                     phone,
                     e);
+            return;
+        }
+        try {
+            leadScoringService.recalculateAndPersist(tenantId, phone);
+        } catch (RuntimeException e) {
+            LOG.debug("lead score após mensagem USER ignorado: {}", e.toString());
+        }
+        String digits = onlyDigits(phone);
+        if (!digits.isEmpty()) {
+            try {
+                crmCustomerStore.ensureOnConversationStart(
+                        tenantId,
+                        "wa-" + digits,
+                        Optional.ofNullable(tm.contactDisplayName()).filter(s -> !s.isBlank()));
+            } catch (RuntimeException e) {
+                LOG.warn(
+                        "falha ao garantir CRM tenant={} phone={}: {}",
+                        tenantId.value(),
+                        phone,
+                        e.toString());
+            }
         }
     }
 
@@ -433,7 +463,7 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
     private void prepararRespostaSucesso(Exchange exchange) {
         detectAndPersistIntent(exchange);
         ChatResult result = exchange.getIn().getBody(ChatResult.class);
-        enviarRespostaWhatsApp(exchange, result.assistantMessage());
+        enviarRespostaWhatsApp(exchange, result);
         notifyPrimaryIntentAnalytics(exchange);
         exchange.getIn().setBody(new WhatsAppWebhookResponse("processed"));
         exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.OK.value());
@@ -485,18 +515,22 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
                 LOG.warn("whatsapp circuit fallback (erro) phone={} failureClass={}", phone, failureClass);
             }
         }
-        enviarRespostaWhatsApp(exchange, exchange.getIn().getBody(ChatResult.class).assistantMessage());
+        enviarRespostaWhatsApp(exchange, exchange.getIn().getBody(ChatResult.class));
     }
 
     /** Delega para {@link WhatsAppOutboundPort} → {@code direct:processWhatsAppResponse} (persistência ASSISTANT lá). */
-    private void enviarRespostaWhatsApp(Exchange exchange, String replyText) {
+    private void enviarRespostaWhatsApp(Exchange exchange, ChatResult result) {
         String tenantIdStr = exchange.getProperty(PROP_TENANT_ID, String.class);
         String phone = exchange.getProperty(PROP_PHONE_RAW, String.class);
-        if (tenantIdStr == null || phone == null || replyText == null) {
+        if (tenantIdStr == null || phone == null || result == null || result.assistantMessage() == null) {
             return;
         }
         try {
-            whatsAppOutboundPort.sendMessage(new TenantId(tenantIdStr), phone, replyText);
+            whatsAppOutboundPort.sendMessage(
+                    new TenantId(tenantIdStr), phone, result.assistantMessage(), result.whatsAppInteractive());
+            for (String extra : result.additionalOutboundMessages()) {
+                whatsAppOutboundPort.sendMessage(new TenantId(tenantIdStr), phone, extra);
+            }
         } catch (Exception e) {
             LOG.warn(
                     "falha ao despachar resposta WhatsApp outbound tenant={} phone={}",

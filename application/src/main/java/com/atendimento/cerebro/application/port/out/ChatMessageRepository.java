@@ -56,6 +56,17 @@ public interface ChatMessageRepository {
     long countMessagesForTenantPhoneSince(TenantId tenantId, String phoneNumber, Instant notBeforeInclusive);
 
     /**
+     * Mensagens do cliente ({@code USER}) com {@code occurred_at} estritamente posterior a {@code afterExclusive}.
+     */
+    long countUserMessagesStrictlyAfter(TenantId tenantId, String phoneNumber, Instant afterExclusive);
+
+    /**
+     * Trocas completas cliente → assistente após {@code afterExclusive}: cada par USER seguido de ASSISTANT
+     * (ordem cronológica por {@code occurred_at}, desempate por {@code id}).
+     */
+    long countUserAssistantExchangesStrictlyAfter(TenantId tenantId, String phoneNumber, Instant afterExclusive);
+
+    /**
      * Até {@code maxMessages} mensagens mais recentes no intervalo, em ordem cronológica crescente
      * (para transcrição / classificação).
      */

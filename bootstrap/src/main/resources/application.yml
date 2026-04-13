@@ -89,6 +89,24 @@ cerebro:
     default-chat-provider: GEMINI
     # Chat OpenAI (beans OpenAiChatModel) só se true; por defeito só Gemini — sem chamadas à API OpenAI.
     openai-chat-enabled: false
+  google:
+    calendar:
+      # true = mock local; false = GoogleCalendarService (google-api-client) + credentials.json no classpath ou SA em path.
+      mock: ${CEREBRO_GOOGLE_CALENDAR_MOCK:false}
+      service-account-json-path: ${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_PATH:}
+      # ID do calendário (ou omissa para usar client_email do JSON). Ex.: primary da SA ou calendário partilhado.
+      # Agenda "Oficina" (partilhada com a service account). Sobrescreva com CEREBRO_GOOGLE_CALENDAR_ID se necessário.
+      calendar-id: ${CEREBRO_GOOGLE_CALENDAR_ID:40b149d56c987f5c2511159d628af7383cb9194068386363ba9f1067362872ac@group.calendar.google.com}
+      credentials-classpath: credentials.json
+      zone: ${CEREBRO_GOOGLE_CALENDAR_ZONE:America/Sao_Paulo}
+      slot-minutes: 30
+      work-start-hour: 9
+      work-end-hour: 18
+  # Card de confirmação no WhatsApp após create_appointment bem-sucedido; maps-url envia segunda mensagem só com o link.
+  appointment:
+    confirmation:
+      location-line: "Oficina InteliZap - Salvador, BA"
+      maps-url: ${CEREBRO_APPOINTMENT_MAPS_URL:https://maps.app.goo.gl/nAVH3fcubmPUMBmh7}
   # Webhook WhatsApp: número (só dígitos) → tenantId (string). A persona do bot NÃO vem daqui:
   # vem da tabela PostgreSQL tenant_configuration (system_prompt) para esse mesmo tenant_id.
   # O valor à direita tem de coincidir com o tenantId usado no dashboard / PUT .../tenant/settings.
@@ -100,6 +118,10 @@ cerebro:
     # Em Docker, use http://evolution-api:8080 — dentro do container cerebro-api, localhost não é o serviço Evolution.
     evolution:
       base-url-override: ${CEREBRO_WHATSAPP_EVOLUTION_BASE_URL:}
+      # sendButtons (Baileys) costuma devolver 201 mas o cliente não mostra botões; false = lista só em texto formatado.
+      send-interactive-buttons: ${CEREBRO_WHATSAPP_EVOLUTION_SEND_INTERACTIVE_BUTTONS:false}
+      # Só aplicável se send-interactive-buttons=true: duplica horários em texto após sendButtons.
+      mirror-slots-as-plain-text: ${CEREBRO_WHATSAPP_EVOLUTION_MIRROR_SLOTS_TEXT:false}
     # Idempotência: mesmo id de mensagem (Evolution key.id / Meta) não processa duas vezes (reentregas / retries).
     inbound-dedupe:
       enabled: ${CEREBRO_WHATSAPP_INBOUND_DEDUPE_ENABLED:true}

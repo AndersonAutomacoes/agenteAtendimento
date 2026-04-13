@@ -65,7 +65,8 @@ public class OpenAiChatEngineAdapter {
                 request.systemPrompt(),
                 request.knowledgeHits(),
                 !request.conversationHistory().isEmpty(),
-                request.resumeAfterHumanIntervention());
+                request.resumeAfterHumanIntervention(),
+                request.crmContext());
     }
 
     private static org.springframework.ai.chat.messages.Message toSpringMessage(Message m) {

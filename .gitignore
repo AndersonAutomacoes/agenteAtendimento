@@ -18,3 +18,10 @@ secrets/
 # OS
 Thumbs.db
 .DS_Store
+
+#Credenciais
+secrets/
+secrets/firebase-adminsdk.json
+secrets/gen-lang-client-0922152835-firebase-adminsdk-fbsvc-525d75aa1f.json
+secrets/gen-lang-client-0922152835-firebase-adminsdk-fbsvc-525d75aa1f.json
+bootstrap/src/main/resources/credentials.json 

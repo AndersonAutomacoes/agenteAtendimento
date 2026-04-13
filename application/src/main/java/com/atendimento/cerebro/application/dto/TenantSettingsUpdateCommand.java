@@ -13,7 +13,9 @@ public record TenantSettingsUpdateCommand(
         WhatsAppProviderType whatsappProviderType,
         String whatsappApiKey,
         String whatsappInstanceId,
-        String whatsappBaseUrl) {
+        String whatsappBaseUrl,
+        /** {@code null} = manter valor na base; string vazia = limpar. */
+        String googleCalendarId) {
 
     public TenantSettingsUpdateCommand {
         if (systemPrompt == null) {

@@ -3,11 +3,13 @@ package com.atendimento.cerebro.infrastructure.adapter.out.persistence;
 import com.atendimento.cerebro.application.analytics.ChatAnalyticsAggregates;
 import com.atendimento.cerebro.application.analytics.ChatMainIntent;
 import com.atendimento.cerebro.application.analytics.ChatSentiment;
+import com.atendimento.cerebro.application.dto.ChatAnalyticsLeadSnapshot;
 import com.atendimento.cerebro.application.port.out.ChatAnalyticsRepository;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.EnumMap;
+import java.util.Optional;
 import java.util.List;
 import java.util.Map;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -29,19 +31,71 @@ public class JdbcChatAnalyticsRepository implements ChatAnalyticsRepository {
         jdbcClient
                 .sql(
                         """
-                        INSERT INTO chat_analytics (tenant_id, phone_number, main_intent, sentiment, last_updated)
-                        VALUES (?, ?, ?, ?, NOW())
+                        INSERT INTO chat_analytics (tenant_id, phone_number, main_intent, sentiment, last_updated, first_analytics_at)
+                        VALUES (?, ?, ?, ?, NOW(), NOW())
                         ON CONFLICT (tenant_id, phone_number)
                         DO UPDATE SET
                             main_intent = EXCLUDED.main_intent,
                             sentiment = EXCLUDED.sentiment,
-                            last_updated = NOW()
+                            last_updated = NOW(),
+                            first_analytics_at = chat_analytics.first_analytics_at
                         """)
                 .param(tenantId.value())
                 .param(phoneNumber.strip())
                 .param(mainIntent.dbValue())
                 .param(sentiment.dbValue())
                 .update();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<Instant> getFirstAnalyticsAt(TenantId tenantId, String phoneNumber) {
+        if (phoneNumber == null || phoneNumber.isBlank()) {
+            return Optional.empty();
+        }
+        return jdbcClient
+                .sql(
+                        """
+                        SELECT first_analytics_at FROM chat_analytics
+                        WHERE tenant_id = ? AND phone_number = ?
+                        """)
+                .param(tenantId.value())
+                .param(phoneNumber.strip())
+                .query(
+                        (rs, rowNum) -> {
+                            Timestamp t = rs.getTimestamp("first_analytics_at");
+                            return t != null ? t.toInstant() : null;
+                        })
+                .optional();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<ChatAnalyticsLeadSnapshot> findLeadSnapshot(TenantId tenantId, String phoneNumber) {
+        if (phoneNumber == null || phoneNumber.isBlank()) {
+            return Optional.empty();
+        }
+        return jdbcClient
+                .sql(
+                        """
+                        SELECT main_intent, first_analytics_at, last_updated
+                        FROM chat_analytics
+                        WHERE tenant_id = ? AND phone_number = ?
+                        """)
+                .param(tenantId.value())
+                .param(phoneNumber.strip())
+                .query(
+                        (rs, rowNum) -> {
+                            ChatMainIntent intent = ChatMainIntent.fromDbValue(rs.getString("main_intent"));
+                            Timestamp first = rs.getTimestamp("first_analytics_at");
+                            Timestamp last = rs.getTimestamp("last_updated");
+                            Instant anchor =
+                                    first != null
+                                            ? first.toInstant()
+                                            : (last != null ? last.toInstant() : Instant.EPOCH);
+                            return new ChatAnalyticsLeadSnapshot(intent, anchor);
+                        })
+                .optional();
     }
 
     @Override

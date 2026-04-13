@@ -30,7 +30,7 @@ public class PostgresTenantConfigurationStore implements TenantConfigurationStor
                         """
                         SELECT system_prompt, whatsapp_provider_type, whatsapp_api_key,
                                whatsapp_instance_id, whatsapp_base_url,
-                               profile_level, portal_password_hash
+                               profile_level, portal_password_hash, google_calendar_id
                         FROM tenant_configuration WHERE tenant_id = ?
                         """)
                 .param(tid)
@@ -55,7 +55,8 @@ public class PostgresTenantConfigurationStore implements TenantConfigurationStor
                 rs.getString("whatsapp_instance_id"),
                 rs.getString("whatsapp_base_url"),
                 profileLevel,
-                rs.getString("portal_password_hash"));
+                rs.getString("portal_password_hash"),
+                rs.getString("google_calendar_id"));
     }
 
     private static ProfileLevel parseProfileLevel(String raw) {
@@ -78,8 +79,8 @@ public class PostgresTenantConfigurationStore implements TenantConfigurationStor
                         INSERT INTO tenant_configuration (
                             tenant_id, system_prompt, whatsapp_provider_type,
                             whatsapp_api_key, whatsapp_instance_id, whatsapp_base_url,
-                            profile_level, portal_password_hash)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            profile_level, portal_password_hash, google_calendar_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT (tenant_id) DO UPDATE SET
                             system_prompt = EXCLUDED.system_prompt,
                             whatsapp_provider_type = EXCLUDED.whatsapp_provider_type,
@@ -87,7 +88,8 @@ public class PostgresTenantConfigurationStore implements TenantConfigurationStor
                             whatsapp_instance_id = EXCLUDED.whatsapp_instance_id,
                             whatsapp_base_url = EXCLUDED.whatsapp_base_url,
                             profile_level = EXCLUDED.profile_level,
-                            portal_password_hash = EXCLUDED.portal_password_hash
+                            portal_password_hash = EXCLUDED.portal_password_hash,
+                            google_calendar_id = EXCLUDED.google_calendar_id
                         """)
                 .param(configuration.tenantId().value())
                 .param(configuration.systemPrompt())
@@ -97,6 +99,7 @@ public class PostgresTenantConfigurationStore implements TenantConfigurationStor
                 .param(configuration.whatsappBaseUrl())
                 .param(configuration.profileLevel().name())
                 .param(configuration.portalPasswordHash())
+                .param(configuration.googleCalendarId())
                 .update();
     }
 }

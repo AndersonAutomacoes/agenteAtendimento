@@ -1159,6 +1159,10 @@ components:
         whatsappBaseUrl:
           type: string
           nullable: true
+        googleCalendarId:
+          type: string
+          description: ID do calendário Google partilhado com a service account global (opcional)
+          nullable: true
 
     TenantSettingsHttpRequest:
       type: object
@@ -1178,6 +1182,9 @@ components:
           type: string
           nullable: true
         whatsappBaseUrl:
+          type: string
+          nullable: true
+        googleCalendarId:
           type: string
           nullable: true
 

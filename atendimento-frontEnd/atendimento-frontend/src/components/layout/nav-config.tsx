@@ -3,6 +3,7 @@ import {
   BookOpen,
   Bot,
   Brain,
+  CalendarClock,
   LayoutDashboard,
   MessageSquareText,
   MonitorDot,
@@ -15,9 +16,10 @@ export type NavLabelKey =
   | "knowledge"
   | "testChat"
   | "monitoring"
+  | "appointments"
   | "settings";
 
-export type NavSubKey = "knowledgeSub" | "monitoringSub";
+export type NavSubKey = "knowledgeSub" | "monitoringSub" | "appointmentsSub";
 
 export type AppNavItem = {
   href: string;
@@ -43,6 +45,13 @@ export const APP_NAV_ITEMS: AppNavItem[] = [
     labelKey: "monitoring",
     subKey: "monitoringSub",
     icon: MonitorDot,
+    minPlan: "pro",
+  },
+  {
+    href: "/dashboard/appointments",
+    labelKey: "appointments",
+    subKey: "appointmentsSub",
+    icon: CalendarClock,
     minPlan: "pro",
   },
   { href: "/settings", labelKey: "settings", icon: Bot },

@@ -250,6 +250,55 @@ public class JdbcChatMessageRepository implements ChatMessageRepository {
 
     @Override
     @Transactional(readOnly = true)
+    public long countUserMessagesStrictlyAfter(TenantId tenantId, String phoneNumber, Instant afterExclusive) {
+        if (phoneNumber == null || phoneNumber.isBlank()) {
+            return 0L;
+        }
+        Long n =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT COUNT(*)::bigint FROM chat_message
+                                WHERE tenant_id = ? AND phone_number = ? AND role = 'USER' AND occurred_at > ?
+                                """)
+                        .param(tenantId.value())
+                        .param(phoneNumber.strip())
+                        .param(Timestamp.from(afterExclusive))
+                        .query(Long.class)
+                        .single();
+        return n != null ? n : 0L;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countUserAssistantExchangesStrictlyAfter(
+            TenantId tenantId, String phoneNumber, Instant afterExclusive) {
+        if (phoneNumber == null || phoneNumber.isBlank()) {
+            return 0L;
+        }
+        Long n =
+                jdbcClient
+                        .sql(
+                                """
+                                WITH w AS (
+                                    SELECT role,
+                                           LAG(role) OVER (ORDER BY occurred_at ASC, id ASC) AS prev_role
+                                    FROM chat_message
+                                    WHERE tenant_id = ? AND phone_number = ? AND occurred_at > ?
+                                )
+                                SELECT COUNT(*)::bigint FROM w
+                                WHERE role = 'ASSISTANT' AND prev_role = 'USER'
+                                """)
+                        .param(tenantId.value())
+                        .param(phoneNumber.strip())
+                        .param(Timestamp.from(afterExclusive))
+                        .query(Long.class)
+                        .single();
+        return n != null ? n : 0L;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<ChatMessage> findRecentMessagesChronological(
             TenantId tenantId,
             String phoneNumber,

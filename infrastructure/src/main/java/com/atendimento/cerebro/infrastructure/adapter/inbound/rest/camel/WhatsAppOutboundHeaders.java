@@ -27,6 +27,12 @@ public final class WhatsAppOutboundHeaders {
      */
     public static final String ASSISTANT_MESSAGE_ID = "assistantMessageId";
 
+    /** {@link com.atendimento.cerebro.application.dto.WhatsAppInteractiveReply} para Evolution (botões de horário). */
+    public static final String WHATSAPP_INTERACTIVE = "whatsAppInteractive";
+
+    /** Property Camel: payload interativo opcional (Evolution). */
+    public static final String PROP_WA_INTERACTIVE = "waInteractive";
+
     /** Property Camel: id da linha ASSISTANT em curso (novo insert ou reenvio). */
     public static final String PROP_ASSISTANT_MESSAGE_ID = "assistantMessageRowId";
 

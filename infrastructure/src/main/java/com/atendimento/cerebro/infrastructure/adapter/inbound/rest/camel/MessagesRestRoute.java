@@ -1,5 +1,6 @@
 package com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel;
 
+import com.atendimento.cerebro.application.scheduling.SchedulingUserReplyNormalizer;
 import com.atendimento.cerebro.application.port.out.ChatMessageRepository;
 import com.atendimento.cerebro.application.port.out.ConversationBotStatePort;
 import com.atendimento.cerebro.application.port.out.ConversationContextStorePort;
@@ -259,6 +260,10 @@ public class MessagesRestRoute extends RouteBuilder {
 
     private static ChatMessageItemResponse toItem(ChatMessage m) {
         long id = m.id() != null ? m.id() : 0L;
+        String body =
+                m.role() == ChatMessageRole.ASSISTANT
+                        ? SchedulingUserReplyNormalizer.stripInternalSlotAppendix(m.content())
+                        : m.content();
         return new ChatMessageItemResponse(
                 id,
                 m.tenantId().value(),
@@ -267,7 +272,7 @@ public class MessagesRestRoute extends RouteBuilder {
                 m.contactProfilePicUrl(),
                 m.detectedIntent(),
                 m.role().name(),
-                m.content(),
+                body,
                 m.status().name(),
                 DateTimeFormatter.ISO_INSTANT.format(m.timestamp()));
     }

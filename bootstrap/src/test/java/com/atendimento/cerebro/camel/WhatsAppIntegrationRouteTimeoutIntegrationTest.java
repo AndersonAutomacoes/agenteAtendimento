@@ -82,6 +82,7 @@ class WhatsAppIntegrationRouteTimeoutIntegrationTest {
                 .sendMessage(
                         eq(new TenantId("tenant-wa")),
                         eq("5511999999999"),
-                        eq(ChatFallbackMessages.TIMEOUT));
+                        eq(ChatFallbackMessages.TIMEOUT),
+                        any());
     }
 }

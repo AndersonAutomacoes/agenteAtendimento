@@ -46,7 +46,7 @@ public class BotSettingsController {
             LOG.info("bot-settings (Spring MVC) tenantId={} personalityChars={}", tenantId.strip(), personality.length());
             updateTenantSettings.updateTenantSettings(
                     new TenantId(tenantId.strip()),
-                    new TenantSettingsUpdateCommand(personality, null, null, null, null));
+                    new TenantSettingsUpdateCommand(personality, null, null, null, null, null));
             return ResponseEntity.noContent().build();
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(new IngestErrorResponse(e.getMessage()));

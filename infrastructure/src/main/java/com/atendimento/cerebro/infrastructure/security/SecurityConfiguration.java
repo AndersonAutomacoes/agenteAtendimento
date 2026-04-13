@@ -37,7 +37,10 @@ public class SecurityConfiguration {
                                 // AuthController valida Bearer + portal vs convite pendente (401/403 com JSON).
                                 .requestMatchers(HttpMethod.GET, "/v1/auth/me")
                                 .permitAll()
-                                .requestMatchers("/api/v1/dashboard/**", "/api/v1/analytics/**")
+                                .requestMatchers(
+                                                "/api/v1/dashboard/**",
+                                                "/api/v1/analytics/**",
+                                                "/api/v1/appointments/**")
                                 .access(profileTierAuthorizationManager)
                                 .anyRequest()
                                 .permitAll())

@@ -97,7 +97,7 @@ class WhatsAppInboundDedupeIntegrationTest {
 
         verify(chatUseCase, times(1)).chat(any(ChatCommand.class));
         verify(whatsAppOutboundPort, times(1))
-                .sendMessage(eq(new TenantId("tenant-wa")), eq("5511999999999"), eq("uma resposta"));
+                .sendMessage(eq(new TenantId("tenant-wa")), eq("5511999999999"), eq("uma resposta"), any());
     }
 
     private <T> ResponseEntity<T> postWebhook(String jsonBody, Class<T> responseType) {

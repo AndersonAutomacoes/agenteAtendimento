@@ -1030,3 +1030,470 @@ export async function putTenantSettings(
     );
   }
 }
+
+/** Filtro da lista {@code GET /api/v1/appointments?scope=}. */
+export type TenantAppointmentScope = "all" | "today" | "future";
+
+export type TenantAppointmentRow = {
+  id: number;
+  startsAt: string;
+  endsAt: string;
+  clientName: string;
+  serviceName: string;
+  conversationId: string | null;
+  statusLabel: string;
+  todayHighlight: boolean;
+  status: string;
+};
+
+export type TenantAppointmentsListResponse = {
+  appointments: TenantAppointmentRow[];
+};
+
+export type UpcomingAppointmentsCountResponse = {
+  count: number;
+  days: number;
+};
+
+export type AppointmentLookupEntry = {
+  startsAt: string;
+  clientName: string;
+  serviceName: string;
+};
+
+export type AppointmentLookupResponse = {
+  byPhoneDigits: Record<string, AppointmentLookupEntry>;
+};
+
+function appointmentsListUrl(tenantId: string, scope: TenantAppointmentScope): string {
+  const base = getApiBaseUrl();
+  const q = new URLSearchParams({ tenantId, scope }).toString();
+  if (base) {
+    return `${base}/api/v1/appointments?${q}`;
+  }
+  return `/api/v1/appointments?${q}`;
+}
+
+function appointmentsUpcomingCountUrl(tenantId: string, days: number): string {
+  const base = getApiBaseUrl();
+  const q = new URLSearchParams({
+    tenantId,
+    days: String(days),
+  }).toString();
+  if (base) {
+    return `${base}/api/v1/appointments/upcoming-count?${q}`;
+  }
+  return `/api/v1/appointments/upcoming-count?${q}`;
+}
+
+function appointmentsLookupUpcomingUrl(tenantId: string, phones: string[]): string {
+  const base = getApiBaseUrl();
+  const q = new URLSearchParams({
+    tenantId,
+    phones: phones.join(","),
+  }).toString();
+  if (base) {
+    return `${base}/api/v1/appointments/lookup-upcoming?${q}`;
+  }
+  return `/api/v1/appointments/lookup-upcoming?${q}`;
+}
+
+function isTenantAppointmentRow(v: unknown): v is TenantAppointmentRow {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.id === "number" &&
+    typeof o.startsAt === "string" &&
+    typeof o.endsAt === "string" &&
+    typeof o.clientName === "string" &&
+    typeof o.serviceName === "string" &&
+    (o.conversationId === null || typeof o.conversationId === "string") &&
+    typeof o.statusLabel === "string" &&
+    typeof o.todayHighlight === "boolean" &&
+    typeof o.status === "string"
+  );
+}
+
+function isTenantAppointmentsListResponse(v: unknown): v is TenantAppointmentsListResponse {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  if (!Array.isArray(o.appointments)) return false;
+  return o.appointments.every(isTenantAppointmentRow);
+}
+
+function isAppointmentLookupEntry(v: unknown): v is AppointmentLookupEntry {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.startsAt === "string" &&
+    typeof o.clientName === "string" &&
+    typeof o.serviceName === "string"
+  );
+}
+
+function isAppointmentLookupResponse(v: unknown): v is AppointmentLookupResponse {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  const m = o.byPhoneDigits;
+  if (!m || typeof m !== "object") return false;
+  return Object.values(m).every(isAppointmentLookupEntry);
+}
+
+/** Lista agendamentos do tenant (Bearer). */
+export async function getTenantAppointments(
+  tenantId: string,
+  scope: TenantAppointmentScope = "all",
+): Promise<TenantAppointmentsListResponse> {
+  const res = await fetch(appointmentsListUrl(tenantId, scope), {
+    method: "GET",
+    headers: { Accept: "application/json", ...authHeaders() },
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(apiI18nKey("errors.serverUnavailable"));
+  }
+  if (!res.ok) {
+    throw new Error(
+      httpErrorUserMessage(res.status, json, "errors.listAppointmentsFailed"),
+    );
+  }
+  if (!isTenantAppointmentsListResponse(json)) {
+    throw new Error(apiI18nKey("errors.invalidAppointmentsList"));
+  }
+  return json;
+}
+
+/** Contagem de inícios no intervalo [agora, agora+N dias). */
+export async function getUpcomingAppointmentsCount(
+  tenantId: string,
+  days = 7,
+): Promise<UpcomingAppointmentsCountResponse> {
+  const res = await fetch(appointmentsUpcomingCountUrl(tenantId, days), {
+    method: "GET",
+    headers: { Accept: "application/json", ...authHeaders() },
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(apiI18nKey("errors.serverUnavailable"));
+  }
+  if (!res.ok) {
+    throw new Error(
+      httpErrorUserMessage(res.status, json, "errors.appointmentsCountFailed"),
+    );
+  }
+  const o = json as Record<string, unknown>;
+  if (typeof o.count !== "number" || typeof o.days !== "number") {
+    throw new Error(apiI18nKey("errors.invalidAppointmentsCount"));
+  }
+  return { count: o.count, days: o.days };
+}
+
+/**
+ * Próximo agendamento futuro por dígitos do telefone (conversation_id wa-*).
+ * {@code phones} — lista de strings com dígitos (ex.: após normalizar número WhatsApp).
+ */
+export async function lookupUpcomingAppointmentsByPhones(
+  tenantId: string,
+  phoneDigits: string[],
+): Promise<AppointmentLookupResponse> {
+  const res = await fetch(appointmentsLookupUpcomingUrl(tenantId, phoneDigits), {
+    method: "GET",
+    headers: { Accept: "application/json", ...authHeaders() },
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(apiI18nKey("errors.serverUnavailable"));
+  }
+  if (!res.ok) {
+    throw new Error(
+      httpErrorUserMessage(res.status, json, "errors.appointmentsLookupFailed"),
+    );
+  }
+  if (!isAppointmentLookupResponse(json)) {
+    throw new Error(apiI18nKey("errors.invalidAppointmentsLookup"));
+  }
+  return json;
+}
+
+// --- CRM (ficha do cliente) ---
+
+export type CrmCustomerDto = {
+  id: string;
+  tenantId: string;
+  conversationId: string;
+  phoneNumber: string | null;
+  fullName: string | null;
+  email: string | null;
+  firstInteraction: string;
+  totalAppointments: number;
+  internalNotes: string | null;
+  lastIntent?: string | null;
+  lastDetectedIntent?: string | null;
+  leadScore?: number;
+  isConverted?: boolean;
+  intentStatus?: string | null;
+  lastIntentAt?: string | null;
+  aiSalesInsight?: string | null;
+};
+
+export type CrmMessageDto = {
+  id: number;
+  role: string;
+  content: string;
+  occurredAt: string;
+};
+
+export type CrmAppointmentDto = {
+  id: number;
+  startsAt: string;
+  endsAt: string;
+  clientName: string;
+  serviceName: string;
+  statusLabel: string;
+  status: string;
+};
+
+export type CrmSummaryResponse = {
+  customer: CrmCustomerDto | null;
+  messages: CrmMessageDto[];
+  appointments: CrmAppointmentDto[];
+};
+
+function crmSummaryUrl(tenantId: string, conversationId: string): string {
+  const base = getApiBaseUrl();
+  const q = new URLSearchParams({
+    tenantId,
+    conversationId,
+  }).toString();
+  if (base) {
+    return `${base}/api/v1/crm/summary?${q}`;
+  }
+  return `/api/v1/crm/summary?${q}`;
+}
+
+function crmPatchNotesUrl(tenantId: string, customerId: string): string {
+  const base = getApiBaseUrl();
+  const q = new URLSearchParams({ tenantId }).toString();
+  const path = `/api/v1/crm/customers/${encodeURIComponent(customerId)}/notes?${q}`;
+  if (base) {
+    return `${base}${path}`;
+  }
+  return path;
+}
+
+function isCrmCustomerDto(v: unknown): v is CrmCustomerDto {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.id === "string" &&
+    typeof o.tenantId === "string" &&
+    typeof o.conversationId === "string" &&
+    (o.phoneNumber === null || typeof o.phoneNumber === "string") &&
+    (o.fullName === null || typeof o.fullName === "string") &&
+    (o.email === null || typeof o.email === "string") &&
+    typeof o.firstInteraction === "string" &&
+    typeof o.totalAppointments === "number" &&
+    (o.internalNotes === null || typeof o.internalNotes === "string") &&
+    (o.lastIntent === undefined ||
+      o.lastIntent === null ||
+      typeof o.lastIntent === "string") &&
+    (o.intentStatus === undefined ||
+      o.intentStatus === null ||
+      typeof o.intentStatus === "string") &&
+    (o.lastIntentAt === undefined ||
+      o.lastIntentAt === null ||
+      typeof o.lastIntentAt === "string") &&
+    (o.lastDetectedIntent === undefined ||
+      o.lastDetectedIntent === null ||
+      typeof o.lastDetectedIntent === "string") &&
+    (o.leadScore === undefined ||
+      typeof o.leadScore === "number") &&
+    (o.isConverted === undefined || typeof o.isConverted === "boolean") &&
+    (o.aiSalesInsight === undefined ||
+      o.aiSalesInsight === null ||
+      typeof o.aiSalesInsight === "string")
+  );
+}
+
+function isCrmMessageDto(v: unknown): v is CrmMessageDto {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.id === "number" &&
+    typeof o.role === "string" &&
+    typeof o.content === "string" &&
+    typeof o.occurredAt === "string"
+  );
+}
+
+function isCrmAppointmentDto(v: unknown): v is CrmAppointmentDto {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.id === "number" &&
+    typeof o.startsAt === "string" &&
+    typeof o.endsAt === "string" &&
+    typeof o.clientName === "string" &&
+    typeof o.serviceName === "string" &&
+    typeof o.statusLabel === "string" &&
+    typeof o.status === "string"
+  );
+}
+
+function isCrmSummaryResponse(v: unknown): v is CrmSummaryResponse {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  const c = o.customer;
+  if (c !== null && c !== undefined && !isCrmCustomerDto(c)) {
+    return false;
+  }
+  if (!Array.isArray(o.messages) || !o.messages.every(isCrmMessageDto)) {
+    return false;
+  }
+  if (!Array.isArray(o.appointments) || !o.appointments.every(isCrmAppointmentDto)) {
+    return false;
+  }
+  return true;
+}
+
+/** Ficha agregada (CRM + mensagens + agendamentos). */
+export async function getCrmSummary(
+  tenantId: string,
+  conversationId: string,
+): Promise<CrmSummaryResponse> {
+  const res = await fetch(crmSummaryUrl(tenantId, conversationId), {
+    method: "GET",
+    headers: { Accept: "application/json", ...authHeaders() },
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(apiI18nKey("errors.serverUnavailable"));
+  }
+  if (!res.ok) {
+    throw new Error(httpErrorUserMessage(res.status, json, "errors.crmSummaryFailed"));
+  }
+  if (!isCrmSummaryResponse(json)) {
+    throw new Error(apiI18nKey("errors.invalidCrmSummary"));
+  }
+  return json;
+}
+
+export async function patchCrmCustomerNotes(
+  tenantId: string,
+  customerId: string,
+  internalNotes: string,
+): Promise<void> {
+  const res = await fetch(crmPatchNotesUrl(tenantId, customerId), {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify({ internalNotes }),
+  });
+  if (res.status === 204) {
+    return;
+  }
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(apiI18nKey("errors.serverUnavailable"));
+  }
+  throw new Error(httpErrorUserMessage(res.status, json, "errors.crmNotesSaveFailed"));
+}
+
+export type CrmOpportunitiesResponse = {
+  opportunities: CrmCustomerDto[];
+};
+
+function crmOpportunitiesUrl(tenantId: string): string {
+  const base = getApiBaseUrl();
+  const q = new URLSearchParams({ tenantId }).toString();
+  if (base) {
+    return `${base}/api/v1/crm/opportunities?${q}`;
+  }
+  return `/api/v1/crm/opportunities?${q}`;
+}
+
+function crmAssumeOpportunityUrl(tenantId: string, customerId: string): string {
+  const base = getApiBaseUrl();
+  const q = new URLSearchParams({ tenantId }).toString();
+  const path = `/api/v1/crm/opportunities/${encodeURIComponent(customerId)}/assume?${q}`;
+  if (base) {
+    return `${base}${path}`;
+  }
+  return path;
+}
+
+function isCrmOpportunitiesResponse(v: unknown): v is CrmOpportunitiesResponse {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  if (!Array.isArray(o.opportunities)) return false;
+  return o.opportunities.every(
+    (x) => isCrmCustomerDto(x),
+  );
+}
+
+/** Leads com intenção não fechada (PENDING_LEAD). */
+export async function getCrmOpportunities(
+  tenantId: string,
+): Promise<CrmOpportunitiesResponse> {
+  const res = await fetch(crmOpportunitiesUrl(tenantId), {
+    method: "GET",
+    headers: { Accept: "application/json", ...authHeaders() },
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(apiI18nKey("errors.serverUnavailable"));
+  }
+  if (!res.ok) {
+    throw new Error(
+      httpErrorUserMessage(res.status, json, "errors.crmOpportunitiesFailed"),
+    );
+  }
+  if (!isCrmOpportunitiesResponse(json)) {
+    throw new Error(apiI18nKey("errors.invalidCrmOpportunities"));
+  }
+  return json;
+}
+
+export async function assumeCrmOpportunity(
+  tenantId: string,
+  customerId: string,
+): Promise<void> {
+  const res = await fetch(crmAssumeOpportunityUrl(tenantId, customerId), {
+    method: "POST",
+    headers: { Accept: "application/json", ...authHeaders() },
+  });
+  if (res.status === 204) {
+    return;
+  }
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    json = {};
+  }
+  throw new Error(
+    httpErrorUserMessage(res.status, json, "errors.crmAssumeOpportunityFailed"),
+  );
+}

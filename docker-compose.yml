@@ -116,6 +116,11 @@ services:
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       # Alinhar com o volume em ./secrets/...:/run/firebase.json — sem isto o Spring usa ADC (inexistente no container).
       FIREBASE_SERVICE_ACCOUNT_JSON_PATH: ${FIREBASE_SERVICE_ACCOUNT_JSON_PATH:-/run/firebase.json}
+      # Agendamento: false = Google Calendar API (GoogleCalendarService + SA). true = MockAppointmentSchedulingService (sem Google).
+      # Alinhado com application.yml; use CEREBRO_GOOGLE_CALENDAR_MOCK=true no .env só para desenvolver sem credenciais.
+      CEREBRO_GOOGLE_CALENDAR_MOCK: ${CEREBRO_GOOGLE_CALENDAR_MOCK:-false}
+      # Caminho dentro do container; o bind mount abaixo coloca o JSON da service account (Calendar API).
+      GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_PATH: ${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_PATH:-/run/google-calendar-sa.json}
     depends_on:
       postgres:
         condition: service_healthy
@@ -125,6 +130,8 @@ services:
         condition: service_started
     volumes:
       - ./secrets/gen-lang-client-0922152835-firebase-adminsdk-fbsvc-525d75aa1f.json:/run/firebase.json:ro
+      # Google Calendar: mesmo JSON de service account que em bootstrap (ou copie para secrets/). Host: variável opcional.
+      - ${GOOGLE_CALENDAR_CREDENTIALS_FILE:-./bootstrap/src/main/resources/credentials.json}:/run/google-calendar-sa.json:ro
 
 volumes:
   cerebro_pgdata:

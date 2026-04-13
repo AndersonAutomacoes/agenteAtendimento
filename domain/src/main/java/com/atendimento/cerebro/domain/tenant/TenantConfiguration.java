@@ -11,7 +11,9 @@ public record TenantConfiguration(
         String whatsappInstanceId,
         String whatsappBaseUrl,
         ProfileLevel profileLevel,
-        String portalPasswordHash) {
+        String portalPasswordHash,
+        /** ID do calendário Google (ex.: e-mail ou {@code xxx@group.calendar.google.com}); partilhado com a SA global. */
+        String googleCalendarId) {
 
     public TenantConfiguration {
         if (tenantId == null) {
@@ -33,7 +35,7 @@ public record TenantConfiguration(
      */
     public static TenantConfiguration defaults(TenantId tenantId) {
         return new TenantConfiguration(
-                tenantId, "", WhatsAppProviderType.SIMULATED, null, null, null, ProfileLevel.BASIC, null);
+                tenantId, "", WhatsAppProviderType.SIMULATED, null, null, null, ProfileLevel.BASIC, null, null);
     }
 
     public TenantConfiguration withSystemPrompt(String newSystemPrompt) {
@@ -48,6 +50,7 @@ public record TenantConfiguration(
                 whatsappInstanceId,
                 whatsappBaseUrl,
                 profileLevel,
-                portalPasswordHash);
+                portalPasswordHash,
+                googleCalendarId);
     }
 }

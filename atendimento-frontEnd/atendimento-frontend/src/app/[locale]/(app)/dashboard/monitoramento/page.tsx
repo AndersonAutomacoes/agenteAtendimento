@@ -2,10 +2,13 @@
 
 import { Hand, RefreshCw } from "lucide-react";
 import * as React from "react";
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import { ChatBubble } from "@/components/chat/chat-bubble";
+import { CustomerRecordDialog } from "@/components/crm/customer-record-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +18,7 @@ import {
   enableBotForConversation,
   getChatMessages,
   humanHandoffConversation,
+  lookupUpcomingAppointmentsByPhones,
   retryChatMessage,
   sendHumanMonitorMessage,
   toUserFacingApiError,
@@ -23,6 +27,7 @@ import {
 
 const TENANT_STORAGE_KEY = "cerebro-tenant-id";
 const POLL_MS = 5_000;
+const APPOINTMENT_LOOKUP_CHUNK = 40;
 
 type MonitorContact = {
   phoneNumber: string;
@@ -157,7 +162,7 @@ function formatPhoneDisplay(raw: string): string {
   return t;
 }
 
-export default function MonitoramentoConversasPage() {
+function MonitoramentoConversasPageContent() {
   const t = useTranslations("monitor");
   const tApi = useTranslations("api");
   const translateApi = React.useCallback((key: string) => tApi(key), [tApi]);
@@ -167,6 +172,21 @@ export default function MonitoramentoConversasPage() {
   const formatTime = (iso: string) => {
     try {
       return new Date(iso).toLocaleTimeString(dateLocale, {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return "—";
+    }
+  };
+
+  const formatAppointmentLine = (iso: string) => {
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString(dateLocale, {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
         hour: "2-digit",
         minute: "2-digit",
       });
@@ -190,6 +210,7 @@ export default function MonitoramentoConversasPage() {
     }
   };
 
+  const searchParams = useSearchParams();
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const [tenantId, setTenantId] = React.useState("");
   const [rawMessages, setRawMessages] = React.useState<ChatMessageItem[]>([]);
@@ -208,6 +229,12 @@ export default function MonitoramentoConversasPage() {
   >(null);
   const [humanDraft, setHumanDraft] = React.useState("");
   const [sendingHuman, setSendingHuman] = React.useState(false);
+  const [appointmentByDigits, setAppointmentByDigits] = React.useState<
+    Record<string, { startsAt: string }>
+  >({});
+  const [fichaOpen, setFichaOpen] = React.useState(false);
+  const [fichaConversationId, setFichaConversationId] = React.useState<string | null>(null);
+  const [fichaTitle, setFichaTitle] = React.useState<string | undefined>(undefined);
 
   const readTenantFromStorage = React.useCallback(() => {
     try {
@@ -237,6 +264,15 @@ export default function MonitoramentoConversasPage() {
     [rawMessages, botEnabledByPhone],
   );
 
+  React.useEffect(() => {
+    const raw = searchParams.get("phone");
+    if (!raw || !tenantId.trim() || contacts.length === 0) return;
+    const digits = raw.replace(/\D/g, "");
+    if (!digits) return;
+    const match = contacts.find((c) => c.phoneNumber.replace(/\D/g, "") === digits);
+    if (match) setSelectedPhone(match.phoneNumber);
+  }, [searchParams, contacts, tenantId]);
+
   const pendingCount = React.useMemo(
     () =>
       contacts.filter((c) =>
@@ -244,6 +280,51 @@ export default function MonitoramentoConversasPage() {
       ).length,
     [contacts, rawMessages],
   );
+
+  const phoneDigitsKey = React.useMemo(() => {
+    const s = new Set<string>();
+    for (const m of rawMessages) {
+      const d = m.phoneNumber.replace(/\D/g, "");
+      if (d) s.add(d);
+    }
+    return [...s].sort().join(",");
+  }, [rawMessages]);
+
+  React.useEffect(() => {
+    const tid = tenantId.trim();
+    if (!tid || !hasSyncedOnce) {
+      setAppointmentByDigits({});
+      return;
+    }
+    const digits = phoneDigitsKey.split(",").filter(Boolean);
+    if (digits.length === 0) {
+      setAppointmentByDigits({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const merged: Record<string, { startsAt: string }> = {};
+        for (let i = 0; i < digits.length; i += APPOINTMENT_LOOKUP_CHUNK) {
+          const chunk = digits.slice(i, i + APPOINTMENT_LOOKUP_CHUNK);
+          const res = await lookupUpcomingAppointmentsByPhones(tid, chunk);
+          for (const [k, v] of Object.entries(res.byPhoneDigits)) {
+            merged[k] = { startsAt: v.startsAt };
+          }
+        }
+        if (!cancelled) {
+          setAppointmentByDigits(merged);
+        }
+      } catch {
+        if (!cancelled) {
+          setAppointmentByDigits({});
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId, phoneDigitsKey, hasSyncedOnce]);
 
   const filteredContacts = React.useMemo(() => {
     if (contactFilter === "pending") {
@@ -415,8 +496,21 @@ export default function MonitoramentoConversasPage() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, selectedPhone]);
 
+  const selectedWaConversationId = React.useMemo(() => {
+    if (!selectedPhone) return null;
+    const digits = selectedPhone.replace(/\D/g, "");
+    return digits ? `wa-${digits}` : null;
+  }, [selectedPhone]);
+
   return (
     <div className="flex h-[calc(100dvh-3.5rem-2rem)] min-h-[420px] flex-col gap-4">
+      <CustomerRecordDialog
+        open={fichaOpen}
+        onOpenChange={setFichaOpen}
+        tenantId={tenantId}
+        conversationId={fichaConversationId}
+        titleFallback={fichaTitle}
+      />
       <div className="shrink-0">
         <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
         <p className="text-muted-foreground">
@@ -540,6 +634,8 @@ export default function MonitoramentoConversasPage() {
                 {filteredContacts.map((c) => {
                   const active = c.phoneNumber === selectedPhone;
                   const actionBusy = conversationActionPhone === c.phoneNumber;
+                  const digits = c.phoneNumber.replace(/\D/g, "");
+                  const upcomingAppt = digits ? appointmentByDigits[digits] : undefined;
                   return (
                     <li key={c.phoneNumber}>
                       <div
@@ -575,6 +671,13 @@ export default function MonitoramentoConversasPage() {
                           {c.displayTitle !== c.displayPhone ? (
                             <span className="block text-[11px] tabular-nums text-muted-foreground/90">
                               {c.displayPhone}
+                            </span>
+                          ) : null}
+                          {upcomingAppt ? (
+                            <span className="mt-1 block text-[10px] font-medium leading-tight text-emerald-700 dark:text-emerald-400/95">
+                              {t("appointmentBadge", {
+                                date: formatAppointmentLine(upcomingAppt.startsAt),
+                              })}
                             </span>
                           ) : null}
                           <span className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
@@ -638,7 +741,7 @@ export default function MonitoramentoConversasPage() {
             )}
           >
             <div>
-              <p className="flex items-center gap-2 text-sm font-medium">
+              <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
                 {selectedPhone &&
                 contacts.find((x) => x.phoneNumber === selectedPhone)
                   ?.botEnabled === false ? (
@@ -647,14 +750,34 @@ export default function MonitoramentoConversasPage() {
                     aria-hidden
                   />
                 ) : null}
-                {selectedPhone
-                  ? (() => {
+                {selectedPhone && selectedWaConversationId ? (
+                  <button
+                    type="button"
+                    className="text-left text-primary underline-offset-4 hover:underline"
+                    onClick={() => {
+                      const c = contacts.find((x) => x.phoneNumber === selectedPhone);
+                      setFichaConversationId(selectedWaConversationId);
+                      setFichaTitle(c?.displayTitle ?? undefined);
+                      setFichaOpen(true);
+                    }}
+                  >
+                    {(() => {
                       const c = contacts.find(
                         (x) => x.phoneNumber === selectedPhone,
                       );
                       return c?.displayTitle ?? formatPhoneDisplay(selectedPhone);
-                    })()
-                  : t("selectContactHeader")}
+                    })()}
+                  </button>
+                ) : selectedPhone ? (
+                  (() => {
+                    const c = contacts.find(
+                      (x) => x.phoneNumber === selectedPhone,
+                    );
+                    return c?.displayTitle ?? formatPhoneDisplay(selectedPhone);
+                  })()
+                ) : (
+                  t("selectContactHeader")
+                )}
               </p>
               {selectedPhone &&
               contacts.some(
@@ -761,5 +884,22 @@ export default function MonitoramentoConversasPage() {
         </section>
       </div>
     </div>
+  );
+}
+
+export default function MonitoramentoConversasPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[50vh] items-center justify-center p-8">
+          <RefreshCw
+            className="h-8 w-8 animate-spin text-muted-foreground"
+            aria-hidden
+          />
+        </div>
+      }
+    >
+      <MonitoramentoConversasPageContent />
+    </Suspense>
   );
 }

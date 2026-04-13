@@ -30,6 +30,9 @@ public class ProfileTierAuthorizationManager implements AuthorizationManager<Req
         if (path.contains("/api/v1/dashboard/")) {
             return new AuthorizationDecision(level.meets(ProfileLevel.PRO));
         }
+        if (path.contains("/api/v1/appointments")) {
+            return new AuthorizationDecision(level.meets(ProfileLevel.PRO));
+        }
         if (path.contains("/api/v1/analytics/export")) {
             String format = request.getParameter("format");
             if (format != null && format.equalsIgnoreCase("pdf")) {

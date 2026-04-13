@@ -117,6 +117,30 @@ const nextConfig: NextConfig = {
         source: "/api/v1/knowledge-base/:batchId",
         destination: `${backend}/api/v1/knowledge-base/:batchId`,
       },
+      {
+        source: "/api/v1/appointments",
+        destination: `${backend}/api/v1/appointments`,
+      },
+      {
+        source: "/api/v1/appointments/:path*",
+        destination: `${backend}/api/v1/appointments/:path*`,
+      },
+      {
+        source: "/api/v1/crm/summary",
+        destination: `${backend}/api/v1/crm/summary`,
+      },
+      {
+        source: "/api/v1/crm/customers/:path*",
+        destination: `${backend}/api/v1/crm/customers/:path*`,
+      },
+      {
+        source: "/api/v1/crm/opportunities",
+        destination: `${backend}/api/v1/crm/opportunities`,
+      },
+      {
+        source: "/api/v1/crm/opportunities/:path*",
+        destination: `${backend}/api/v1/crm/opportunities/:path*`,
+      },
     ];
   },
   ...(devAllowedOrigins.length > 0 ? { allowedDevOrigins: devAllowedOrigins } : {}),

@@ -30,6 +30,9 @@ public class TenantSettingsService implements UpdateTenantSettingsUseCase {
                 c.whatsappInstanceId() != null ? nullIfBlankToNull(c.whatsappInstanceId()) : base.whatsappInstanceId();
         var baseUrl = c.whatsappBaseUrl() != null ? nullIfBlankToNull(c.whatsappBaseUrl()) : base.whatsappBaseUrl();
 
+        String googleCal =
+                c.googleCalendarId() != null ? nullIfBlankToNull(c.googleCalendarId()) : base.googleCalendarId();
+
         return new TenantConfiguration(
                 base.tenantId(),
                 c.systemPrompt(),
@@ -38,7 +41,8 @@ public class TenantSettingsService implements UpdateTenantSettingsUseCase {
                 instanceId,
                 baseUrl,
                 base.profileLevel(),
-                base.portalPasswordHash());
+                base.portalPasswordHash(),
+                googleCal);
     }
 
     /**

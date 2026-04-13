@@ -3,10 +3,12 @@
 import {
   Activity,
   Bot,
+  CalendarClock,
   ChevronDown,
   Loader2,
   MessageSquare,
   RefreshCw,
+  Target,
   Users,
 } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
@@ -63,14 +65,20 @@ import { toBcp47ForDates } from "@/lib/intl-locale";
 import { planMeetsRequirement } from "@/lib/plan-tier";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
+import { Link, useRouter } from "@/i18n/navigation";
 import {
+  assumeCrmOpportunity,
   exportAnalyticsReport,
   getAnalyticsIntents,
+  getCrmOpportunities,
   getDashboardSummary,
+  getUpcomingAppointmentsCount,
+  humanHandoffConversation,
   toUserFacingApiError,
   type AnalyticsExportFormat,
   type AnalyticsIntentsResponse,
   type ConversationSentiment,
+  type CrmCustomerDto,
   type DashboardSummary,
   type PrimaryIntentCategory,
 } from "@/services/apiService";
@@ -130,6 +138,17 @@ function contactInitials(name: string | null, phone: string): string {
   return d.slice(-2).toUpperCase() || "?";
 }
 
+function monitorPhoneFromCrmCustomer(c: CrmCustomerDto): string {
+  const p = c.phoneNumber?.trim();
+  if (p) return p;
+  const conv = c.conversationId?.trim() ?? "";
+  if (conv.startsWith("wa-")) {
+    const d = conv.slice(3).replace(/\D/g, "");
+    if (d) return d;
+  }
+  return conv;
+}
+
 type ChartRow = { bucketStart: string; count: number; label: string };
 
 const PIE_COLORS = ["#22d3ee", "#34d399", "#a78bfa", "#fb7185", "#fbbf24"];
@@ -163,6 +182,34 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+function opportunityLeadScorePresentation(
+  score: number | null | undefined,
+  translate: (key: string) => string,
+): { text: string; className: string; title?: string } {
+  if (score == null) {
+    return { text: "—", className: "text-muted-foreground" };
+  }
+  if (score <= 30) {
+    return {
+      text: String(score),
+      className: "font-semibold text-zinc-400",
+      title: translate("opportunities.scoreTierCold"),
+    };
+  }
+  if (score <= 70) {
+    return {
+      text: String(score),
+      className: "font-semibold text-amber-400",
+      title: translate("opportunities.scoreTierWarm"),
+    };
+  }
+  return {
+    text: String(score),
+    className: "font-semibold text-red-500",
+    title: translate("opportunities.scoreTierHot"),
+  };
+}
+
 export function DashboardPanel() {
   const t = useTranslations("dashboard");
   const tApi = useTranslations("api");
@@ -185,6 +232,14 @@ export function DashboardPanel() {
   const [exportError, setExportError] = React.useState<string | null>(null);
   const [periodDialogOpen, setPeriodDialogOpen] = React.useState(false);
   const [exportUpgradeOpen, setExportUpgradeOpen] = React.useState(false);
+  const [upcomingApptCount, setUpcomingApptCount] = React.useState<number | null>(null);
+  const [upcomingApptError, setUpcomingApptError] = React.useState<string | null>(null);
+  const [mainTab, setMainTab] = React.useState<"metrics" | "opportunities">("metrics");
+  const [opportunities, setOpportunities] = React.useState<CrmCustomerDto[] | null>(null);
+  const [opportunitiesLoading, setOpportunitiesLoading] = React.useState(false);
+  const [opportunitiesError, setOpportunitiesError] = React.useState<string | null>(null);
+  const [assumingId, setAssumingId] = React.useState<string | null>(null);
+  const router = useRouter();
 
   const isSmallViewport = useMediaQuery("(max-width: 767px)");
   const chartTickSize = isSmallViewport ? 10 : 12;
@@ -228,6 +283,8 @@ export function DashboardPanel() {
       setError(null);
       setIntentError(null);
       setPeriodError(null);
+      setUpcomingApptCount(null);
+      setUpcomingApptError(null);
       return;
     }
     if (!periodRange) {
@@ -246,9 +303,14 @@ export function DashboardPanel() {
     const intentsPromise = analyticsAllowed
       ? getAnalyticsIntents(tid, startDate, endDate)
       : Promise.resolve(emptyAnalyticsResponse(tid, startDate, endDate));
-    const [sumRes, intRes] = await Promise.allSettled([
+    const upcomingAllowed = planMeetsRequirement(tier, "pro");
+    const upcomingPromise = upcomingAllowed
+      ? getUpcomingAppointmentsCount(tid, 7)
+      : Promise.resolve(null);
+    const [sumRes, intRes, upRes] = await Promise.allSettled([
       getDashboardSummary(tid, startDate, endDate),
       intentsPromise,
+      upcomingPromise,
     ]);
     if (sumRes.status === "fulfilled") {
       setData(sumRes.value);
@@ -264,6 +326,18 @@ export function DashboardPanel() {
       setIntentData(null);
       setIntentError(toUserFacingApiError(intRes.reason, (k) => tApi(k)));
     }
+    if (upcomingAllowed) {
+      if (upRes.status === "fulfilled" && upRes.value) {
+        setUpcomingApptCount(upRes.value.count);
+        setUpcomingApptError(null);
+      } else if (upRes.status === "rejected") {
+        setUpcomingApptCount(null);
+        setUpcomingApptError(toUserFacingApiError(upRes.reason, (k) => tApi(k)));
+      }
+    } else {
+      setUpcomingApptCount(null);
+      setUpcomingApptError(null);
+    }
     setLoading(false);
   }, [tenantId, periodRange, tApi, t, tier]);
 
@@ -274,6 +348,56 @@ export function DashboardPanel() {
   React.useEffect(() => {
     if (periodPreset !== "custom") setPeriodDialogOpen(false);
   }, [periodPreset]);
+
+  const loadOpportunities = React.useCallback(async () => {
+    const tid = tenantId.trim();
+    if (!tid) {
+      setOpportunities(null);
+      setOpportunitiesError(null);
+      return;
+    }
+    setOpportunitiesLoading(true);
+    setOpportunitiesError(null);
+    try {
+      const res = await getCrmOpportunities(tid);
+      setOpportunities(res.opportunities);
+    } catch (e) {
+      setOpportunitiesError(toUserFacingApiError(e, (k) => tApi(k)));
+      setOpportunities(null);
+    } finally {
+      setOpportunitiesLoading(false);
+    }
+  }, [tenantId, tApi]);
+
+  React.useEffect(() => {
+    if (mainTab !== "opportunities") return;
+    void loadOpportunities();
+  }, [mainTab, loadOpportunities]);
+
+  const handleAssumeOpportunity = React.useCallback(
+    async (row: CrmCustomerDto) => {
+      const tid = tenantId.trim();
+      if (!tid) return;
+      setAssumingId(row.id);
+      setOpportunitiesError(null);
+      try {
+        await assumeCrmOpportunity(tid, row.id);
+        await humanHandoffConversation(tid, monitorPhoneFromCrmCustomer(row));
+        await loadOpportunities();
+        const digits = monitorPhoneFromCrmCustomer(row).replace(/\D/g, "");
+        router.push(
+          digits
+            ? `/dashboard/monitoramento?phone=${encodeURIComponent(digits)}`
+            : "/dashboard/monitoramento",
+        );
+      } catch {
+        setOpportunitiesError(t("opportunities.actionError"));
+      } finally {
+        setAssumingId(null);
+      }
+    },
+    [tenantId, router, loadOpportunities, t],
+  );
 
   const useHourlyChartLabels = React.useMemo(() => {
     if (!periodRange) return true;
@@ -458,13 +582,61 @@ export function DashboardPanel() {
             variant="outline"
             size="touch"
             className="h-11 shrink-0 touch-manipulation gap-2 px-3"
-            onClick={() => void load()}
-            disabled={loading || !tenantId.trim()}
+            onClick={() => {
+              void load();
+              if (mainTab === "opportunities") void loadOpportunities();
+            }}
+            disabled={(loading && mainTab === "metrics") || !tenantId.trim()}
             aria-label={t("refresh")}
           >
-            <RefreshCw className={cn("h-4 w-4 shrink-0", loading && "animate-spin")} aria-hidden />
+            <RefreshCw
+              className={cn(
+                "h-4 w-4 shrink-0",
+                (loading && mainTab === "metrics") ||
+                  (opportunitiesLoading && mainTab === "opportunities")
+                  ? "animate-spin"
+                  : false,
+              )}
+              aria-hidden
+            />
             {t("refreshButton")}
           </Button>
+          {tenantId.trim() ? (
+            <div
+              className="flex flex-wrap items-center gap-2"
+              role="tablist"
+              aria-label={t("mainTabMetrics")}
+            >
+              <Button
+                type="button"
+                size="touch"
+                variant={mainTab === "metrics" ? "default" : "outline"}
+                onClick={() => setMainTab("metrics")}
+                className={cn(
+                  mainTab === "metrics" &&
+                    "bg-primary text-primary-foreground shadow-md shadow-cyan-500/20",
+                )}
+              >
+                {t("mainTabMetrics")}
+              </Button>
+              <Button
+                type="button"
+                size="touch"
+                variant={mainTab === "opportunities" ? "default" : "outline"}
+                onClick={() => setMainTab("opportunities")}
+                className={cn(
+                  "gap-1.5",
+                  mainTab === "opportunities" &&
+                    "bg-primary text-primary-foreground shadow-md shadow-cyan-500/20",
+                )}
+              >
+                <Target className="h-4 w-4 shrink-0" aria-hidden />
+                {t("mainTabOpportunities")}
+              </Button>
+            </div>
+          ) : null}
+          {mainTab === "metrics" ? (
+            <>
           <div
             className="flex flex-wrap items-center gap-2 sm:gap-3"
             role="tablist"
@@ -536,8 +708,10 @@ export function DashboardPanel() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+            </>
+          ) : null}
         </div>
-        {periodPreset === "custom" && isSmallViewport ? (
+        {mainTab === "metrics" && periodPreset === "custom" && isSmallViewport ? (
           <Button
             type="button"
             size="touch"
@@ -548,7 +722,7 @@ export function DashboardPanel() {
             {t("periodCustomDialogTitle")}
           </Button>
         ) : null}
-        {periodPreset === "custom" && !isSmallViewport ? (
+        {mainTab === "metrics" && periodPreset === "custom" && !isSmallViewport ? (
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="flex flex-col gap-1">
               <Label htmlFor="dash-from" className="text-xs text-muted-foreground">
@@ -600,11 +774,143 @@ export function DashboardPanel() {
         </p>
       ) : null}
 
-      {loading && !data ? (
+      {mainTab === "opportunities" && tenantId.trim() ? (
+        <>
+          {opportunitiesError ? (
+            <p className="text-sm text-destructive" role="alert">
+              {opportunitiesError}
+            </p>
+          ) : null}
+          {opportunitiesLoading && opportunities === null ? (
+            <p className="text-sm text-muted-foreground">{t("loading")}</p>
+          ) : null}
+          <FeatureGuard requiredPlan="pro">
+            <Card className={cn(cardClass)}>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                  <Target className="h-5 w-5 shrink-0 text-cyan-400" aria-hidden />
+                  {t("opportunities.title")}
+                </CardTitle>
+                <CardDescription>{t("opportunities.subtitle")}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {opportunities !== null && opportunities.length === 0 && !opportunitiesLoading ? (
+                  <p className="text-sm text-muted-foreground">{t("opportunities.empty")}</p>
+                ) : null}
+                {opportunities !== null && opportunities.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[640px] text-sm">
+                      <thead>
+                        <tr className="border-b border-border/80 text-left text-muted-foreground">
+                          <th className="pb-2 pr-4 font-medium">{t("opportunities.colContact")}</th>
+                          <th className="pb-2 pr-4 font-medium">{t("opportunities.colIntent")}</th>
+                          <th className="pb-2 pr-4 font-medium">{t("opportunities.colScore")}</th>
+                          <th className="pb-2 pr-4 font-medium">{t("opportunities.colSince")}</th>
+                          <th className="pb-2 text-right font-medium" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {opportunities.map((row) => {
+                          const scorePresentation = opportunityLeadScorePresentation(
+                            row.leadScore,
+                            t,
+                          );
+                          return (
+                          <tr
+                            key={row.id}
+                            className="border-b border-border/40 last:border-0"
+                          >
+                            <td className="py-3 pr-4">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold"
+                                  aria-hidden
+                                >
+                                  {contactInitials(
+                                    row.fullName,
+                                    monitorPhoneFromCrmCustomer(row),
+                                  )}
+                                </span>
+                                <div>
+                                  <div className="font-medium">
+                                    {row.fullName?.trim() ||
+                                      formatPhoneDisplay(monitorPhoneFromCrmCustomer(row))}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {formatPhoneDisplay(monitorPhoneFromCrmCustomer(row))}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3 pr-4 align-top">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {row.intentStatus === "HOT_LEAD" ? (
+                                  <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-400">
+                                    {t("opportunities.badgeHot")}
+                                  </span>
+                                ) : null}
+                                <span>
+                                  {(row.lastDetectedIntent ?? row.lastIntent)?.trim() || "—"}
+                                </span>
+                              </div>
+                            </td>
+                            <td
+                              className={cn(
+                                "py-3 pr-4 align-top tabular-nums",
+                                scorePresentation.className,
+                              )}
+                              title={scorePresentation.title}
+                            >
+                              {scorePresentation.text}
+                            </td>
+                            <td className="py-3 pr-4 align-top text-muted-foreground">
+                              {row.lastIntentAt
+                                ? new Date(row.lastIntentAt).toLocaleString(dateLocale, {
+                                    day: "2-digit",
+                                    month: "short",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })
+                                : "—"}
+                            </td>
+                            <td className="py-3 text-right align-top">
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={assumingId === row.id}
+                                onClick={() => void handleAssumeOpportunity(row)}
+                              >
+                                {assumingId === row.id ? (
+                                  <>
+                                    <Loader2
+                                      className="mr-1 inline h-3 w-3 animate-spin"
+                                      aria-hidden
+                                    />
+                                    {t("opportunities.assuming")}
+                                  </>
+                                ) : (
+                                  t("opportunities.recoverWhatsApp")
+                                )}
+                              </Button>
+                            </td>
+                          </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          </FeatureGuard>
+        </>
+      ) : null}
+
+      {mainTab === "metrics" && loading && !data ? (
         <p className="text-sm text-muted-foreground">{t("loading")}</p>
       ) : null}
 
-      {data ? (
+      {mainTab === "metrics" && data ? (
         <>
           <div className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2 lg:grid-cols-4">
             <Card className={cn(cardClass)}>
@@ -666,6 +972,39 @@ export function DashboardPanel() {
                 <CardDescription className="pt-2">{t("cards.instanceDesc")}</CardDescription>
               </CardContent>
             </Card>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:max-w-md">
+            <FeatureGuard requiredPlan="pro">
+              <Card className={cn(cardClass)}>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">
+                    {t("cards.upcomingAppointmentsTitle")}
+                  </CardTitle>
+                  <CalendarClock className="h-4 w-4 text-muted-foreground" aria-hidden />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold tabular-nums tracking-tight">
+                    {upcomingApptError ? "—" : upcomingApptCount ?? "—"}
+                  </div>
+                  {upcomingApptError ? (
+                    <p className="pt-1 text-xs text-destructive" role="alert">
+                      {upcomingApptError}
+                    </p>
+                  ) : (
+                    <CardDescription className="pt-2">
+                      {t("cards.upcomingAppointmentsDesc")}
+                    </CardDescription>
+                  )}
+                  <Link
+                    href="/dashboard/appointments"
+                    className="mt-3 inline-block text-sm font-medium text-primary underline-offset-4 hover:underline"
+                  >
+                    {t("cards.upcomingAppointmentsLink")}
+                  </Link>
+                </CardContent>
+              </Card>
+            </FeatureGuard>
           </div>
 
           <Card className={cn(cardClass)}>

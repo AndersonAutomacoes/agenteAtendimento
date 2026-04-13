@@ -9,4 +9,5 @@ public record TenantSettingsHttpRequest(
         String whatsappProviderType,
         String whatsappApiKey,
         String whatsappInstanceId,
-        String whatsappBaseUrl) {}
+        String whatsappBaseUrl,
+        String googleCalendarId) {}

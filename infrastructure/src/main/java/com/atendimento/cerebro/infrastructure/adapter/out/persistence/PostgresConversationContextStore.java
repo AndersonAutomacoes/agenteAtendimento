@@ -1,6 +1,8 @@
 package com.atendimento.cerebro.infrastructure.adapter.out.persistence;
 
+import com.atendimento.cerebro.application.crm.CrmConversationSupport;
 import com.atendimento.cerebro.application.port.out.ConversationContextStorePort;
+import com.atendimento.cerebro.application.service.LeadScoringService;
 import com.atendimento.cerebro.domain.conversation.ConversationContext;
 import com.atendimento.cerebro.domain.conversation.ConversationId;
 import com.atendimento.cerebro.domain.conversation.Message;
@@ -21,9 +23,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class PostgresConversationContextStore implements ConversationContextStorePort {
 
     private final JdbcClient jdbcClient;
+    private final LeadScoringService leadScoringService;
 
-    public PostgresConversationContextStore(JdbcClient jdbcClient) {
+    public PostgresConversationContextStore(JdbcClient jdbcClient, LeadScoringService leadScoringService) {
         this.jdbcClient = jdbcClient;
+        this.leadScoringService = leadScoringService;
     }
 
     @Override
@@ -91,6 +95,15 @@ public class PostgresConversationContextStore implements ConversationContextStor
                     .param(message.senderType().name())
                     .update();
         }
+        CrmConversationSupport.phoneDigitsOnlyFromConversationId(session)
+                .ifPresent(
+                        digits -> {
+                            try {
+                                leadScoringService.recalculateAndPersist(context.getTenantId(), digits);
+                            } catch (RuntimeException ignored) {
+                                // não bloquear persistência do contexto
+                            }
+                        });
     }
 
     /**

@@ -75,7 +75,8 @@ public class TenantSettingsRestRoute extends RouteBuilder {
                 c.whatsappProviderType().name(),
                 c.whatsappApiKey(),
                 c.whatsappInstanceId(),
-                c.whatsappBaseUrl());
+                c.whatsappBaseUrl(),
+                c.googleCalendarId());
         exchange.getMessage().setBody(body);
         exchange.getMessage().setHeader(Exchange.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
         exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.OK.value());
@@ -127,7 +128,8 @@ public class TenantSettingsRestRoute extends RouteBuilder {
                     providerType,
                     body.whatsappApiKey(),
                     body.whatsappInstanceId(),
-                    body.whatsappBaseUrl());
+                    body.whatsappBaseUrl(),
+                    body.googleCalendarId());
             updateTenantSettings.updateTenantSettings(new TenantId(body.tenantId().strip()), command);
             exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.NO_CONTENT.value());
             exchange.getIn().setBody(null);

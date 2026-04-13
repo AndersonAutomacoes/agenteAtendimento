@@ -26,6 +26,10 @@ spring:
         dimensions: 768
 
 cerebro:
+  google:
+    calendar:
+      # Testes sem credenciais Google Calendar — sempre mock.
+      mock: true
   firebase:
     enabled: false
   analytics:

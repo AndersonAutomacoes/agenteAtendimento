@@ -80,7 +80,7 @@ class WhatsAppIntegrationRouteIntegrationTest {
         assertThat(response.getBody()).isNotNull().extracting(WhatsAppWebhookResponse::status).isEqualTo("processed");
         verify(chatUseCase).chat(any(ChatCommand.class));
         verify(whatsAppOutboundPort)
-                .sendMessage(eq(new TenantId("tenant-wa")), eq("5511999999999"), eq("Resposta da IA"));
+                .sendMessage(eq(new TenantId("tenant-wa")), eq("5511999999999"), eq("Resposta da IA"), any());
     }
 
     @Test
@@ -116,7 +116,7 @@ class WhatsAppIntegrationRouteIntegrationTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull().extracting(WhatsAppWebhookResponse::status).isEqualTo("processed");
         verify(whatsAppOutboundPort)
-                .sendMessage(eq(new TenantId("tenant-wa")), eq("5511999999999"), eq("ok meta"));
+                .sendMessage(eq(new TenantId("tenant-wa")), eq("5511999999999"), eq("ok meta"), any());
     }
 
     @Test
@@ -166,7 +166,8 @@ class WhatsAppIntegrationRouteIntegrationTest {
                 .sendMessage(
                         eq(new TenantId("tenant-wa")),
                         eq("5511999999999"),
-                        eq(ChatFallbackMessages.MAINTENANCE));
+                        eq(ChatFallbackMessages.MAINTENANCE),
+                        any());
     }
 
     @Test

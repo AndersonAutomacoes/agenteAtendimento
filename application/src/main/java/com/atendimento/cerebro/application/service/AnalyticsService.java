@@ -11,6 +11,7 @@ import com.atendimento.cerebro.domain.monitoring.ChatMessage;
 import com.atendimento.cerebro.domain.monitoring.ChatMessageRole;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import java.text.Normalizer;
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import org.slf4j.Logger;
@@ -39,16 +40,22 @@ public class AnalyticsService {
 
     private final ChatAnalyticsRepository chatAnalyticsRepository;
     private final AIEnginePort aiEngine;
+    private final CrmLeadIntentUpdater crmLeadIntentUpdater;
+    private final LeadScoringService leadScoringService;
     private final boolean enabled;
     private final int maxTranscriptChars;
 
     public AnalyticsService(
             ChatAnalyticsRepository chatAnalyticsRepository,
             AIEnginePort aiEngine,
+            CrmLeadIntentUpdater crmLeadIntentUpdater,
+            LeadScoringService leadScoringService,
             boolean enabled,
             int maxTranscriptChars) {
         this.chatAnalyticsRepository = chatAnalyticsRepository;
         this.aiEngine = aiEngine;
+        this.crmLeadIntentUpdater = crmLeadIntentUpdater;
+        this.leadScoringService = leadScoringService;
         this.enabled = enabled;
         this.maxTranscriptChars = Math.min(Math.max(maxTranscriptChars, 1024), 32_000);
     }
@@ -87,6 +94,8 @@ public class AnalyticsService {
             String raw = response.content();
             ChatClassification parsed = parseClassification(raw);
             chatAnalyticsRepository.upsert(tenantId, phone, parsed.intent(), parsed.sentiment());
+            leadScoringService.recalculateAndPersist(tenantId, phone);
+            crmLeadIntentUpdater.onMainIntentClassified(tenantId, phone, parsed.intent(), Instant.now());
         } catch (RuntimeException e) {
             LOG.warn(
                     "chat analytics: falha ao classificar tenant={} phone={}: {}",
