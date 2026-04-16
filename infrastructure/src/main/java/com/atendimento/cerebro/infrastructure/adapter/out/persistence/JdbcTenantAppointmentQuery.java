@@ -38,9 +38,9 @@ public class JdbcTenantAppointmentQuery implements TenantAppointmentQueryPort {
                 new StringBuilder(
                         """
                         SELECT id, tenant_id, conversation_id, client_name, service_name,
-                               starts_at, ends_at, google_event_id, created_at
+                               starts_at, ends_at, google_event_id, created_at, booking_status
                         FROM tenant_appointments
-                        WHERE tenant_id = ?
+                        WHERE tenant_id = ? AND booking_status = 'AGENDADO'
                         """);
         List<Object> params = new ArrayList<>();
         params.add(tid);
@@ -72,6 +72,7 @@ public class JdbcTenantAppointmentQuery implements TenantAppointmentQueryPort {
                                 """
                                 SELECT COUNT(*) FROM tenant_appointments
                                 WHERE tenant_id = ? AND starts_at >= ? AND starts_at < ?
+                                  AND booking_status = 'AGENDADO'
                                 """)
                         .param(tenantId.value())
                         .param(Timestamp.from(fromInclusive))
@@ -95,9 +96,9 @@ public class JdbcTenantAppointmentQuery implements TenantAppointmentQueryPort {
                         .sql(
                                 """
                                 SELECT id, tenant_id, conversation_id, client_name, service_name,
-                                       starts_at, ends_at, google_event_id, created_at
+                                       starts_at, ends_at, google_event_id, created_at, booking_status
                                 FROM tenant_appointments
-                                WHERE tenant_id = ? AND starts_at >= ?
+                                WHERE tenant_id = ? AND starts_at >= ? AND booking_status = 'AGENDADO'
                                 ORDER BY starts_at ASC
                                 LIMIT 2000
                                 """)
@@ -137,9 +138,9 @@ public class JdbcTenantAppointmentQuery implements TenantAppointmentQueryPort {
                 .sql(
                         """
                         SELECT id, tenant_id, conversation_id, client_name, service_name,
-                               starts_at, ends_at, google_event_id, created_at
+                               starts_at, ends_at, google_event_id, created_at, booking_status
                         FROM tenant_appointments
-                        WHERE tenant_id = ? AND conversation_id = ?
+                        WHERE tenant_id = ? AND conversation_id = ? AND booking_status = 'AGENDADO'
                         ORDER BY starts_at DESC
                         LIMIT 200
                         """)
@@ -155,6 +156,150 @@ public class JdbcTenantAppointmentQuery implements TenantAppointmentQueryPort {
             TenantId tenantId, String conversationId, String zoneId) {
         List<TenantAppointmentListItem> list = listByConversationId(tenantId, conversationId, zoneId);
         return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean existsOverlapping(TenantId tenantId, Instant startInclusive, Instant endExclusive) {
+        if (tenantId == null || startInclusive == null || endExclusive == null || !endExclusive.isAfter(startInclusive)) {
+            return false;
+        }
+        Long n =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT COUNT(*) FROM tenant_appointments
+                                WHERE tenant_id = ?
+                                  AND booking_status = 'AGENDADO'
+                                  AND starts_at < ?
+                                  AND ends_at > ?
+                                """)
+                        .param(tenantId.value())
+                        .param(Timestamp.from(endExclusive))
+                        .param(Timestamp.from(startInclusive))
+                        .query(Long.class)
+                        .single();
+        return n != null && n > 0;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<TenantAppointmentListItem> findActiveByConversationAndLocalDate(
+            TenantId tenantId, String conversationId, LocalDate day, String zoneId) {
+        if (conversationId == null || conversationId.isBlank() || day == null) {
+            return Optional.empty();
+        }
+        ZoneId z = ZoneId.of(zoneId);
+        Instant now = Instant.now();
+        ZonedDateTime start = day.atStartOfDay(z);
+        ZonedDateTime end = day.plusDays(1).atStartOfDay(z);
+        String conv = conversationId.strip();
+        List<TenantAppointmentListItem> rows =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT id, tenant_id, conversation_id, client_name, service_name,
+                                       starts_at, ends_at, google_event_id, created_at, booking_status
+                                FROM tenant_appointments
+                                WHERE tenant_id = ? AND conversation_id = ?
+                                  AND booking_status = 'AGENDADO'
+                                  AND starts_at >= ? AND starts_at < ?
+                                ORDER BY starts_at DESC
+                                LIMIT 1
+                                """)
+                        .param(tenantId.value())
+                        .param(conv)
+                        .param(Timestamp.from(start.toInstant()))
+                        .param(Timestamp.from(end.toInstant()))
+                        .query((rs, rowNum) -> mapRow(rs, now, z))
+                        .list();
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<TenantAppointmentListItem> findCancelledByConversationAndLocalDate(
+            TenantId tenantId, String conversationId, LocalDate day, String zoneId) {
+        if (conversationId == null || conversationId.isBlank() || day == null) {
+            return Optional.empty();
+        }
+        ZoneId z = ZoneId.of(zoneId);
+        Instant now = Instant.now();
+        ZonedDateTime start = day.atStartOfDay(z);
+        ZonedDateTime end = day.plusDays(1).atStartOfDay(z);
+        String conv = conversationId.strip();
+        List<TenantAppointmentListItem> rows =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT id, tenant_id, conversation_id, client_name, service_name,
+                                       starts_at, ends_at, google_event_id, created_at, booking_status
+                                FROM tenant_appointments
+                                WHERE tenant_id = ? AND conversation_id = ?
+                                  AND booking_status = 'CANCELADO'
+                                  AND starts_at >= ? AND starts_at < ?
+                                ORDER BY starts_at DESC
+                                LIMIT 1
+                                """)
+                        .param(tenantId.value())
+                        .param(conv)
+                        .param(Timestamp.from(start.toInstant()))
+                        .param(Timestamp.from(end.toInstant()))
+                        .query((rs, rowNum) -> mapRow(rs, now, z))
+                        .list();
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TenantAppointmentListItem> listAgendadoByConversationOrderedAscending(
+            TenantId tenantId, String conversationId, String zoneId) {
+        if (conversationId == null || conversationId.isBlank()) {
+            return List.of();
+        }
+        ZoneId z = ZoneId.of(zoneId);
+        Instant now = Instant.now();
+        String conv = conversationId.strip();
+        return jdbcClient
+                .sql(
+                        """
+                        SELECT id, tenant_id, conversation_id, client_name, service_name,
+                               starts_at, ends_at, google_event_id, created_at, booking_status
+                        FROM tenant_appointments
+                        WHERE tenant_id = ? AND conversation_id = ? AND booking_status = 'AGENDADO'
+                        ORDER BY starts_at ASC
+                        LIMIT 200
+                        """)
+                .param(tenantId.value())
+                .param(conv)
+                .query((rs, rowNum) -> mapRow(rs, now, z))
+                .list();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<TenantAppointmentListItem> findByIdForTenantAndConversation(
+            TenantId tenantId, long appointmentId, String conversationId, String zoneId) {
+        if (conversationId == null || conversationId.isBlank()) {
+            return Optional.empty();
+        }
+        ZoneId z = ZoneId.of(zoneId);
+        Instant now = Instant.now();
+        List<TenantAppointmentListItem> rows =
+                jdbcClient
+                        .sql(
+                                """
+                                SELECT id, tenant_id, conversation_id, client_name, service_name,
+                                       starts_at, ends_at, google_event_id, created_at, booking_status
+                                FROM tenant_appointments
+                                WHERE tenant_id = ? AND id = ? AND conversation_id = ?
+                                """)
+                        .param(tenantId.value())
+                        .param(appointmentId)
+                        .param(conversationId.strip())
+                        .query((rs, rowNum) -> mapRow(rs, now, z))
+                        .list();
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
 
     private static Optional<String> digitsFromConversationId(String conversationId) {
@@ -183,6 +328,7 @@ public class JdbcTenantAppointmentQuery implements TenantAppointmentQueryPort {
         } else {
             st = TenantAppointmentListItem.AppointmentStatus.UPCOMING;
         }
+        // id = PK tenant_appointments (usada em cancel_appointment / markCancelled)
         return new TenantAppointmentListItem(
                 rs.getLong("id"),
                 rs.getString("tenant_id"),
@@ -193,6 +339,15 @@ public class JdbcTenantAppointmentQuery implements TenantAppointmentQueryPort {
                 ends,
                 rs.getString("google_event_id"),
                 created,
-                st);
+                st,
+                readBookingStatus(rs));
+    }
+
+    private static TenantAppointmentListItem.BookingStatus readBookingStatus(ResultSet rs) throws SQLException {
+        String raw = rs.getString("booking_status");
+        if (raw != null && raw.equalsIgnoreCase("CANCELADO")) {
+            return TenantAppointmentListItem.BookingStatus.CANCELADO;
+        }
+        return TenantAppointmentListItem.BookingStatus.AGENDADO;
     }
 }

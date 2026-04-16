@@ -1,16 +1,20 @@
 package com.atendimento.cerebro.infrastructure.calendar;
 
 import com.atendimento.cerebro.application.dto.TenantAppointmentRecord;
+import com.atendimento.cerebro.application.scheduling.AppointmentCalendarValidationResult;
 import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
 import com.atendimento.cerebro.application.port.out.CrmCustomerStorePort;
+import com.atendimento.cerebro.application.port.out.TenantAppointmentQueryPort;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentStorePort;
 import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort;
+import com.atendimento.cerebro.application.service.AppointmentValidationService;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import com.atendimento.cerebro.infrastructure.config.CerebroGoogleCalendarProperties;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
@@ -33,22 +37,28 @@ public class MockAppointmentSchedulingService implements AppointmentSchedulingPo
     private static final Logger LOG = LoggerFactory.getLogger(MockAppointmentSchedulingService.class);
 
     private static final DateTimeFormatter ISO_DATE = DateTimeFormatter.ISO_LOCAL_DATE;
-    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("H:mm", Locale.ROOT);
+    private static final DateTimeFormatter PT_BR_DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.forLanguageTag("pt-BR"));
 
     private final TenantConfigurationStorePort tenantConfigurationStore;
     private final TenantAppointmentStorePort appointmentStore;
     private final CrmCustomerStorePort crmCustomerStore;
     private final CerebroGoogleCalendarProperties props;
+    private final AppointmentValidationService appointmentValidationService;
+    private final TenantAppointmentQueryPort tenantAppointmentQuery;
 
     public MockAppointmentSchedulingService(
             TenantConfigurationStorePort tenantConfigurationStore,
             TenantAppointmentStorePort appointmentStore,
             CrmCustomerStorePort crmCustomerStore,
-            CerebroGoogleCalendarProperties props) {
+            CerebroGoogleCalendarProperties props,
+            AppointmentValidationService appointmentValidationService,
+            TenantAppointmentQueryPort tenantAppointmentQuery) {
         this.tenantConfigurationStore = tenantConfigurationStore;
         this.appointmentStore = appointmentStore;
         this.crmCustomerStore = crmCustomerStore;
         this.props = props;
+        this.appointmentValidationService = appointmentValidationService;
+        this.tenantAppointmentQuery = tenantAppointmentQuery;
         LOG.warn(
                 "MockAppointmentSchedulingService ATIVO (cerebro.google.calendar.mock=true): agendamentos são gravados só na "
                         + "base local — nenhum evento é criado no Google Calendar. Para a API real: "
@@ -86,7 +96,7 @@ public class MockAppointmentSchedulingService implements AppointmentSchedulingPo
         return "Calendário (simulado): "
                 + calId.get()
                 + ". Horários livres em "
-                + isoDate
+                + day.format(PT_BR_DATE)
                 + " ("
                 + zone
                 + "): "
@@ -106,27 +116,38 @@ public class MockAppointmentSchedulingService implements AppointmentSchedulingPo
             return "O calendário ainda não está ligado a este espaço. Informe o cliente com cordialidade que não é "
                     + "possível concluir o agendamento agora.";
         }
-        LocalDate day;
-        try {
-            day = LocalDate.parse(isoDate.strip(), ISO_DATE);
-        } catch (DateTimeParseException e) {
-            return "A data indicada não pôde ser interpretada. Peça ao cliente uma data válida, sem mencionar formatos "
-                    + "técnicos.";
-        }
         ZoneId zone = ZoneId.of(props.getZone());
-        String pastDateError = SchedulingPastDatePolicy.rejectIfDayBeforeToday(day, zone);
-        if (pastDateError != null) {
-            return pastDateError;
+        AppointmentCalendarValidationResult validated =
+                appointmentValidationService.validateIsoDateAndTimeForCalendar(isoDate, localTime, zone);
+        if (!validated.valid()) {
+            return validated.userMessage();
         }
-        LocalTime time;
-        try {
-            time = LocalTime.parse(localTime.strip(), TIME);
-        } catch (DateTimeParseException e) {
-            return "A hora indicada não pôde ser interpretada. Peça ao cliente um horário claro (ex.: 14:30), sem "
-                    + "mencionar códigos técnicos.";
-        }
-        Instant start = day.atTime(time).atZone(zone).toInstant();
+        LocalDate day = validated.day();
+        LocalTime time = validated.time();
+        ZonedDateTime startZoned = ZonedDateTime.of(day, time, zone);
+        Instant start = startZoned.toInstant();
         Instant end = start.plusSeconds(props.getSlotMinutes() * 60L);
+        if (tenantAppointmentQuery.existsOverlapping(tenantId, start, end)) {
+            LOG.warn(
+                    "createAppointment (mock) bloqueado: intervalo já ocupado em tenant_appointments tenant={}",
+                    tenantId.value());
+            return appointmentValidationService.duplicateSlotConflictMessageForGemini();
+        }
+        LocalDate dataGravadaGoogle = start.atZone(zone).toLocalDate();
+        LOG.info(
+                "confirmação agendamento (mock): DATA_SOLICITADA={} DATA_GRAVADA_GOOGLE={} (fuso {}) startZoned={} eventId=mock tenant={}",
+                day,
+                dataGravadaGoogle,
+                zone.getId(),
+                startZoned,
+                tenantId.value());
+        if (!day.equals(dataGravadaGoogle)) {
+            LOG.warn(
+                    "DIVERGÊNCIA DATA_SOLICITADA vs DATA_GRAVADA_GOOGLE (mock): solicitada={} gravada={} tenant={}",
+                    day,
+                    dataGravadaGoogle,
+                    tenantId.value());
+        }
         String eventId = "mock-" + UUID.randomUUID();
         String conv = conversationId == null || conversationId.isBlank() ? null : conversationId.strip();
         appointmentStore.insert(
@@ -145,11 +166,17 @@ public class MockAppointmentSchedulingService implements AppointmentSchedulingPo
         return "Agendamento criado (simulado) no calendário "
                 + calId.get()
                 + " para "
-                + isoDate
+                + day.format(PT_BR_DATE)
                 + " "
                 + localTime
                 + ". ID interno: "
                 + eventId;
+    }
+
+    @Override
+    public boolean deleteCalendarEvent(TenantId tenantId, String googleEventId) {
+        // Calendário simulado: sem chamada à API Google; considera sempre sincronizado.
+        return true;
     }
 
     /**

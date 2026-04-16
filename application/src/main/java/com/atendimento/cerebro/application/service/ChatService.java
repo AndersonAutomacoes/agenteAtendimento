@@ -32,6 +32,8 @@ import com.atendimento.cerebro.application.port.out.TenantAppointmentQueryPort;
 
 import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort;
 
+import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
+
 import com.atendimento.cerebro.domain.conversation.ConversationContext;
 
 import com.atendimento.cerebro.domain.conversation.Message;
@@ -40,9 +42,14 @@ import com.atendimento.cerebro.domain.knowledge.KnowledgeHit;
 
 import com.atendimento.cerebro.domain.tenant.TenantConfiguration;
 
+import com.atendimento.cerebro.application.scheduling.SchedulingEnforcedChoice;
 import com.atendimento.cerebro.application.scheduling.SlotChoiceExpansion;
+import com.atendimento.cerebro.application.scheduling.SchedulingExplicitTimeShortcut;
+import com.atendimento.cerebro.application.scheduling.SchedulingToolContext;
+import com.atendimento.cerebro.application.scheduling.SystemPromptPlaceholders;
 import com.atendimento.cerebro.application.scheduling.SchedulingUserReplyNormalizer;
 
+import java.time.LocalDate;
 import java.time.ZoneId;
 
 import java.time.format.DateTimeFormatter;
@@ -99,6 +106,8 @@ public class ChatService implements ChatUseCase {
 
     private final TenantAppointmentQueryPort tenantAppointmentQuery;
 
+    private final AppointmentSchedulingPort appointmentScheduling;
+
     private final String schedulingZoneId;
 
 
@@ -121,6 +130,8 @@ public class ChatService implements ChatUseCase {
 
             TenantAppointmentQueryPort tenantAppointmentQuery,
 
+            AppointmentSchedulingPort appointmentScheduling,
+
             String schedulingZoneId) {
 
         this.conversationContextStore = conversationContextStore;
@@ -139,11 +150,13 @@ public class ChatService implements ChatUseCase {
 
         this.tenantAppointmentQuery = tenantAppointmentQuery;
 
+        this.appointmentScheduling = appointmentScheduling;
+
         this.schedulingZoneId = schedulingZoneId != null && !schedulingZoneId.isBlank()
 
                 ? schedulingZoneId.strip()
 
-                : "America/Sao_Paulo";
+                : "America/Bahia";
 
     }
 
@@ -187,7 +200,10 @@ public class ChatService implements ChatUseCase {
 
         Optional<TenantConfiguration> tenantConfig = tenantConfigurationStore.findByTenantId(tenantId);
 
-        String systemPrompt = tenantConfig.map(tc -> tc.systemPrompt().strip()).orElse("");
+        String systemPrompt =
+                SystemPromptPlaceholders.apply(
+                        tenantConfig.map(tc -> tc.systemPrompt().strip()).orElse(""),
+                        ZoneId.of(schedulingZoneId));
 
         if (tenantConfig.isEmpty()) {
 
@@ -253,29 +269,60 @@ public class ChatService implements ChatUseCase {
 
         boolean schedulingTools = provider == AiChatProvider.GEMINI;
 
-        SlotChoiceExpansion slotExpansion =
+        boolean cancelIntent = SchedulingUserReplyNormalizer.looksLikeCancellationIntent(userText);
+        if (cancelIntent) {
+            historyForAi = SchedulingUserReplyNormalizer.stripSchedulingStateFromHistory(historyForAi);
+            LOG.info(
+                    "[scheduling-cancel] Rascunho de agendamento (slot_options/slot_date/scheduling_draft) removido do histórico — intenção cancelar.");
+        }
+
+        boolean schedulingRestartIntent =
                 schedulingTools
-                        ? SchedulingUserReplyNormalizer.expandNumericSlotChoice(userText, historyForAi)
+                        && SchedulingUserReplyNormalizer.looksLikeSchedulingRestartIntent(userText)
+                        && !cancelIntent;
+        if (schedulingRestartIntent) {
+            clearCancellationContext(conversationId.value());
+            historyForAi = SchedulingUserReplyNormalizer.stripInternalAppendicesFromHistory(historyForAi);
+            LOG.info(
+                    "[scheduling-restart] Apêndices internos (slots e cancel_option_map) removidos do histórico — intenção marcar horário após fluxo de cancelamento.");
+        }
+
+        final List<Message> historyForSlotExpansion = historyForAi;
+
+        SlotChoiceExpansion slotExpansion =
+                schedulingTools && !cancelIntent
+                        ? SchedulingExplicitTimeShortcut.tryExpand(
+                                        tenantId,
+                                        userText,
+                                        historyForSlotExpansion,
+                                        ZoneId.of(schedulingZoneId),
+                                        appointmentScheduling)
+                                .orElseGet(
+                                        () ->
+                                                SchedulingUserReplyNormalizer.expandNumericSlotChoice(
+                                                        userText, historyForSlotExpansion))
                         : SlotChoiceExpansion.unchanged(userText);
         String userMessageForAi = slotExpansion.expandedUserMessage();
 
+        Optional<LocalDate> schedulingSlotAnchorDate =
+                schedulingTools
+                        ? SchedulingUserReplyNormalizer.parseLastSlotDateFromHistory(historyForAi)
+                        : Optional.empty();
 
+
+
+        Optional<CrmCustomerRecord> crmRow =
+                crmCustomerQuery.findByTenantAndConversationId(tenantId, conversationId.value());
+        Optional<TenantAppointmentListItem> lastAppointment =
+                tenantAppointmentQuery.findMostRecentByConversationId(
+                        tenantId, conversationId.value(), schedulingZoneId);
 
         String crmContext =
-
                 buildCrmContextForPrompt(
-
                         conversationId.value(),
-
-                        crmCustomerQuery.findByTenantAndConversationId(tenantId, conversationId.value()),
-
-                        tenantAppointmentQuery.findMostRecentByConversationId(
-
-                                tenantId, conversationId.value(), schedulingZoneId),
-
+                        crmRow,
+                        lastAppointment,
                         schedulingZoneId);
-
-
 
         // --- Bypass total do modelo quando a confirmação é determinística ---
         if (slotExpansion.hardcodedAssistantReply().isPresent()) {
@@ -290,7 +337,46 @@ public class ChatService implements ChatUseCase {
             Message assistantMessage = Message.assistantMessage(stored);
             ConversationContext updated = context.append(userMessage, assistantMessage);
             conversationContextStore.save(updated);
-            return new ChatResult(hardcoded);
+            return new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(stored));
+        }
+
+        if (schedulingTools
+                && slotExpansion.enforcedChoice().isPresent()
+                && !slotExpansion.blockCreateAppointmentThisTurn()
+                && SchedulingUserReplyNormalizer.isBackendCreateConfirmationInstruction(userMessageForAi)) {
+            SchedulingEnforcedChoice choice = slotExpansion.enforcedChoice().get();
+            String iso = choice.date().format(DateTimeFormatter.ISO_LOCAL_DATE);
+            String clientName =
+                    crmRow
+                            .map(CrmCustomerRecord::fullName)
+                            .filter(n -> n != null && !n.isBlank())
+                            .map(String::strip)
+                            .orElse("Cliente");
+            String serviceName =
+                    SchedulingExplicitTimeShortcut.parseServiceNameForCreateFromHistory(historyForAi)
+                            .or(() ->
+                                    lastAppointment
+                                            .map(TenantAppointmentListItem::serviceName)
+                                            .filter(s -> s != null && !s.isBlank())
+                                            .map(String::strip))
+                            .orElse("Serviço");
+            LOG.info(
+                    "[scheduling-bypass] create_appointment directo no ChatService (sem motor de IA) tenant={} date={} time={}",
+                    tenantId.value(),
+                    iso,
+                    choice.timeHhMm());
+            String result =
+                    appointmentScheduling.createAppointment(
+                            tenantId,
+                            iso,
+                            choice.timeHhMm(),
+                            clientName,
+                            serviceName,
+                            conversationId.value());
+            Message assistantMessage = Message.assistantMessage(result.strip());
+            ConversationContext updatedConfirm = context.append(userMessage, assistantMessage);
+            conversationContextStore.save(updatedConfirm);
+            return new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(result.strip()));
         }
 
         var aiRequest = new AICompletionRequest(
@@ -305,7 +391,8 @@ public class ChatService implements ChatUseCase {
                 conversationId.value(),
                 crmContext,
                 slotExpansion.enforcedChoice(),
-                slotExpansion.blockCreateAppointmentThisTurn());
+                slotExpansion.blockCreateAppointmentThisTurn(),
+                schedulingSlotAnchorDate);
 
         var aiResponse = aiEngine.complete(aiRequest);
 
@@ -440,6 +527,27 @@ public class ChatService implements ChatUseCase {
 
         return List.copyOf(messages.subList(messages.size() - max, messages.size()));
 
+    }
+
+    /**
+     * Obrigatório após {@code cancel_appointment} concluir com sucesso: liberta listas de horário, mapa opção→ID e
+     * {@code waiting_for_cancellation_choice} na sessão HTTP (ThreadLocal).
+     */
+    public static void resetContext() {
+        SchedulingToolContext.resetContext();
+    }
+
+    /**
+     * Encerra o modo cancelamento no pedido actual (ThreadLocal): mapa opção→ID e flag «à espera de escolha». Chame após
+     * {@code cancel_appointment} (sucesso ou falha) para não deixar resíduos a bloquear {@code check_availability} no
+     * mesmo processamento. O histórico persistido é tratado em {@link #chat(ChatCommand)} (reinício de agendamento /
+     * intenção cancelar).
+     */
+    public static void clearCancellationContext(String conversationId) {
+        SchedulingToolContext.resetContext();
+        LOG.info(
+                "[ContextReset] Estado de cancelamento (ThreadLocal) limpo para a conversa {}",
+                conversationId == null || conversationId.isBlank() ? "?" : conversationId.strip());
     }
 
 }

@@ -32,6 +32,12 @@ public final class RagSystemPromptComposer {
 
     private static final String SCHEDULING_POLICY =
             "Agendamento: você tem permissão para agendar serviços. Separação estrita de ferramentas: "
+                    + "Intenção CANCELAR (cancelar, desmarcar, anular agendamento): está PROIBIDO chamar check_availability "
+                    + "(ferramenta que lista horários livres / disponibilidade). Nesse caso o único fluxo permitido é "
+                    + "get_active_appointments e, quando aplicável, cancel_appointment — nunca simule ou invente um ID. "
+                    + "Assim que o utilizador mencionar cancelar ou desmarcar, chame get_active_appointments neste turno e "
+                    + "mostre a lista de agendamentos activos — não peça permissão para «ver a lista» ou «mostrar os "
+                    + "compromissos»; apresente-os de imediato. "
                     + "(1) Se o utilizador pergunta «quais horários», «tem vaga», disponibilidade ou equivalente, "
                     + "chame APENAS check_availability com a data em yyyy-MM-DD — NUNCA chame create_appointment nesse turno. "
                     + "(2) Você está PROIBIDO de chamar create_appointment se o usuário enviar apenas um número. "
@@ -46,12 +52,27 @@ public final class RagSystemPromptComposer {
                     + "Antes de check_availability, a data deve ser hoje ou futura no fuso do calendário; se o dia já "
                     + "passou, explique com cordialidade — sem mensagens técnicas nem prefixos tipo \"Erro:\". "
                     + "Nunca copie para o cliente texto interno de ferramentas, códigos ou avisos que pareçam log. "
+                    + "Não reproduza na mensagem ao cliente instruções para o sistema (ex.: «Chame create_appointment», "
+                    + "«check_availability», nomes de ferramentas em inglês, ou frases como «O cliente confirmou o "
+                    + "agendamento» seguidas de parâmetros técnicos): fale só em linguagem natural com o cliente. "
                     + "Após check_availability com horários, o backend envia ao WhatsApp uma lista formatada (números/opções); "
                     + "você está PROIBIDO de repetir essa lista em texto na sua resposta. Seja sucinto: uma frase curta e "
                     + "cordial. Se check_availability indicar que não há vagas, confirme com cordialidade e ofereça outro dia. "
                     + "Se o histórico contiver [slot_date:yyyy-MM-DD] na última mensagem do assistente, use EXACTAMENTE essa "
                     + "data no parâmetro date de create_appointment — não use «hoje», amanhã inferido do relógio, nem outra "
-                    + "data do contexto.";
+                    + "data do contexto. "
+                    + "Cancelamento: primeiro get_active_appointments. A lista devolvida pela ferramenta já mostra o ID da "
+                    + "base (número antes do nome do serviço) — use esse número no texto ao cliente; não invente outro. "
+                    + "Se o utilizador escolher um número ou «opção N» (mapeado na sessão), execute IMEDIATAMENTE "
+                    + "cancel_appointment com esse valor, sem pedir mais confirmações nem repetir a lista. Quando o cliente "
+                    + "disser o ID (ex.: «2») ou «opção 2», passe esse valor a cancel_appointment — o sistema resolve para a "
+                    + "linha correcta. "
+                    + "Não peça o telefone outra vez se o contacto da sessão WhatsApp já for conhecido — o parâmetro contact "
+                    + "pode ser vazio ou o número do canal. Se cancel_appointment devolver erro, repita ao cliente o motivo real "
+                    + "(ex.: ID não encontrado), sem pedir telefone em loop. "
+                    + "Se perguntou se o cliente quer ver a lista de agendamentos e o cliente responde «sim», «sí», «ok» ou "
+                    + "equivalente, invoque get_active_appointments nesse mesmo turno — não responda só com texto sem chamar a "
+                    + "ferramenta.";
 
     private RagSystemPromptComposer() {}
 
@@ -67,6 +88,7 @@ public final class RagSystemPromptComposer {
                 hasPriorConversationTurns,
                 resumeAfterHumanIntervention,
                 false,
+                null,
                 null,
                 null);
     }
@@ -85,6 +107,7 @@ public final class RagSystemPromptComposer {
                 resumeAfterHumanIntervention,
                 false,
                 null,
+                null,
                 crmContext);
     }
 
@@ -100,6 +123,7 @@ public final class RagSystemPromptComposer {
                 hasPriorConversationTurns,
                 resumeAfterHumanIntervention,
                 schedulingToolsEnabled,
+                null,
                 null,
                 null);
     }
@@ -120,11 +144,14 @@ public final class RagSystemPromptComposer {
                 hasPriorConversationTurns,
                 resumeAfterHumanIntervention,
                 schedulingToolsEnabled,
+                null,
                 schedulingTemporalContext,
                 null);
     }
 
     /**
+     * @param schedulingTemporalAttentionBanner linha curta no topo (ex.: {@link #schedulingTemporalAttentionBanner})
+     * @param schedulingTemporalContext parágrafo com data/hora de referência (ex.: {@link #schedulingTemporalAnchor})
      * @param crmContext dados do cliente para personalização (pode ser null)
      */
     public static String compose(
@@ -133,10 +160,16 @@ public final class RagSystemPromptComposer {
             boolean hasPriorConversationTurns,
             boolean resumeAfterHumanIntervention,
             boolean schedulingToolsEnabled,
+            String schedulingTemporalAttentionBanner,
             String schedulingTemporalContext,
             String crmContext) {
         String personality = systemPrompt != null ? systemPrompt : "";
         StringBuilder sb = new StringBuilder();
+        if (schedulingToolsEnabled
+                && schedulingTemporalAttentionBanner != null
+                && !schedulingTemporalAttentionBanner.isBlank()) {
+            sb.append(schedulingTemporalAttentionBanner.strip()).append("\n\n");
+        }
         sb.append("Instrução de Personalidade: ")
                 .append(personality)
                 .append(".\n\n");
@@ -165,7 +198,43 @@ public final class RagSystemPromptComposer {
     }
 
     /**
+     * Frase curta no início do system prompt (com ferramentas de calendário): hoje, dia da semana em português e
+     * «amanhã» como data explícita no fuso do calendário.
+     */
+    public static String schedulingTemporalAttentionBanner(ZoneId zone) {
+        Objects.requireNonNull(zone, "zone");
+        ZonedDateTime now = ZonedDateTime.now(zone);
+        LocalDate today = now.toLocalDate();
+        LocalDate tomorrow = today.plusDays(1);
+        Locale ptBr = Locale.forLanguageTag("pt-BR");
+        String weekday =
+                capitalizeFirstAsciiLetter(today.format(DateTimeFormatter.ofPattern("EEEE", ptBr)));
+        String currentDatePtBr = today.format(DateTimeFormatter.ofPattern("dd/MM/yyyy", ptBr));
+        String tomorrowIso = tomorrow.format(DateTimeFormatter.ISO_LOCAL_DATE);
+        String tomorrowPtBr = tomorrow.format(DateTimeFormatter.ofPattern("dd/MM/yyyy", ptBr));
+        return "Atenção: Hoje é "
+                + currentDatePtBr
+                + " ("
+                + weekday
+                + "). Qualquer menção a amanhã deve ser rigorosamente "
+                + tomorrowIso
+                + " ("
+                + tomorrowPtBr
+                + ").";
+    }
+
+    private static String capitalizeFirstAsciiLetter(String s) {
+        if (s == null || s.isEmpty()) {
+            return s;
+        }
+        return Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+
+    /**
      * Data/hora atuais no fuso do calendário — o modelo deve usar isto como "hoje" e para o ano em datas sem ano.
+     * <p>O valor de {@code current_date=} e de «Hoje é dd/MM/yyyy» é sempre {@link ZonedDateTime#now(ZoneId)} neste
+     * fuso no momento do pedido (nunca uma data fixa em código); «amanhã» no prompt é explicitamente HOJE+1 com essa
+     * mesma referência.
      */
     public static String schedulingTemporalAnchor(ZoneId zone) {
         Objects.requireNonNull(zone, "zone");
@@ -176,8 +245,17 @@ public final class RagSystemPromptComposer {
                 now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.ROOT));
         String hojeEh =
                 today.format(DateTimeFormatter.ofPattern("EEEE, yyyy-MM-dd", Locale.ENGLISH));
+        String currentDateIso = today.format(DateTimeFormatter.ISO_LOCAL_DATE);
+        String currentDatePtBr =
+                today.format(DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.forLanguageTag("pt-BR")));
         LocalDate tomorrow = today.plusDays(1);
-        return "HOJE_EH (fixo neste pedido; verdade absoluta): "
+        return "Obrigatório: Hoje é "
+                + currentDatePtBr
+                + " (current_date="
+                + currentDateIso
+                + "). Calcule datas relativas (amanhã, próxima quarta-feira, etc.) estritamente a partir desta data; "
+                + "não use outro dia como «hoje» nem datas inferidas de contexto antigo.\n\n"
+                + "HOJE_EH (fixo neste pedido; verdade absoluta): "
                 + hojeEh
                 + ". "
                 + "Instrução crítica: se o utilizador pedir «amanhã», calcule matematicamente a data como HOJE + 1 dia no "

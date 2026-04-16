@@ -3,6 +3,8 @@ package com.atendimento.cerebro.application.scheduling;
 import java.text.Normalizer;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -80,12 +82,18 @@ public final class SchedulingCalendarUserIntent {
         return v;
     }
 
-    /** Verifica se a linha de disponibilidade contém a mesma data ISO pedida (mock e Google usam formatos semelhantes). */
+    private static final DateTimeFormatter PT_BR_FULL =
+            DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.forLanguageTag("pt-BR"));
+
+    /**
+     * Verifica se a linha de disponibilidade contém a data pedida (ISO yyyy-MM-dd ou apresentação pt-BR dd/MM/yyyy).
+     */
     public static boolean availabilityLineMatchesRequestedDate(String calendarLine, LocalDate requestedDay) {
         if (calendarLine == null || requestedDay == null) {
             return false;
         }
-        String iso = requestedDay.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
-        return calendarLine.contains(iso);
+        String iso = requestedDay.format(DateTimeFormatter.ISO_LOCAL_DATE);
+        String ptBr = requestedDay.format(PT_BR_FULL);
+        return calendarLine.contains(iso) || calendarLine.contains(ptBr);
     }
 }

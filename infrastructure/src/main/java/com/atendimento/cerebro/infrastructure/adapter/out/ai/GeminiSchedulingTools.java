@@ -4,11 +4,19 @@ package com.atendimento.cerebro.infrastructure.adapter.out.ai;
 
 import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
 
+import com.atendimento.cerebro.application.scheduling.AppointmentCalendarValidationResult;
+import com.atendimento.cerebro.application.scheduling.CancelOptionMap;
 import com.atendimento.cerebro.application.scheduling.AppointmentConfirmationDetails;
 import com.atendimento.cerebro.application.scheduling.SchedulingCreateAppointmentResult;
 import com.atendimento.cerebro.application.scheduling.SchedulingCalendarUserIntent;
 import com.atendimento.cerebro.application.scheduling.SchedulingEnforcedChoice;
+import com.atendimento.cerebro.application.scheduling.SchedulingCancelSessionCapture;
 import com.atendimento.cerebro.application.scheduling.SchedulingSlotCapture;
+import com.atendimento.cerebro.application.scheduling.SchedulingUserReplyNormalizer;
+import com.atendimento.cerebro.application.scheduling.ToolCreateAppointmentPreparation;
+import com.atendimento.cerebro.application.service.AppointmentService;
+import com.atendimento.cerebro.application.service.AppointmentValidationService;
+import com.atendimento.cerebro.application.service.ChatService;
 
 import com.atendimento.cerebro.domain.tenant.TenantId;
 
@@ -23,12 +31,14 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 
 import java.time.format.DateTimeFormatter;
-
 import java.time.format.DateTimeParseException;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -51,7 +61,7 @@ import org.springframework.ai.tool.annotation.ToolParam;
  * local; com {@code mock=false} a implementação é {@code GoogleCalendarAppointmentSchedulingService}, que chama
  * {@link com.atendimento.cerebro.infrastructure.calendar.GoogleCalendarService} (escopo {@code calendar.events},
  * fuso {@link com.atendimento.cerebro.infrastructure.calendar.GoogleCalendarService#CALENDAR_ZONE}). O texto de sucesso
- * inclui o {@code htmlLink} do evento para o agente confirmar ao cliente.
+ * para o modelo não inclui URL do Google Calendar (o cliente não deve receber esse link).
  */
 public class GeminiSchedulingTools {
 
@@ -87,6 +97,10 @@ public class GeminiSchedulingTools {
 
     private final AppointmentSchedulingPort scheduling;
 
+    private final AppointmentValidationService appointmentValidationService;
+
+    private final AppointmentService appointmentService;
+
     private final ZoneId calendarZone;
 
     private final String latestUserMessage;
@@ -101,6 +115,9 @@ public class GeminiSchedulingTools {
 
     private final boolean blockCreateAppointment;
 
+    /** Data do último {@code [slot_date:…]} no histórico — alinha {@code create_appointment} ao dia da lista. */
+    private final Optional<LocalDate> schedulingSlotAnchorDate;
+
 
 
     /**
@@ -112,6 +129,9 @@ public class GeminiSchedulingTools {
      */
 
     private final AtomicInteger toolInvocationCount = new AtomicInteger(0);
+
+    /** {@code true} após qualquer entrada em {@link #create_appointment} (modelo ou fallback no adaptador). */
+    private final AtomicBoolean createAppointmentInvoked = new AtomicBoolean(false);
 
     /** Preenchido quando {@link #create_appointment} persiste com sucesso; consumido pelo motor Gemini para o card WhatsApp. */
     private final AtomicReference<AppointmentConfirmationDetails> successfulAppointmentDetails =
@@ -127,6 +147,10 @@ public class GeminiSchedulingTools {
 
             AppointmentSchedulingPort scheduling,
 
+            AppointmentValidationService appointmentValidationService,
+
+            AppointmentService appointmentService,
+
             ZoneId calendarZone,
 
             String latestUserMessage,
@@ -135,13 +159,19 @@ public class GeminiSchedulingTools {
 
             Optional<SchedulingEnforcedChoice> enforcedChoiceFromBackend,
 
-            boolean blockCreateAppointment) {
+            boolean blockCreateAppointment,
+
+            Optional<LocalDate> schedulingSlotAnchorDate) {
 
         this.tenantId = tenantId;
 
         this.conversationId = conversationId;
 
         this.scheduling = scheduling;
+
+        this.appointmentValidationService = Objects.requireNonNull(appointmentValidationService, "appointmentValidationService");
+
+        this.appointmentService = Objects.requireNonNull(appointmentService, "appointmentService");
 
         this.calendarZone = calendarZone != null ? calendarZone : ZoneId.systemDefault();
 
@@ -153,6 +183,8 @@ public class GeminiSchedulingTools {
 
         this.blockCreateAppointment = blockCreateAppointment;
 
+        this.schedulingSlotAnchorDate = schedulingSlotAnchorDate != null ? schedulingSlotAnchorDate : Optional.empty();
+
     }
 
 
@@ -163,6 +195,11 @@ public class GeminiSchedulingTools {
 
         return toolInvocationCount.get();
 
+    }
+
+    /** Indica se {@link #create_appointment} foi invocado neste pedido (incluindo chamada programática do adaptador). */
+    public boolean createAppointmentWasInvoked() {
+        return createAppointmentInvoked.get();
     }
 
     /**
@@ -198,6 +235,12 @@ public class GeminiSchedulingTools {
     public String check_availability(@ToolParam(description = "Data no formato yyyy-MM-DD") String date) {
 
         toolInvocationCount.incrementAndGet();
+
+        if (SchedulingUserReplyNormalizer.shouldRefuseAvailabilityBecauseCancelIntent(
+                transcriptForServiceHint, latestUserMessage)) {
+            return "Não chame check_availability quando o cliente quer cancelar ou desmarcar. Use get_active_appointments; "
+                    + "não liste horários livres.";
+        }
 
         LOG.info("Ferramenta check_availability tenant={} date={}", tenantId.value(), date);
 
@@ -369,6 +412,17 @@ public class GeminiSchedulingTools {
             @ToolParam(description = "Nome do serviço") String service) {
 
         toolInvocationCount.incrementAndGet();
+        createAppointmentInvoked.set(true);
+
+        String cancelCreateBlob =
+                transcriptForServiceHint.isBlank()
+                        ? latestUserMessage
+                        : transcriptForServiceHint + "\n" + latestUserMessage;
+        if (!enforcedChoiceFromBackend.isPresent()
+                && SchedulingUserReplyNormalizer.looksLikeCancellationIntent(cancelCreateBlob)) {
+            return "Não chame create_appointment: a conversa indica cancelamento. Use get_active_appointments e, se aplicável, "
+                    + "cancel_appointment.";
+        }
 
         if (blockCreateAppointment) {
 
@@ -392,15 +446,38 @@ public class GeminiSchedulingTools {
 
         }
 
+        String transcriptBlob =
+                transcriptForServiceHint.isBlank()
+                        ? latestUserMessage
+                        : transcriptForServiceHint + "\n" + latestUserMessage;
+        ToolCreateAppointmentPreparation prep =
+                appointmentValidationService.prepareGeminiToolCreateAppointment(
+                        date,
+                        time,
+                        enforcedChoiceFromBackend,
+                        schedulingSlotAnchorDate,
+                        latestUserMessage,
+                        transcriptBlob);
+        if (!prep.ok()) {
+            LOG.warn(
+                    "create_appointment: validação pré-calendário falhou tenant={} msg={}",
+                    tenantId.value(),
+                    prep.messageForGemini());
+            return prep.messageForGemini();
+        }
         if (enforcedChoiceFromBackend.isPresent()) {
             SchedulingEnforcedChoice r = enforcedChoiceFromBackend.get();
-            date = r.date().format(ISO_DATE);
-            time = r.timeHhMm();
             LOG.info(
                     "create_appointment: parâmetros fixados pelo backend (lista + slot_date) tenant={} date={} time={}",
                     tenantId.value(),
-                    date,
-                    time);
+                    prep.dateIso(),
+                    prep.timeHhMm());
+        }
+        AppointmentCalendarValidationResult validated =
+                appointmentValidationService.validateIsoDateAndTimeForCalendar(
+                        prep.dateIso(), prep.timeHhMm(), calendarZone);
+        if (!validated.valid()) {
+            return validated.userMessage();
         }
 
         LOG.info(
@@ -409,24 +486,25 @@ public class GeminiSchedulingTools {
 
                 tenantId.value(),
 
-                date,
+                prep.dateIso(),
 
-                time,
+                prep.timeHhMm(),
 
                 client_name,
 
                 service);
 
-        String result = scheduling.createAppointment(tenantId, date, time, client_name, service, conversationId);
+        String result =
+                scheduling.createAppointment(
+                        tenantId, prep.dateIso(), prep.timeHhMm(), client_name, service, conversationId);
         if (SchedulingCreateAppointmentResult.isSuccess(result)) {
             try {
-                LocalDate day = LocalDate.parse(date.strip(), ISO_DATE);
                 successfulAppointmentDetails.set(
                         new AppointmentConfirmationDetails(
                                 service != null ? service.strip() : "",
                                 client_name != null ? client_name.strip() : "",
-                                day,
-                                time != null ? time.strip() : ""));
+                                validated.day(),
+                                prep.timeHhMm()));
             } catch (Exception e) {
                 LOG.warn("Não foi possível guardar dados para o card de confirmação: {}", e.toString());
             }
@@ -435,7 +513,54 @@ public class GeminiSchedulingTools {
 
     }
 
+    @Tool(
+            name = "get_active_appointments",
+            description =
+                    "Lista agendamentos com estado AGENDADO para o número/contacto desta conversa. Cada linha começa com "
+                            + "o ID da base (PK) antes do serviço. Se houver mais de um, o assistente deve mostrar a lista "
+                            + "ao cliente antes de cancelar. Chame antes de cancel_appointment quando o cliente quiser "
+                            + "cancelar e ainda não houver id escolhido.")
+    public String get_active_appointments() {
+        toolInvocationCount.incrementAndGet();
+        String listed = appointmentService.getActiveAppointments(tenantId, conversationId, calendarZone);
+        Map<Integer, Long> optionMap = CancelOptionMap.parseLastFromText(listed);
+        if (!optionMap.isEmpty()) {
+            SchedulingCancelSessionCapture.setOptionToAppointmentId(optionMap);
+            SchedulingCancelSessionCapture.setWaitingForCancellationChoice(true);
+        } else {
+            SchedulingCancelSessionCapture.setWaitingForCancellationChoice(false);
+        }
+        return listed;
+    }
 
+    @Tool(
+            name = "cancel_appointment",
+            description =
+                    "Cancela o agendamento. Passe appointment_id = ID mostrado na lista (número antes do serviço), ou "
+                            + "«opção N» quando o mapa da sessão mapeia N para um ID. O backend também resolve a partir do "
+                            + "apêndice [cancel_option_map:…] no histórico. O parâmetro contact é opcional no WhatsApp.")
+    public String cancel_appointment(
+            @ToolParam(
+                            description =
+                                    "Opcional nesta sessão se appointment_id vier da lista; telefone do WhatsApp ou e-mail "
+                                            + "do CRM. Pode ser vazio.")
+                    String contact,
+            @ToolParam(
+                            description =
+                                    "ID numérico da lista (PK antes do serviço), ou «opção N», ou valor resolvido pelo mapa — "
+                                            + "contra get_active_appointments nesta conversa.")
+                    String appointment_id) {
+        toolInvocationCount.incrementAndGet();
+        String c = contact == null ? "" : contact;
+        String blobForCancel =
+                transcriptForServiceHint.isBlank()
+                        ? latestUserMessage
+                        : transcriptForServiceHint + "\n" + latestUserMessage;
+        String resolved = CancelOptionMap.resolveAppointmentIdForCancel(appointment_id, blobForCancel);
+        String result = appointmentService.cancelAppointment(tenantId, conversationId, c, resolved, calendarZone);
+        ChatService.clearCancellationContext(conversationId);
+        return result;
+    }
 
     private static boolean isAvailabilityListingQuery(String raw) {
 

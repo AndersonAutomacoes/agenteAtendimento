@@ -24,4 +24,13 @@ public interface AppointmentSchedulingPort {
             String clientName,
             String serviceName,
             String conversationId);
+
+    /**
+     * Remove o evento no calendário externo. Erros fatais (ex.: I/O) devem propagar para não marcar cancelamento na base.
+     *
+     * @return {@code true} se o evento foi removido ou ignorado de forma segura (ex.: id mock); {@code false} se não foi
+     *     possível sincronizar (ex.: {@code googleEventId} vazio ou tenant sem calendário configurado na implementação
+     *     Google).
+     */
+    boolean deleteCalendarEvent(TenantId tenantId, String googleEventId);
 }

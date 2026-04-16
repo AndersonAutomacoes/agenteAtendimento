@@ -52,7 +52,16 @@ class RagSystemPromptComposerTest {
         assertThat(text)
                 .contains("check_availability")
                 .contains("create_appointment")
-                .contains("PROIBIDO de chamar create_appointment se o usuário enviar apenas um número");
+                .contains("cancel_appointment")
+                .contains("get_active_appointments")
+                .contains("PROIBIDO chamar check_availability")
+                .contains("PROIBIDO de chamar create_appointment se o usuário enviar apenas um número")
+                .contains("perguntou se o cliente quer ver a lista")
+                .contains("motivo real")
+                .contains("Não peça o telefone outra vez")
+                .contains("não peça permissão")
+                .contains("lista devolvida pela ferramenta")
+                .contains("IMEDIATAMENTE");
     }
 
     @Test
@@ -67,8 +76,34 @@ class RagSystemPromptComposerTest {
     }
 
     @Test
+    void schedulingTemporalAttentionBanner_listsTodayWeekdayAndTomorrowIso() {
+        String banner = RagSystemPromptComposer.schedulingTemporalAttentionBanner(ZoneId.of("UTC"));
+        assertThat(banner)
+                .startsWith("Atenção: Hoje é")
+                .contains("Qualquer menção a amanhã deve ser rigorosamente")
+                .matches("(?s).*\\d{4}-\\d{2}-\\d{2}.*");
+    }
+
+    @Test
+    void compose_whenSchedulingWithTemporalBanner_prependsBeforePersona() {
+        String banner = "Atenção: Hoje é 01/01/2026 (teste).";
+        String anchor = RagSystemPromptComposer.schedulingTemporalAnchor(ZoneId.of("UTC"));
+        String text = RagSystemPromptComposer.compose("x", List.of(), false, false, true, banner, anchor, null);
+        assertThat(text)
+                .startsWith("Atenção: Hoje é 01/01/2026 (teste).\n\nInstrução de Personalidade:")
+                .contains("Referência temporal");
+    }
+
+    @Test
     void schedulingTemporalAnchor_listsZoneAndHintsYear() {
         String anchor = RagSystemPromptComposer.schedulingTemporalAnchor(ZoneId.of("America/Sao_Paulo"));
-        assertThat(anchor).contains("America/Sao_Paulo").contains("yyyy-MM-DD").contains("HOJE_EH").contains("amanhã");
+        assertThat(anchor)
+                .contains("America/Sao_Paulo")
+                .contains("yyyy-MM-DD")
+                .contains("HOJE_EH")
+                .contains("amanhã")
+                .contains("Obrigatório")
+                .contains("current_date")
+                .contains("estritamente");
     }
 }

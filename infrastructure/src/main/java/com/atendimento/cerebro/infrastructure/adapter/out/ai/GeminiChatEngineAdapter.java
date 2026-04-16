@@ -5,9 +5,18 @@ import com.atendimento.cerebro.application.dto.AICompletionResponse;
 import com.atendimento.cerebro.application.dto.WhatsAppInteractiveReply;
 import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
 import com.atendimento.cerebro.application.scheduling.AppointmentConfirmationCardFormatter;
+import com.atendimento.cerebro.application.service.AppointmentService;
+import com.atendimento.cerebro.application.service.AppointmentValidationService;
+import com.atendimento.cerebro.application.service.ChatService;
 import com.atendimento.cerebro.application.scheduling.AppointmentConfirmationDetails;
+import com.atendimento.cerebro.application.scheduling.CancelOptionMap;
+import com.atendimento.cerebro.application.scheduling.SchedulingCancelSessionCapture;
 import com.atendimento.cerebro.application.scheduling.SchedulingSlotCapture;
+import com.atendimento.cerebro.application.scheduling.SchedulingEnforcedChoice;
+import com.atendimento.cerebro.application.scheduling.SchedulingToolContext;
+import com.atendimento.cerebro.application.scheduling.SchedulingUserReplyNormalizer;
 import com.atendimento.cerebro.domain.conversation.Message;
+import com.atendimento.cerebro.domain.conversation.MessageRole;
 import com.atendimento.cerebro.domain.conversation.SenderType;
 import com.atendimento.cerebro.infrastructure.config.CerebroAppointmentConfirmationProperties;
 import com.atendimento.cerebro.infrastructure.config.CerebroGoogleCalendarProperties;
@@ -17,7 +26,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,14 +61,56 @@ public class GeminiChatEngineAdapter {
                     + "data (ex.: 13/04 ou 2026-04-13) para marcar, invoque APENAS check_availability com a data em "
                     + "yyyy-MM-DD (respeitando o dia e mês que o cliente indicou). "
                     + "NÃO invoque create_appointment neste turno. create_appointment só quando o cliente escolheu um "
-                    + "horário concreto (ou confirmou um horário já listado) noutro turno.";
+                    + "horário concreto (ou confirmou um horário já listado) noutro turno. "
+                    + "Cancelar: NÃO invoque check_availability. Use get_active_appointments; se vários itens, o cliente "
+                    + "deve escolher; depois cancel_appointment com o ID mostrado antes do serviço na lista (ou «opção N» "
+                    + "se o mapa da sessão usar esse formato).";
+
+    /**
+     * Prefixo injetado no system prompt quando o transcript sugere gestão/cancelamento — obriga a ferramenta antes de
+     * texto solto.
+     */
+    private static final String SCHEDULING_CANCEL_SYSTEM_PREFIX =
+            "[Gestão de agendamentos existentes] O utilizador deseja gerir agendamentos (cancelar, ver ou remover "
+                    + "compromissos). Você DEVE invocar a ferramenta get_active_appointments para listar os compromissos "
+                    + "AGENDADO deste contacto antes de qualquer outra ação de calendário. "
+                    + "Não peça permissão para «mostrar a lista» ou «ver os agendamentos»: assim que o cliente mencionar "
+                    + "cancelar/desmarcar (ou equivalente), apresente os agendamentos activos de imediato via "
+                    + "get_active_appointments, sem perguntar se pode listar. "
+                    + "Se o assistente perguntou se o cliente quer ver a lista e o cliente respondeu «sim», «sí», «ok» ou "
+                    + "equivalente, invoque get_active_appointments imediatamente neste turno — não responda apenas com "
+                    + "texto sem chamar a ferramenta. "
+                    + "Não invoque check_availability nem create_appointment até a lista ou o cancelamento estarem tratados."
+                    + "\n\n";
+
+    /** Reforço quando o histórico sugere cancelar/excluir/remover — sem pedir disponibilidade ao calendário. */
+    private static final String SCHEDULING_CANCEL_TOOL_RETRY_SUFFIX =
+            "\n\n[Reforço do sistema] O utilizador ou o histórico indicam cancelar, excluir ou remover um agendamento. "
+                    + "Invoque APENAS get_active_appointments (e depois cancel_appointment com o ID da lista ou "
+                    + "«opção N»). NÃO invoque check_availability nem create_appointment neste turno. "
+                    + "Se a mensagem actual for só confirmação («sim», «ok») para ver a lista, chame get_active_appointments "
+                    + "neste turno, sem resposta só em texto.";
 
     private static final Pattern SHORT_SCHEDULING_CONFIRM =
             Pattern.compile("^(sim|sí|ok|confirmado|confirmo|pode|isso|perfeito|fechado)[.!\\s]*$", Pattern.CASE_INSENSITIVE);
 
+    /** Resposta só com o ID numérico da lista de cancelamento (ex.: «2», «1234», «opção 2») — forçar {@code cancel_appointment} no servidor. */
+    private static final Pattern BARE_CANCEL_OPTION_INDEX = Pattern.compile("^\\d{1,19}$");
+
+    private static final Pattern BARE_CANCEL_OPCAO =
+            Pattern.compile("^(?:op(ç|c)ão|opcao)\\s*\\d{1,19}$", Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern CRM_CLIENT_NAME =
+            Pattern.compile("Nome do cliente:\\s*([^\\.\\n]+)", Pattern.CASE_INSENSITIVE);
+    /** Texto injectado por {@link ChatService#buildCrmContextForPrompt} — último serviço registado no CRM. */
+    private static final Pattern CRM_LAST_SERVICE =
+            Pattern.compile("servi[cç]o\\s*\"([^\"]+)\"", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+
     private final GoogleGenAiChatModel chatModel;
     private final String chatModelName;
     private final AppointmentSchedulingPort appointmentSchedulingPort;
+    private final AppointmentValidationService appointmentValidationService;
+    private final AppointmentService appointmentService;
     private final CerebroGoogleCalendarProperties calendarProperties;
 
     private final CerebroAppointmentConfirmationProperties appointmentConfirmationProperties;
@@ -66,11 +119,15 @@ public class GeminiChatEngineAdapter {
             @Qualifier("googleGenAiChatModel") GoogleGenAiChatModel chatModel,
             @Value("${spring.ai.google.genai.chat.options.model:gemini-1.5-flash}") String chatModelName,
             AppointmentSchedulingPort appointmentSchedulingPort,
+            AppointmentValidationService appointmentValidationService,
+            AppointmentService appointmentService,
             CerebroGoogleCalendarProperties calendarProperties,
             CerebroAppointmentConfirmationProperties appointmentConfirmationProperties) {
         this.chatModel = chatModel;
         this.chatModelName = chatModelName != null && !chatModelName.isBlank() ? chatModelName : DEFAULT_MODEL;
         this.appointmentSchedulingPort = appointmentSchedulingPort;
+        this.appointmentValidationService = appointmentValidationService;
+        this.appointmentService = appointmentService;
         this.calendarProperties = calendarProperties;
         this.appointmentConfirmationProperties = appointmentConfirmationProperties;
     }
@@ -80,29 +137,58 @@ public class GeminiChatEngineAdapter {
 
         if (request.schedulingToolsEnabled()) {
             ZoneId calendarZone = ZoneId.of(calendarProperties.getZone());
+            boolean cancelContext = schedulingCancellationOrListManagementContext(request);
+            String schedulingSystemContent =
+                    cancelContext ? SCHEDULING_CANCEL_SYSTEM_PREFIX + systemContent : systemContent;
             try {
-                SchedulingSlotCapture.clear();
+                SchedulingToolContext.resetContext();
+                Optional<AICompletionResponse> directCancel =
+                        tryDirectCancellationWithoutGemini(request, calendarZone);
+                if (directCancel.isPresent()) {
+                    return directCancel.get();
+                }
+                Optional<AICompletionResponse> directCreate =
+                        tryDirectCreateAppointmentWithoutGemini(request, calendarZone);
+                if (directCreate.isPresent()) {
+                    return directCreate.get();
+                }
                 GeminiSchedulingTools tools =
                         new GeminiSchedulingTools(
                                 request.tenantId(),
                                 request.conversationId(),
                                 appointmentSchedulingPort,
+                                appointmentValidationService,
+                                appointmentService,
                                 calendarZone,
                                 request.userMessage(),
                                 mergeRecentTranscriptForDate(request),
                                 request.schedulingEnforcedChoice(),
-                                request.schedulingBlockCreateAppointment());
-                ChatClientResponse clientResponse = invokeSchedulingChat(systemContent, request, tools);
+                                request.schedulingBlockCreateAppointment(),
+                                request.schedulingSlotAnchorDate());
+                ChatClientResponse clientResponse = invokeSchedulingChat(schedulingSystemContent, request, tools);
                 int afterFirst = tools.schedulingToolInvocationCount();
-                if (afterFirst == 0 && likelySchedulingOrConfirmationTurn(request.userMessage())) {
+                // non-null após execução programática de get_active_appointments (valor pode ser vazio)
+                String cancelFlowListingResult = null;
+                if (afterFirst == 0 && cancelContext) {
                     LOG.warn(
-                            "Gemini (agendamento): nenhuma ferramenta executada (Java) na 1ª tentativa (tenant={}); a repetir com reforço.",
+                            "Gemini (agendamento): cancelContext sem ferramentas na 1ª tentativa (tenant={}); "
+                                    + "a executar get_active_appointments no servidor (sem segunda chamada ao modelo).",
                             request.tenantId().value());
-                    clientResponse = invokeSchedulingChat(systemContent + SCHEDULING_TOOL_RETRY_SUFFIX, request, tools);
+                    cancelFlowListingResult = tools.get_active_appointments();
+                } else if (afterFirst == 0 && likelySchedulingOrConfirmationTurn(request.userMessage())) {
+                    boolean cancelTranscript = schedulingCancellationOrListManagementContext(request);
+                    String retrySuffix =
+                            cancelTranscript ? SCHEDULING_CANCEL_TOOL_RETRY_SUFFIX : SCHEDULING_TOOL_RETRY_SUFFIX;
+                    LOG.warn(
+                            "Gemini (agendamento): nenhuma ferramenta executada (Java) na 1ª tentativa (tenant={}); "
+                                    + "a repetir com reforço (cancelContext={}).",
+                            request.tenantId().value(),
+                            cancelTranscript);
+                    clientResponse = invokeSchedulingChat(schedulingSystemContent + retrySuffix, request, tools);
                     if (tools.schedulingToolInvocationCount() == 0) {
                         LOG.warn(
                                 "Gemini (agendamento): após reforço ainda sem execução de ferramentas (tenant={}). "
-                                        + "O modelo não chamou check_availability/create_appointment; teste GEMINI_CHAT_MODEL=gemini-2.0-flash ou gemini-1.5-flash.",
+                                        + "O modelo não chamou check_availability/create_appointment/cancel_appointment; teste GEMINI_CHAT_MODEL=gemini-2.0-flash ou gemini-1.5-flash.",
                                 request.tenantId().value());
                     }
                 } else if (afterFirst == 0) {
@@ -112,6 +198,34 @@ public class GeminiChatEngineAdapter {
                 }
                 maybeBackfillAvailabilityFromCalendar(request, calendarZone);
                 String content = textFromChatResponse(clientResponse.chatResponse());
+                content =
+                        applyProgrammaticCreateIfEnforcedChoiceIgnored(
+                                request, tools, cancelContext, content);
+                // Fallback se o modelo respondeu só em texto sem ferramentas (a via principal é tryDirectCancellationWithoutGemini).
+                if (shouldForceProgrammaticCancelAppointment(request)
+                        && tools.schedulingToolInvocationCount() == 0) {
+                    LOG.info(
+                            "Gemini (agendamento): fallback pós-modelo — cancel_appointment após lista (tenant={})",
+                            request.tenantId().value());
+                    String um = request.userMessage() != null ? request.userMessage().strip() : "";
+                    String forced = tools.cancel_appointment("", um);
+                    if (forced != null && !forced.isBlank()) {
+                        content = forced.strip();
+                    }
+                    if (AppointmentService.isSuccessfulCancellationReply(content)) {
+                        ChatService.clearCancellationContext(request.conversationId());
+                        LOG.info(
+                                "Gemini (agendamento): cancelamento concluído (fallback) — fluxo de cancelamento encerrado "
+                                        + "(tenant={})",
+                                request.tenantId().value());
+                    }
+                }
+                if (cancelFlowListingResult != null) {
+                    String listing = cancelFlowListingResult.strip();
+                    if (!listing.isBlank()) {
+                        content = listing;
+                    }
+                }
                 if (!SchedulingSlotCapture.peekSlotTimes().isEmpty()) {
                     content =
                             enrichShortVerificandoReply(
@@ -139,18 +253,37 @@ public class GeminiChatEngineAdapter {
                                     d.date(),
                                     d.timeHhMm(),
                                     appointmentConfirmationProperties.getLocationLine());
-                    String base = content == null ? "" : content.strip();
+                    String base =
+                            AppointmentConfirmationCardFormatter.stripFormattedConfirmationCards(
+                                    content == null ? "" : content.strip());
                     content = base.isBlank() ? card : base + "\n\n" + card;
                     extraOutbound = mapsFollowUpMessages(appointmentConfirmationProperties.getMapsUrl());
                 }
                 if (content.isBlank()) {
-                    throw new IllegalStateException("Resposta vazia do modelo de chat");
+                    if (cancelContext) {
+                        if (cancelFlowListingResult == null) {
+                            LOG.warn(
+                                    "Gemini (agendamento): resposta vazia do modelo em contexto de cancelamento/gestão; "
+                                            + "a obter lista via get_active_appointments (tenant={})",
+                                    request.tenantId().value());
+                            String listed = tools.get_active_appointments();
+                            content = listed != null && !listed.isBlank() ? listed.strip() : "";
+                        }
+                        if (content.isBlank()) {
+                            content =
+                                    "Não foi possível obter a lista de agendamentos neste momento. Peça ao cliente para "
+                                            + "tentar de novo em instantes.";
+                        }
+                    } else {
+                        throw new IllegalStateException("Resposta vazia do modelo de chat");
+                    }
                 }
+                content = ensureCancelOptionMapOnAssistantText(content);
                 Optional<WhatsAppInteractiveReply> interactive =
                         SchedulingSlotCapture.takeWhatsAppInteractive(content, calendarZone);
                 return new AICompletionResponse(content, interactive, extraOutbound);
             } finally {
-                SchedulingSlotCapture.clear();
+                SchedulingToolContext.resetContext();
             }
         }
 
@@ -278,6 +411,24 @@ public class GeminiChatEngineAdapter {
                 || (t.matches("(?s).*(verific|consult).*(dispon|disponibil|agend).*") && t.length() < 160);
     }
 
+    /**
+     * Garante que o texto persistido contém {@code [cancel_option_map:…]} quando a ferramenta preencheu o mapa na
+     * sessão — o modelo por vezes parafraseia sem o apêndice e o número mostrado deixava de mapear para o ID na base.
+     */
+    private static String ensureCancelOptionMapOnAssistantText(String content) {
+        if (content == null || content.isBlank()) {
+            return content;
+        }
+        if (content.contains(CancelOptionMap.APPENDIX_PREFIX)) {
+            return content;
+        }
+        Map<Integer, Long> map = SchedulingCancelSessionCapture.getSelectionMap();
+        if (map.isEmpty()) {
+            return content;
+        }
+        return content.strip() + CancelOptionMap.buildAppendix(map);
+    }
+
     private static String textFromChatResponse(ChatResponse response) {
         if (response == null || response.getResult() == null || response.getResult().getOutput() == null) {
             return "";
@@ -289,6 +440,64 @@ public class GeminiChatEngineAdapter {
     private static List<String> mapsFollowUpMessages(String mapsUrl) {
         String m = AppointmentConfirmationCardFormatter.formatMapsFollowUp(mapsUrl);
         return m.isBlank() ? List.of() : List.of(m);
+    }
+
+    /**
+     * Quando o backend já fixou data/hora ({@link AICompletionRequest#schedulingEnforcedChoice}) mas o modelo não
+     * invocou {@code create_appointment} (resposta vazia ou só texto), cria o evento no servidor para não
+     * apresentar «agendamento criado» sem persistência.
+     */
+    private static String applyProgrammaticCreateIfEnforcedChoiceIgnored(
+            AICompletionRequest request,
+            GeminiSchedulingTools tools,
+            boolean cancelContext,
+            String modelContent) {
+        if (cancelContext
+                || tools.createAppointmentWasInvoked()
+                || request.schedulingBlockCreateAppointment()
+                || request.schedulingEnforcedChoice().isEmpty()) {
+            return modelContent;
+        }
+        SchedulingEnforcedChoice choice = request.schedulingEnforcedChoice().get();
+        String iso = choice.date().format(DateTimeFormatter.ISO_LOCAL_DATE);
+        String time = choice.timeHhMm();
+        String client = parseClientNameFromCrmContext(request.crmContext()).orElse("Cliente");
+        String service = parseServiceNameFromCrmContext(request.crmContext()).orElse("Serviço");
+        LOG.warn(
+                "Gemini (agendamento): create_appointment no servidor — o modelo não invocou a ferramenta apesar de "
+                        + "data/hora fixadas pelo backend (tenant={} date={} time={})",
+                request.tenantId().value(),
+                iso,
+                time);
+        String result = tools.create_appointment(iso, time, client, service);
+        if (result != null && !result.isBlank()) {
+            return result.strip();
+        }
+        return modelContent;
+    }
+
+    private static Optional<String> parseClientNameFromCrmContext(String crm) {
+        if (crm == null || crm.isBlank()) {
+            return Optional.empty();
+        }
+        Matcher m = CRM_CLIENT_NAME.matcher(crm);
+        if (m.find()) {
+            String s = m.group(1).strip();
+            return s.isEmpty() ? Optional.empty() : Optional.of(s);
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<String> parseServiceNameFromCrmContext(String crm) {
+        if (crm == null || crm.isBlank()) {
+            return Optional.empty();
+        }
+        Matcher m = CRM_LAST_SERVICE.matcher(crm);
+        if (m.find()) {
+            String s = m.group(1).strip();
+            return s.isEmpty() ? Optional.empty() : Optional.of(s);
+        }
+        return Optional.empty();
     }
 
     /**
@@ -319,10 +528,12 @@ public class GeminiChatEngineAdapter {
     }
 
     private String buildSystemContent(AICompletionRequest request) {
+        ZoneId zone = ZoneId.of(calendarProperties.getZone());
+        String schedulingBanner = null;
         String schedulingAnchor = null;
         if (request.schedulingToolsEnabled()) {
-            schedulingAnchor =
-                    RagSystemPromptComposer.schedulingTemporalAnchor(ZoneId.of(calendarProperties.getZone()));
+            schedulingBanner = RagSystemPromptComposer.schedulingTemporalAttentionBanner(zone);
+            schedulingAnchor = RagSystemPromptComposer.schedulingTemporalAnchor(zone);
         }
         return RagSystemPromptComposer.compose(
                 request.systemPrompt(),
@@ -330,6 +541,7 @@ public class GeminiChatEngineAdapter {
                 !request.conversationHistory().isEmpty(),
                 request.resumeAfterHumanIntervention(),
                 request.schedulingToolsEnabled(),
+                schedulingBanner,
                 schedulingAnchor,
                 request.crmContext());
     }
@@ -351,6 +563,12 @@ public class GeminiChatEngineAdapter {
      */
     private void maybeBackfillAvailabilityFromCalendar(AICompletionRequest request, ZoneId calendarZone) {
         if (!request.schedulingToolsEnabled()) {
+            return;
+        }
+        if (transcriptSuggestsCancellation(request)) {
+            LOG.debug(
+                    "Agendamento backfill omitido: histórico/mensagem sugerem cancelar/excluir/remover (tenant={})",
+                    request.tenantId().value());
             return;
         }
         if (!SchedulingSlotCapture.peekSlotTimes().isEmpty()) {
@@ -420,6 +638,234 @@ public class GeminiChatEngineAdapter {
         }
         sb.append(request.userMessage());
         return sb.toString();
+    }
+
+    /** Histórico completo + mensagem atual (para deteção de cancelamento e bloqueio de backfill de disponibilidade). */
+    private static String mergeConversationTranscriptForTools(AICompletionRequest request) {
+        StringBuilder sb = new StringBuilder();
+        if (!CollectionUtils.isEmpty(request.conversationHistory())) {
+            for (Message m : request.conversationHistory()) {
+                sb.append(m.content()).append('\n');
+            }
+        }
+        if (request.userMessage() != null) {
+            sb.append(request.userMessage());
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Transcript para classificar intenção de cancelamento: ignora tudo antes da última confirmação de cancelamento
+     * bem-sucedido, para não manter palavras antigas («cancelar») a forçar {@code cancelContext} após novo pedido.
+     */
+    private static String mergeConversationTranscriptForCancellationScoring(AICompletionRequest request) {
+        List<Message> h = request.conversationHistory();
+        if (h == null) {
+            h = List.of();
+        }
+        int cut = SchedulingUserReplyNormalizer.indexOfLastAssistantSuccessfulCancellation(h);
+        if (cut < 0) {
+            return mergeConversationTranscriptForTools(request);
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int j = cut + 1; j < h.size(); j++) {
+            sb.append(h.get(j).content()).append('\n');
+        }
+        if (request.userMessage() != null) {
+            sb.append(request.userMessage());
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Histórico + mensagem atual sugerem cancelar/excluir/remover — bloqueia backfill {@code events.list} e escolhe o
+     * sufixo de reforço adequado. Exposto ao pacote para testes.
+     */
+    static boolean transcriptSuggestsCancellation(AICompletionRequest request) {
+        if (request.schedulingEnforcedChoice().isPresent()) {
+            return false;
+        }
+        if (request.userMessage() != null
+                && SchedulingUserReplyNormalizer.looksLikeSchedulingRestartIntent(request.userMessage())) {
+            return false;
+        }
+        return SchedulingUserReplyNormalizer.looksLikeCancellationInBlob(
+                mergeConversationTranscriptForCancellationScoring(request));
+    }
+
+    /**
+     * O modelo devolveu só texto sem ferramentas, mas o cliente enviou o ID da lista de cancelamento (só dígitos ou
+     * «opção N») e o último assistente mostrou a lista — o adaptador deve invocar {@code cancel_appointment} no servidor.
+     */
+    static boolean shouldForceProgrammaticCancelAppointment(AICompletionRequest request) {
+        if (request == null || request.userMessage() == null) {
+            return false;
+        }
+        String um = request.userMessage().strip();
+        if (um.isEmpty()) {
+            return false;
+        }
+        if (!BARE_CANCEL_OPTION_INDEX.matcher(um).matches() && !BARE_CANCEL_OPCAO.matcher(um).matches()) {
+            return false;
+        }
+        return SchedulingUserReplyNormalizer.lastAssistantSuggestedAppointmentCancellation(request.conversationHistory());
+    }
+
+    /**
+     * Cliente escolheu só o ID numérico ou «opção N» após a lista de cancelamento — resolve o ID, chama
+     * {@link AppointmentService#cancelAppointment} directamente (sem Gemini). A mensagem devolvida só é de sucesso depois
+     * de {@code deleteCalendarEvent} e gravação na base em {@code cancelAppointment}.
+     */
+    private Optional<AICompletionResponse> tryDirectCancellationWithoutGemini(
+            AICompletionRequest request, ZoneId calendarZone) {
+        if (!shouldForceProgrammaticCancelAppointment(request)) {
+            return Optional.empty();
+        }
+        String convId = request.conversationId();
+        if (convId == null || convId.isBlank()) {
+            return Optional.empty();
+        }
+        String um = request.userMessage() != null ? request.userMessage().strip() : "";
+        String blob = mergeConversationTranscriptForTools(request);
+        String resolved = CancelOptionMap.resolveAppointmentIdForCancel(um, blob);
+        LOG.info(
+                "Gemini (agendamento): intercepção de ID da lista — cancelamento directo sem chamada ao modelo (tenant={} "
+                        + "entrada={} appointmentIdResolvido={})",
+                request.tenantId().value(),
+                um,
+                resolved);
+        String outcome =
+                appointmentService.cancelAppointment(request.tenantId(), convId, "", resolved, calendarZone);
+        ChatService.clearCancellationContext(convId);
+        if (AppointmentService.isSuccessfulCancellationReply(outcome)) {
+            LOG.info(
+                    "Gemini (agendamento): cancelamento concluído no calendário e na base — fluxo de cancelamento "
+                            + "encerrado (tenant={})",
+                    request.tenantId().value());
+        }
+        return Optional.of(new AICompletionResponse(outcome != null ? outcome.strip() : ""));
+    }
+
+    /**
+     * Quando o {@link ChatService} já expandiu «sim» para a instrução de confirmação com data/hora fixadas, cria o
+     * compromisso sem chamar o Gemini — evita respostas só em texto, confusão com cancelamento e falta de persistência.
+     */
+    private Optional<AICompletionResponse> tryDirectCreateAppointmentWithoutGemini(
+            AICompletionRequest request, ZoneId calendarZone) {
+        if (!SchedulingUserReplyNormalizer.isBackendCreateConfirmationInstruction(request.userMessage())) {
+            return Optional.empty();
+        }
+        if (request.schedulingEnforcedChoice().isEmpty() || request.schedulingBlockCreateAppointment()) {
+            return Optional.empty();
+        }
+        LOG.info(
+                "Gemini (agendamento): confirmação com data/hora fixadas — create_appointment directo sem modelo (tenant={})",
+                request.tenantId().value());
+        GeminiSchedulingTools tools =
+                new GeminiSchedulingTools(
+                        request.tenantId(),
+                        request.conversationId(),
+                        appointmentSchedulingPort,
+                        appointmentValidationService,
+                        appointmentService,
+                        calendarZone,
+                        request.userMessage(),
+                        mergeRecentTranscriptForDate(request),
+                        request.schedulingEnforcedChoice(),
+                        request.schedulingBlockCreateAppointment(),
+                        request.schedulingSlotAnchorDate());
+        SchedulingEnforcedChoice choice = request.schedulingEnforcedChoice().get();
+        String iso = choice.date().format(DateTimeFormatter.ISO_LOCAL_DATE);
+        String time = choice.timeHhMm();
+        String client = parseClientNameFromCrmContext(request.crmContext()).orElse("Cliente");
+        String service = parseServiceNameFromCrmContext(request.crmContext()).orElse("Serviço");
+        String result = tools.create_appointment(iso, time, client, service);
+        String content = result != null ? result.strip() : "";
+        List<String> extraOutbound = List.of();
+        Optional<AppointmentConfirmationDetails> confirmation = tools.takeSuccessfulAppointmentDetails();
+        if (confirmation.isPresent()) {
+            AppointmentConfirmationDetails d = confirmation.get();
+            String card =
+                    AppointmentConfirmationCardFormatter.formatConfirmationCard(
+                            d.serviceName(),
+                            d.clientDisplayName(),
+                            d.date(),
+                            d.timeHhMm(),
+                            appointmentConfirmationProperties.getLocationLine());
+            String base =
+                    AppointmentConfirmationCardFormatter.stripFormattedConfirmationCards(
+                            content == null ? "" : content.strip());
+            content = base.isBlank() ? card : base + "\n\n" + card;
+            extraOutbound = mapsFollowUpMessages(appointmentConfirmationProperties.getMapsUrl());
+        }
+        if (content.isBlank()) {
+            throw new IllegalStateException("Resposta vazia após create_appointment directo");
+        }
+        content = ensureCancelOptionMapOnAssistantText(content);
+        Optional<WhatsAppInteractiveReply> interactive =
+                SchedulingSlotCapture.takeWhatsAppInteractive(content, calendarZone);
+        return Optional.of(new AICompletionResponse(content, interactive, extraOutbound));
+    }
+
+    /**
+     * Contexto em que o fluxo é gerir/cancelar agendamentos existentes: palavras de cancelamento no transcript ou
+     * confirmação curta («sim») depois do assistente ter pedido lista / falado em cancelar ou agendamentos AGENDADO.
+     */
+    static boolean schedulingCancellationOrListManagementContext(AICompletionRequest request) {
+        if (request.schedulingEnforcedChoice().isPresent()) {
+            // Confirmação com data/hora fixadas pelo backend (ex.: «sim» após «Posso confirmar o agendamento?»).
+            // Não tratar como fluxo de cancelamento — senão get_active_appointments substitui a resposta e o evento não é criado.
+            return false;
+        }
+        if (request.userMessage() != null
+                && SchedulingUserReplyNormalizer.looksLikeSchedulingRestartIntent(request.userMessage())) {
+            return false;
+        }
+        if (transcriptSuggestsCancellation(request)) {
+            return true;
+        }
+        return shortConfirmAfterAssistantListOrCancelPrompt(request);
+    }
+
+    private static boolean shortConfirmAfterAssistantListOrCancelPrompt(AICompletionRequest request) {
+        String um = request.userMessage();
+        if (um == null || um.isBlank()) {
+            return false;
+        }
+        String stripped = um.strip();
+        if (stripped.length() > 24 || !SHORT_SCHEDULING_CONFIRM.matcher(stripped).matches()) {
+            return false;
+        }
+        List<Message> h = request.conversationHistory();
+        if (h == null || h.isEmpty()) {
+            return false;
+        }
+        for (int i = h.size() - 1; i >= 0; i--) {
+            Message m = h.get(i);
+            if (m.role() != MessageRole.ASSISTANT) {
+                continue;
+            }
+            String raw = m.content();
+            if (raw != null && raw.contains(SchedulingUserReplyNormalizer.SCHEDULING_DRAFT_APPENDIX_TOKEN)) {
+                return false;
+            }
+            String c = raw.toLowerCase(Locale.ROOT);
+            if (c.contains("posso confirmar") && c.contains("agendamento")) {
+                return false;
+            }
+            return c.contains("cancelar")
+                    || c.contains("cancelamento")
+                    || c.contains("desmarcar")
+                    || c.contains("agendamentos agendado")
+                    || c.contains("cancel_option_map")
+                    || c.contains("appointmentid=")
+                    || c.contains("ver a lista")
+                    || c.contains("lista de agendamento")
+                    || (c.contains("listar") && (c.contains("agendamento") || c.contains("compromisso")))
+                    || c.contains("qual deseja cancelar")
+                    || c.contains("quer cancelar");
+        }
+        return false;
     }
 
     /** Pedido de listagem de horários / disponibilidade (não confirmação curta). */

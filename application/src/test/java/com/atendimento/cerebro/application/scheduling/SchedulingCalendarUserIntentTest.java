@@ -31,10 +31,13 @@ class SchedulingCalendarUserIntentTest {
 
     @Test
     void availabilityLineMatchesRequestedDate() {
-        String line = "Calendário (simulado): x. Horários livres em 2026-04-14 (America/Sao_Paulo): 09:00, 10:00";
-        assertThat(SchedulingCalendarUserIntent.availabilityLineMatchesRequestedDate(line, LocalDate.of(2026, 4, 14)))
+        String linePt = "Calendário (simulado): x. Horários livres em 14/04/2026 (America/Sao_Paulo): 09:00, 10:00";
+        assertThat(SchedulingCalendarUserIntent.availabilityLineMatchesRequestedDate(linePt, LocalDate.of(2026, 4, 14)))
                 .isTrue();
-        assertThat(SchedulingCalendarUserIntent.availabilityLineMatchesRequestedDate(line, LocalDate.of(2026, 4, 17)))
+        assertThat(SchedulingCalendarUserIntent.availabilityLineMatchesRequestedDate(linePt, LocalDate.of(2026, 4, 17)))
                 .isFalse();
+        String lineIso = "Calendário (simulado): x. Horários livres em 2026-04-14 (America/Sao_Paulo): 09:00, 10:00";
+        assertThat(SchedulingCalendarUserIntent.availabilityLineMatchesRequestedDate(lineIso, LocalDate.of(2026, 4, 14)))
+                .isTrue();
     }
 }

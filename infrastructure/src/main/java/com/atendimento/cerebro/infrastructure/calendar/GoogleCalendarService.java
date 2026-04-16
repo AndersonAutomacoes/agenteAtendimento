@@ -1,5 +1,6 @@
 package com.atendimento.cerebro.infrastructure.calendar;
 
+import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.util.DateTime;
@@ -23,6 +24,8 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -43,7 +46,7 @@ public class GoogleCalendarService {
 
     private static final Logger LOG = LoggerFactory.getLogger(GoogleCalendarService.class);
 
-    public static final ZoneId CALENDAR_ZONE = ZoneId.of("America/Sao_Paulo");
+    public static final ZoneId CALENDAR_ZONE = ZoneId.of("America/Bahia");
 
     public static final int DEFAULT_EVENT_DURATION_MINUTES = 30;
 
@@ -162,8 +165,10 @@ public class GoogleCalendarService {
         if (calendarId == null || calendarId.isBlank()) {
             throw new IllegalArgumentException("calendarId is required");
         }
-        Instant startInstant = start.atZone(CALENDAR_ZONE).toInstant();
-        Instant endInstant = startInstant.plusSeconds(durationMinutes * 60L);
+        ZonedDateTime startZoned = ZonedDateTime.of(start, CALENDAR_ZONE);
+        Instant startInstant = startZoned.toInstant();
+        ZonedDateTime endZoned = startZoned.plusMinutes(durationMinutes);
+        Instant endInstant = endZoned.toInstant();
 
         String normalizedCalendarId = calendarId.strip();
         Event event =
@@ -180,11 +185,11 @@ public class GoogleCalendarService {
                         .setTimeZone(CALENDAR_ZONE.getId()));
 
         LOG.info(
-                "Google Calendar API: events.insert preparado calendarId={} summary={} startInstant={} endInstant={} durationMinutes={}",
+                "Google Calendar API: events.insert preparado calendarId={} summary={} startZoned={} endZoned={} durationMinutes={}",
                 normalizedCalendarId,
                 summary,
-                startInstant,
-                endInstant,
+                startZoned,
+                endZoned,
                 durationMinutes);
 
         Calendar.Events.Insert insertRequest = calendar().events().insert(normalizedCalendarId, event);
@@ -234,6 +239,137 @@ public class GoogleCalendarService {
                 calendarId,
                 n);
         return out;
+    }
+
+    /**
+     * Apaga o evento no calendário. Após {@code delete}, confirma com {@code get} que o evento deixou de estar activo
+     * (404/410 ou estado {@code cancelled}) antes de considerar concluído — evita confirmar ao cliente sem remoção real.
+     *
+     * <p>404 no {@code delete} trata-se como idempotência (já inexistente neste calendário); ainda assim verifica-se com
+     * {@code get}.
+     */
+    public void deleteEvent(String calendarId, String eventId) throws IOException {
+        if (calendarId == null || calendarId.isBlank() || eventId == null || eventId.isBlank()) {
+            throw new IllegalArgumentException("calendarId and eventId are required");
+        }
+        String cal = calendarId.strip();
+        String eid = eventId.strip();
+        try {
+            calendar().events().delete(cal, eid).execute();
+            LOG.info("Google Calendar: delete execute() OK calendarId={} eventId={}", cal, eid);
+        } catch (GoogleJsonResponseException e) {
+            if (e.getStatusCode() == 404) {
+                LOG.debug("Google Calendar: delete devolveu 404 (já inexistente) calendarId={} eventId={}", cal, eid);
+            } else {
+                throw e;
+            }
+        }
+        verifyEventNoLongerActiveOrAbsent(cal, eid);
+    }
+
+    /**
+     * Garante que o evento não aparece como confirmado após delete. 404/410 = ausente; {@code status=cancelled} = aceite.
+     */
+    private void verifyEventNoLongerActiveOrAbsent(String calendarId, String eventId) throws IOException {
+        try {
+            Event ev = calendar().events().get(calendarId, eventId).execute();
+            if (ev != null) {
+                String st = ev.getStatus();
+                if (st != null && "cancelled".equalsIgnoreCase(st)) {
+                    LOG.debug("Google Calendar: verificação pós-delete — evento em estado cancelled id={}", eventId);
+                    return;
+                }
+                LOG.error(
+                        "Google Calendar: verificação pós-delete falhou — evento ainda activo calendarId={} eventId={} status={}",
+                        calendarId,
+                        eventId,
+                        st);
+                throw new IOException(
+                        "Google Calendar: o evento continua activo após delete (eventId=" + eventId + ", status=" + st + ")");
+            }
+        } catch (GoogleJsonResponseException e) {
+            int code = e.getStatusCode();
+            if (code == 404 || code == 410) {
+                LOG.info(
+                        "Google Calendar: verificação pós-delete OK (evento ausente) calendarId={} eventId={} http={}",
+                        calendarId,
+                        eventId,
+                        code);
+                return;
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Eventos não cancelados cuja interseção com {@code [startInclusive, endExclusive)} não é vazia (evita duplicidade
+     * antes de {@link #createEvent}).
+     */
+    public List<Event> findEventsOverlapping(Instant startInclusive, Instant endExclusive, String calendarId)
+            throws Exception {
+        if (calendarId == null || calendarId.isBlank()) {
+            throw new IllegalArgumentException("calendarId is required");
+        }
+        if (startInclusive == null || endExclusive == null || !endExclusive.isAfter(startInclusive)) {
+            throw new IllegalArgumentException("invalid interval");
+        }
+        String cal = calendarId.strip();
+        DateTime tMin = new DateTime(startInclusive.toEpochMilli());
+        DateTime tMax = new DateTime(endExclusive.toEpochMilli());
+        Events batch = listEvents(cal, tMin, tMax);
+        List<Event> out = new ArrayList<>();
+        if (batch.getItems() == null) {
+            return List.of();
+        }
+        for (Event ev : batch.getItems()) {
+            if (ev == null) {
+                continue;
+            }
+            if (ev.getStatus() != null && "cancelled".equalsIgnoreCase(ev.getStatus())) {
+                continue;
+            }
+            Instant es = eventStartInstant(ev);
+            Instant ee = eventEndInstant(ev);
+            if (es == null || ee == null || !ee.isAfter(es)) {
+                continue;
+            }
+            if (intervalsOverlap(startInclusive, endExclusive, es, ee)) {
+                out.add(ev);
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    private static boolean intervalsOverlap(Instant aStart, Instant aEnd, Instant bStart, Instant bEnd) {
+        return aStart.isBefore(bEnd) && bStart.isBefore(aEnd);
+    }
+
+    private static Instant eventStartInstant(Event ev) {
+        var edt = ev.getStart();
+        if (edt == null) {
+            return null;
+        }
+        if (edt.getDateTime() != null) {
+            return Instant.ofEpochMilli(edt.getDateTime().getValue());
+        }
+        if (edt.getDate() != null) {
+            return Instant.ofEpochMilli(edt.getDate().getValue());
+        }
+        return null;
+    }
+
+    private static Instant eventEndInstant(Event ev) {
+        var edt = ev.getEnd();
+        if (edt == null) {
+            return null;
+        }
+        if (edt.getDateTime() != null) {
+            return Instant.ofEpochMilli(edt.getDateTime().getValue());
+        }
+        if (edt.getDate() != null) {
+            return Instant.ofEpochMilli(edt.getDate().getValue());
+        }
+        return null;
     }
 
     private void ensureClientLoaded() throws IOException {

@@ -20,10 +20,10 @@ class WhatsAppOutboundRoutesMirrorTextTest {
         assertThat(t)
                 .startsWith("📅")
                 .contains("13/04")
-                .contains("1️⃣ 09:00")
-                .contains("2️⃣ 10:30")
-                .contains("3️⃣ 14:00")
-                .contains("4️⃣ 16:30")
+                .contains("1) 09:00")
+                .contains("2) 10:30")
+                .contains("3) 14:00")
+                .contains("4) 16:30")
                 .contains(SchedulingSlotCapture.SLOT_LIST_FOOTER_PT);
     }
 }

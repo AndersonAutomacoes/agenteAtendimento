@@ -20,7 +20,7 @@ public class CerebroGoogleCalendarProperties {
     /** Recurso no classpath (ex.: {@code credentials.json} em {@code src/main/resources} do módulo que arranca a app). */
     private String credentialsClasspath = "credentials.json";
 
-    private String zone = "America/Sao_Paulo";
+    private String zone = "America/Bahia";
     private int slotMinutes = 30;
     private int workStartHour = 9;
     private int workEndHour = 18;

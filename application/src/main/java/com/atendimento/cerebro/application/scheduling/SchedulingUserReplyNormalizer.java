@@ -1,5 +1,6 @@
 package com.atendimento.cerebro.application.scheduling;
 
+import com.atendimento.cerebro.application.service.AppointmentService;
 import com.atendimento.cerebro.domain.conversation.Message;
 import com.atendimento.cerebro.domain.conversation.MessageRole;
 import com.atendimento.cerebro.domain.conversation.SenderType;
@@ -47,9 +48,48 @@ public final class SchedulingUserReplyNormalizer {
                     "^(sim|sí|confirmo|confirmado|pode|ok|isso|perfeito|fechado|pode\\s+ser|pode\\s+confirmar)\\b[.!\\s]*$",
                     Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
+    private static final Pattern LOOSE_BR_DATE =
+            Pattern.compile("\\d{1,2}/\\d{1,2}(?:/\\d{2,4})?");
+
     private static final DateTimeFormatter PT_BR_DAY = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.forLanguageTag("pt-BR"));
 
     private SchedulingUserReplyNormalizer() {}
+
+    /** Índice 1…N quando a mensagem é só dígitos ou «opção N». */
+    public static Optional<Integer> tryParseOptionIndexFromUserMessage(String userMessage) {
+        if (userMessage == null || userMessage.isBlank()) {
+            return Optional.empty();
+        }
+        String n = userMessage.strip();
+        Matcher solo = SOLO_DIGITS.matcher(n);
+        if (solo.matches()) {
+            return Optional.of(Integer.parseInt(solo.group(1)));
+        }
+        Matcher op = OPCAO.matcher(n);
+        if (op.find()) {
+            return Optional.of(Integer.parseInt(op.group(1)));
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Extrai a última lista {@code [slot_options:…]} de um texto (ex.: transcript), na ordem em que foi mostrada ao
+     * cliente.
+     */
+    public static List<String> parseLastSlotOptionsFromTranscript(String text) {
+        if (text == null || !text.contains(SLOT_OPTIONS_APPENDIX_TOKEN)) {
+            return List.of();
+        }
+        String last = null;
+        Matcher mat = APPENDIX_ANY.matcher(text);
+        while (mat.find()) {
+            last = mat.group(1);
+        }
+        if (last == null) {
+            return List.of();
+        }
+        return splitOptions(last);
+    }
 
     public static String appendSlotOptionsAppendix(String content, List<String> orderedSlotTimes) {
         if (content == null || orderedSlotTimes == null || orderedSlotTimes.isEmpty()) {
@@ -77,15 +117,33 @@ public final class SchedulingUserReplyNormalizer {
         return base + "\n" + SLOT_DATE_APPENDIX_TOKEN + iso + "]";
     }
 
-    /** Remove o apêndice interno antes de expor o texto a operadores ou APIs de histórico. */
-    public static String stripInternalSlotAppendix(String content) {
+    /**
+     * Remove só marcações de agendamento por slots (mantém {@code [cancel_option_map:…]} — necessário na sessão até
+     * cancelar).
+     */
+    public static String stripSlotSchedulingStateOnly(String content) {
         if (content == null || content.isBlank()) {
             return content;
         }
         String s = content;
-        s = s.replaceAll("(?s)\\n*\\n\\[slot_options:[^\\]]+\\]", "");
-        s = s.replaceAll("(?s)\\n*\\[slot_date:[^\\]]+\\]", "");
-        s = s.replaceAll("(?s)\\n*\\n\\[scheduling_draft:[^\\]]+\\]", "");
+        s = s.replaceAll("(?s)\\[slot_options:[^\\]]+\\]", "");
+        s = s.replaceAll("(?s)\\[slot_date:[^\\]]+\\]", "");
+        s = s.replaceAll("(?s)\\[scheduling_draft:[^\\]]+\\]", "");
+        s = s.replaceAll("(?s)\\*{1,2}\\s*\\n*\\s*\\*{1,2}", "");
+        s = s.replaceAll("(?s)\\n{3,}", "\n\n");
+        return s.strip();
+    }
+
+    /**
+     * Remove apêndices internos antes de expor texto ao cliente (WhatsApp). Inclui {@code [cancel_option_map:…]}.
+     */
+    public static String stripInternalSlotAppendix(String content) {
+        if (content == null || content.isBlank()) {
+            return content;
+        }
+        String s = stripSlotSchedulingStateOnly(content);
+        s = s.replaceAll("(?is)\\[cancel_option_map:[^\\]]+\\]", "");
+        s = s.replaceAll("(?s)\\n{3,}", "\n\n");
         return s.strip();
     }
 
@@ -112,6 +170,15 @@ public final class SchedulingUserReplyNormalizer {
         }
         String normalized =
                 Normalizer.normalize(userMessage == null ? "" : userMessage.strip(), Normalizer.Form.NFKC);
+
+        if (tryParseOptionIndexFromUserMessage(normalized).isPresent()
+                && lastAssistantSuggestedAppointmentCancellation(history)) {
+            return SlotChoiceExpansion.unchanged(userMessage);
+        }
+
+        if (looksLikeConfirmation(normalized) && lastAssistantSuggestedAppointmentCancellation(history)) {
+            return SlotChoiceExpansion.unchanged(userMessage);
+        }
 
         Optional<SchedulingEnforcedChoice> draftInHist = parseLastDraftFromHistory(history);
         if (draftInHist.isPresent() && looksLikeConfirmation(normalized)) {
@@ -207,6 +274,10 @@ public final class SchedulingUserReplyNormalizer {
         return new SlotChoiceExpansion(expanded, Optional.of(choice), Optional.empty(), false, Optional.empty(), 0);
     }
 
+    /**
+     * Rascunho na mensagem mais recente do assistente (bot) que ainda contém {@code [scheduling_draft:…]} — ignora
+     * mensagens bot posteriores sem esse token (ex.: reforço curto) e procura para trás até encontrar o rascunho.
+     */
     public static Optional<SchedulingEnforcedChoice> parseLastDraftFromHistory(List<Message> history) {
         if (history == null || history.isEmpty()) {
             return Optional.empty();
@@ -216,12 +287,26 @@ public final class SchedulingUserReplyNormalizer {
             if (m.role() != MessageRole.ASSISTANT || m.senderType() != SenderType.BOT) {
                 continue;
             }
-            Optional<SchedulingEnforcedChoice> d = extractDraftFromMessage(m.content());
-            if (d.isPresent()) {
-                return d;
+            String content = m.content();
+            if (content == null || !content.contains(SCHEDULING_DRAFT_APPENDIX_TOKEN)) {
+                continue;
             }
+            return extractDraftFromMessage(content);
         }
         return Optional.empty();
+    }
+
+    /**
+     * O {@link com.atendimento.cerebro.application.service.ChatService} substitui a mensagem do utilizador («sim») por
+     * esta instrução quando o backend já fixou data/hora após {@code [scheduling_draft:…]} — permite atalho sem chamada
+     * ao modelo.
+     */
+    public static boolean isBackendCreateConfirmationInstruction(String userMessage) {
+        if (userMessage == null || userMessage.isBlank()) {
+            return false;
+        }
+        String u = userMessage.strip();
+        return u.contains("O cliente confirmou o agendamento") && u.contains("create_appointment");
     }
 
     private static Optional<SchedulingEnforcedChoice> extractDraftFromMessage(String text) {
@@ -260,7 +345,8 @@ public final class SchedulingUserReplyNormalizer {
         return List.of();
     }
 
-    static Optional<LocalDate> parseLastSlotDateFromHistory(List<Message> history) {
+    /** Última data {@code [slot_date:yyyy-MM-DD]} nas mensagens do assistente (do mais recente ao mais antigo). */
+    public static Optional<LocalDate> parseLastSlotDateFromHistory(List<Message> history) {
         for (int i = history.size() - 1; i >= 0; i--) {
             Message m = history.get(i);
             if (m.role() != MessageRole.ASSISTANT || m.senderType() != SenderType.BOT) {
@@ -368,5 +454,264 @@ public final class SchedulingUserReplyNormalizer {
             return Optional.empty();
         }
         return Optional.of(options.get(oneBased - 1));
+    }
+
+    private static final Pattern CANCELLATION_INTENT =
+            Pattern.compile(
+                    "(?is).*(cancelar|cancela|cancelamento|desmarcar|desmarca|anular|anula|desagendar|desmarcação).*");
+
+    /**
+     * Parte do transcript após a última confirmação de cancelamento bem-sucedido — evita que «cancelar» antigo bloqueie
+     * {@code check_availability} quando o cliente já voltou a agendar.
+     */
+    public static String transcriptAfterLastCancellationSuccess(String blob) {
+        if (blob == null || blob.isBlank()) {
+            return "";
+        }
+        String p1 = AppointmentService.CANCELLATION_SUCCESS_MESSAGE_PREFIX;
+        String p2 = AppointmentService.CANCELLATION_ALREADY_CANCELLED_MESSAGE_PREFIX;
+        int i1 = blob.lastIndexOf(p1);
+        int i2 = blob.lastIndexOf(p2);
+        if (i1 < 0 && i2 < 0) {
+            return blob.strip();
+        }
+        if (i1 >= i2) {
+            return blob.substring(i1 + p1.length()).strip();
+        }
+        return blob.substring(i2 + p2.length()).strip();
+    }
+
+    /**
+     * Mensagem actual indica consulta de horário / data (mesmo que o histórico ainda mencione cancelamento antigo).
+     */
+    public static boolean userMessageOverridesCancelForAvailabilityCheck(String latestUserMessage) {
+        if (latestUserMessage == null || latestUserMessage.isBlank()) {
+            return false;
+        }
+        String s = latestUserMessage.strip();
+        if (looksLikeCancellationIntent(s)) {
+            return false;
+        }
+        if (looksLikeSchedulingRestartIntent(s)) {
+            return true;
+        }
+        if (TIME.matcher(s).find()) {
+            return true;
+        }
+        if (LOOSE_BR_DATE.matcher(s).find()) {
+            return true;
+        }
+        String n = Normalizer.normalize(s, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
+        if (n.contains("amanh") || n.contains("ananh")) {
+            return true;
+        }
+        if (n.contains("depois") && n.contains("amanh")) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Se {@code true}, a ferramenta {@code check_availability} não deve prosseguir — o cliente está a cancelar ou o
+     * contexto (cortado após último cancelamento concluído) ainda é só de cancelamento.
+     */
+    public static boolean shouldRefuseAvailabilityBecauseCancelIntent(String transcriptHint, String latestUserMessage) {
+        String latest = latestUserMessage == null ? "" : latestUserMessage.strip();
+        if (userMessageOverridesCancelForAvailabilityCheck(latest)) {
+            return false;
+        }
+        String blob =
+                transcriptHint == null || transcriptHint.isBlank()
+                        ? latest
+                        : transcriptHint.strip() + "\n" + latest;
+        if (looksLikeCancellationIntent(latest)) {
+            return true;
+        }
+        String scoped = transcriptAfterLastCancellationSuccess(blob);
+        return looksLikeCancellationInBlob(scoped);
+    }
+
+    /**
+     * Palavras-chave de cancelamento/exclusão em qualquer parte do texto (histórico + mensagem atual). Usado para
+     * bloquear fallbacks de disponibilidade quando a intenção não é marcar horário.
+     */
+    private static final Pattern CANCELLATION_ANYWHERE =
+            Pattern.compile(
+                    "(cancelar|cancelamento|cancela(ç|c)ão|desmarcar|desmarca|anular|anula|desagendar|desmarca(ç|c)ão|"
+                            + "excluir|exclus(ão|ao)|remover|remo(ç|c)ão)",
+                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+
+    /**
+     * Confirmações curtas (ex.: «sim») no fluxo de agendamento/cancelamento — não contar como «reinício» para marcar
+     * horário.
+     */
+    private static final Pattern SHORT_SCHEDULING_CONFIRM =
+            Pattern.compile("^(sim|sí|ok|confirmado|confirmo|pode|isso|perfeito|fechado)[.!\\s]*$", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * O utilizador voltou a pedir marcação de horário após um fluxo de cancelamento — sair do modo lista/cancelar e
+     * limpar apêndices internos do histórico enviado ao modelo.
+     */
+    public static boolean looksLikeSchedulingRestartIntent(String userMessage) {
+        if (userMessage == null || userMessage.isBlank()) {
+            return false;
+        }
+        String stripped = userMessage.strip();
+        if (looksLikeCancellationIntent(stripped)) {
+            return false;
+        }
+        if (stripped.length() <= 24 && SHORT_SCHEDULING_CONFIRM.matcher(stripped).matches()) {
+            return false;
+        }
+        String n = Normalizer.normalize(stripped, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
+        if (n.contains("desagendar")) {
+            return false;
+        }
+        if (Pattern.compile("\\b(agendar|reagendar)\\b").matcher(n).find()) {
+            return true;
+        }
+        if (Pattern.compile("\\bmarcar\\b").matcher(n).find()) {
+            return true;
+        }
+        if (n.contains("marcação") || n.contains("marcacao")) {
+            return true;
+        }
+        if (n.contains("horário") || n.contains("horario")) {
+            return true;
+        }
+        if (n.contains("dispon")) {
+            return true;
+        }
+        if (Pattern.compile("\\bvagas?\\b").matcher(n).find()) {
+            return true;
+        }
+        return n.contains("calend");
+    }
+
+    /**
+     * Indica que o utilizador pretende cancelar/desmarcar um agendamento (fluxo distinto de marcar horário).
+     */
+    public static boolean looksLikeCancellationIntent(String userMessage) {
+        if (userMessage == null || userMessage.isBlank()) {
+            return false;
+        }
+        return CANCELLATION_INTENT.matcher(userMessage.strip()).matches();
+    }
+
+    /**
+     * {@code true} se o texto (mensagem única ou bloco com histórico) contiver intenção de cancelar, excluir ou
+     * remover agendamento.
+     */
+    public static boolean looksLikeCancellationInBlob(String blob) {
+        if (blob == null || blob.isBlank()) {
+            return false;
+        }
+        String n = Normalizer.normalize(blob.strip(), Normalizer.Form.NFKC);
+        return CANCELLATION_ANYWHERE.matcher(n).find();
+    }
+
+    /**
+     * A última mensagem do assistente no histórico parece a lista devolvida por {@code get_active_appointments}
+     * (evita que «1» seja interpretado como escolha de horário de {@code check_availability}).
+     */
+    public static boolean lastAssistantSuggestedAppointmentCancellation(List<Message> history) {
+        if (history == null || history.isEmpty()) {
+            return false;
+        }
+        for (int i = history.size() - 1; i >= 0; i--) {
+            Message m = history.get(i);
+            if (m.role() != MessageRole.ASSISTANT) {
+                continue;
+            }
+            String c = m.content();
+            return c.contains(CancelOptionMap.APPENDIX_PREFIX)
+                    || c.contains("Agendamentos AGENDADO");
+        }
+        return false;
+    }
+
+    /**
+     * Confirmação de cancelamento efectivo no texto do assistente (usa {@code contains} para tolerar prefixos do
+     * modelo ou formatação antes da frase fixa de sucesso).
+     */
+    public static boolean assistantMessageIndicatesSuccessfulCancellation(String content) {
+        if (content == null || content.isBlank()) {
+            return false;
+        }
+        return content.contains(AppointmentService.CANCELLATION_SUCCESS_MESSAGE_PREFIX)
+                || content.contains(AppointmentService.CANCELLATION_ALREADY_CANCELLED_MESSAGE_PREFIX);
+    }
+
+    /**
+     * Índice da última mensagem do assistente que indica cancelamento concluído com sucesso; {@code -1} se não houver.
+     */
+    public static int indexOfLastAssistantSuccessfulCancellation(List<Message> history) {
+        if (history == null || history.isEmpty()) {
+            return -1;
+        }
+        for (int i = history.size() - 1; i >= 0; i--) {
+            Message m = history.get(i);
+            if (m.role() == MessageRole.ASSISTANT && assistantMessageIndicatesSuccessfulCancellation(m.content())) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * A última mensagem de assistente no histórico é confirmação de cancelamento bem-sucedido (ver
+     * {@link #assistantMessageIndicatesSuccessfulCancellation(String)}).
+     */
+    public static boolean lastAssistantMessageIndicatesSuccessfulCancellation(List<Message> history) {
+        if (history == null || history.isEmpty()) {
+            return false;
+        }
+        for (int i = history.size() - 1; i >= 0; i--) {
+            Message m = history.get(i);
+            if (m.role() != MessageRole.ASSISTANT) {
+                continue;
+            }
+            return assistantMessageIndicatesSuccessfulCancellation(m.content());
+        }
+        return false;
+    }
+
+    /**
+     * Remove {@code [slot_options:…]}, {@code [slot_date:…]} e {@code [scheduling_draft:…]} de cada mensagem (cópia
+     * nova) — usado quando o cliente pede cancelamento para não manter rascunho de novo agendamento na sessão.
+     * Preserva {@code [cancel_option_map:…]} para o modelo resolver opção → ID.
+     */
+    public static List<Message> stripSchedulingStateFromHistory(List<Message> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return messages;
+        }
+        List<Message> out = new ArrayList<>(messages.size());
+        for (Message m : messages) {
+            String stripped = stripSlotSchedulingStateOnly(m.content());
+            if (stripped == null || stripped.isBlank()) {
+                stripped = "…";
+            }
+            out.add(new Message(m.role(), stripped.strip(), m.timestamp(), m.senderType()));
+        }
+        return out;
+    }
+
+    /**
+     * Remove apêndices internos de agendamento e de cancelamento ({@code stripInternalSlotAppendix}) de cada mensagem —
+     * usado quando o cliente retoma o fluxo de marcar horário após tentativa de cancelamento.
+     */
+    public static List<Message> stripInternalAppendicesFromHistory(List<Message> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return messages;
+        }
+        List<Message> out = new ArrayList<>(messages.size());
+        for (Message m : messages) {
+            String stripped = stripInternalSlotAppendix(m.content());
+            if (stripped == null || stripped.isBlank()) {
+                stripped = "…";
+            }
+            out.add(new Message(m.role(), stripped.strip(), m.timestamp(), m.senderType()));
+        }
+        return out;
     }
 }

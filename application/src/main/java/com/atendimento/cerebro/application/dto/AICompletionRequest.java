@@ -12,6 +12,7 @@ import com.atendimento.cerebro.domain.knowledge.KnowledgeHit;
 
 import com.atendimento.cerebro.domain.tenant.TenantId;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -41,6 +42,8 @@ import java.util.Optional;
 
  *     confirmou após escolher número da lista).
 
+ * @param schedulingSlotAnchorDate data do último {@code [slot_date:…]} no histórico — validação contra o modelo.
+
  */
 
 public record AICompletionRequest(
@@ -67,7 +70,9 @@ public record AICompletionRequest(
 
         Optional<SchedulingEnforcedChoice> schedulingEnforcedChoice,
 
-        boolean schedulingBlockCreateAppointment) {
+        boolean schedulingBlockCreateAppointment,
+
+        Optional<LocalDate> schedulingSlotAnchorDate) {
 
 
 
@@ -109,7 +114,9 @@ public record AICompletionRequest(
 
                 Optional.empty(),
 
-                false);
+                false,
+
+                Optional.empty());
 
     }
 
@@ -155,7 +162,9 @@ public record AICompletionRequest(
 
                 Optional.empty(),
 
-                false);
+                false,
+
+                Optional.empty());
 
     }
 
@@ -202,6 +211,12 @@ public record AICompletionRequest(
         if (schedulingEnforcedChoice == null) {
 
             schedulingEnforcedChoice = Optional.empty();
+
+        }
+
+        if (schedulingSlotAnchorDate == null) {
+
+            schedulingSlotAnchorDate = Optional.empty();
 
         }
 

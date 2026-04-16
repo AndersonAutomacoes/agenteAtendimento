@@ -21,7 +21,7 @@ public final class SchedulingSlotCapture {
 
     /** Rodapé da lista “premium” (WhatsApp / reforço ao modelo). */
     public static final String SLOT_LIST_FOOTER_PT =
-            "Por favor, digite o número da opção ou o horário desejado.";
+            "Por favor, digite o número da opção desejada na lista acima.";
 
     /**
      * Quando não há vagas ou a lista normalizada fica vazia antes do envio.
@@ -104,7 +104,9 @@ public final class SchedulingSlotCapture {
         return sb.toString();
     }
 
-    /** Linhas numeradas (emoji/número + HH:mm), sem título nem instrução. */
+    /**
+     * Linhas numeradas {@code N) HH:mm} (legível em qualquer cliente; evita emojis duplicados 1️⃣1️⃣ a partir de 11).
+     */
     public static String formatNumberedSlotLines(List<String> times) {
         if (times == null || times.isEmpty()) {
             return "";
@@ -115,7 +117,7 @@ public final class SchedulingSlotCapture {
                 sb.append("\n…");
                 break;
             }
-            sb.append(numberedOptionPrefix(i + 1)).append(times.get(i)).append('\n');
+            sb.append(i + 1).append(") ").append(times.get(i)).append('\n');
         }
         return sb.toString().strip();
     }
@@ -150,18 +152,16 @@ public final class SchedulingSlotCapture {
         if (clean.isEmpty()) {
             return "";
         }
-        return formatPremiumAvailabilityHeader(date, calendarZone)
-                + "\n\n"
-                + formatNumberedSlotLines(clean)
-                + "\n\n"
-                + SLOT_LIST_FOOTER_PT;
+        String header = formatPremiumAvailabilityHeader(date, calendarZone);
+        String lines = formatNumberedSlotLines(clean);
+        return header + "\n\n" + lines + "\n\n" + SLOT_LIST_FOOTER_PT;
     }
 
     /**
      * Extrai HH:mm de um fragmento (ex.: segmento após vírgula, com espaços ou NBSP).
      */
     /** Visível ao pacote ({@link SchedulingUserReplyNormalizer}). */
-    static String normalizeSingleSlotToken(String raw) {
+    public static String normalizeSingleSlotToken(String raw) {
         if (raw == null) {
             return null;
         }

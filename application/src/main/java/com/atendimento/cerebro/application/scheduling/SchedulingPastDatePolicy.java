@@ -1,4 +1,4 @@
-package com.atendimento.cerebro.infrastructure.calendar;
+package com.atendimento.cerebro.application.scheduling;
 
 import java.time.Clock;
 import java.time.LocalDate;

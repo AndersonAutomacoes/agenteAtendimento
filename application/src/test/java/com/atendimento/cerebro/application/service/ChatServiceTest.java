@@ -46,6 +46,8 @@ import com.atendimento.cerebro.application.port.out.TenantAppointmentQueryPort;
 
 import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort;
 
+import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
+
 import com.atendimento.cerebro.domain.conversation.ConversationContext;
 
 import com.atendimento.cerebro.domain.conversation.ConversationId;
@@ -134,6 +136,12 @@ class ChatServiceTest {
 
 
 
+    @Mock
+
+    private AppointmentSchedulingPort appointmentScheduling;
+
+
+
     private ChatService chatService;
 
 
@@ -169,6 +177,8 @@ class ChatServiceTest {
                 crmCustomerQuery,
 
                 tenantAppointmentQuery,
+
+                appointmentScheduling,
 
                 "America/Sao_Paulo");
 
@@ -473,6 +483,40 @@ class ChatServiceTest {
         String storedAssistant = saved.getValue().getMessages().get(saved.getValue().getMessages().size() - 1).content();
         assertThat(storedAssistant).contains("[scheduling_draft:2026-04-14|09:30]");
 
+    }
+
+    @Test
+    void chat_schedulingBypass_simConfirmation_skipsAiEngine_andCallsCalendar() {
+        Message assistantDraft =
+                Message.assistantMessage(
+                        "Ótimo! O horário *17:30* está disponível para *revisão*.\n\n[scheduling_draft:2026-04-16|17:30]");
+        ConversationContext existing =
+                ConversationContext.builder()
+                        .tenantId(tenantId)
+                        .conversationId(conversationId)
+                        .messages(List.of(assistantDraft))
+                        .build();
+        when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.empty());
+        when(conversationContextStore.load(tenantId, conversationId)).thenReturn(Optional.of(existing));
+        when(knowledgeBase.findTopThreeRelevantFragments(tenantId, "sim")).thenReturn(List.of());
+        when(appointmentScheduling.createAppointment(
+                        eq(tenantId),
+                        eq("2026-04-16"),
+                        eq("17:30"),
+                        eq("Cliente"),
+                        eq("revisão"),
+                        eq(conversationId.value())))
+                .thenReturn(
+                        "Agendamento confirmado para 16/04/2026 às 17:30. O horário foi registado na agenda da oficina.");
+
+        var result =
+                chatService.chat(new ChatCommand(tenantId, conversationId, "sim", null, AiChatProvider.GEMINI));
+
+        verify(aiEngine, never()).complete(any());
+        verify(appointmentScheduling)
+                .createAppointment(
+                        tenantId, "2026-04-16", "17:30", "Cliente", "revisão", conversationId.value());
+        assertThat(result.assistantMessage()).contains("Agendamento confirmado");
     }
 
 }

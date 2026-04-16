@@ -38,4 +38,31 @@ class AppointmentConfirmationCardFormatterTest {
                 .contains("https://maps.app.goo.gl/abc")
                 .contains("*Como chegar:*");
     }
+
+    @Test
+    void stripFormattedConfirmationCards_removesDuplicateBlocks() {
+        String card =
+                AppointmentConfirmationCardFormatter.formatConfirmationCard(
+                        "troca de óleo",
+                        "Anderson",
+                        LocalDate.of(2026, 4, 16),
+                        "17:00",
+                        "Oficina X");
+        String doubleCard = card + "\n\n" + card;
+        assertThat(AppointmentConfirmationCardFormatter.stripFormattedConfirmationCards(doubleCard)).isEmpty();
+    }
+
+    @Test
+    void stripFormattedConfirmationCards_keepsIntroBeforeCard() {
+        String card =
+                AppointmentConfirmationCardFormatter.formatConfirmationCard(
+                        "Serviço",
+                        "Cliente",
+                        LocalDate.of(2026, 4, 16),
+                        "10:00",
+                        "Local");
+        String combined = "OK. Agendamento criado.\n\n" + card;
+        assertThat(AppointmentConfirmationCardFormatter.stripFormattedConfirmationCards(combined))
+                .isEqualTo("OK. Agendamento criado.");
+    }
 }

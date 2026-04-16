@@ -1,6 +1,7 @@
 package com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel;
 
 import com.atendimento.cerebro.application.dto.WhatsAppInteractiveReply;
+import com.atendimento.cerebro.application.scheduling.AssistantOutputSanitizer;
 import com.atendimento.cerebro.application.port.out.ChatMessageRepository;
 import com.atendimento.cerebro.application.scheduling.SchedulingSlotCapture;
 import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort;
@@ -80,7 +81,7 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
                     boolean evolutionSendInteractiveButtons,
             @Value("${cerebro.whatsapp.evolution.mirror-slots-as-plain-text:false}")
                     boolean evolutionMirrorSlotsAsPlainText,
-            @Value("${cerebro.google.calendar.zone:America/Sao_Paulo}") String schedulingCalendarZoneId) {
+            @Value("${cerebro.google.calendar.zone:America/Bahia}") String schedulingCalendarZoneId) {
         this.tenantConfigurationStore = tenantConfigurationStore;
         this.chatMessageRepository = chatMessageRepository;
         this.leadScoringService = leadScoringService;
@@ -93,7 +94,7 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         this.schedulingCalendarZone =
                 schedulingCalendarZoneId != null && !schedulingCalendarZoneId.isBlank()
                         ? ZoneId.of(schedulingCalendarZoneId.strip())
-                        : ZoneId.of("America/Sao_Paulo");
+                        : ZoneId.of("America/Bahia");
     }
 
     @Override
@@ -140,11 +141,13 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         String tenantIdStr = exchange.getIn().getHeader(WhatsAppOutboundHeaders.TENANT_ID, String.class);
         String to = exchange.getIn().getHeader(WhatsAppOutboundHeaders.TO, String.class);
         String text = exchange.getIn().getBody(String.class);
+        String safeBody = sanitizeOutboundBody(text);
+        exchange.getMessage().setBody(safeBody);
         if (tenantIdStr == null || tenantIdStr.isBlank()) {
             LOG.warn("whatsapp outbound: tenantId em falta; a usar SIMULATED");
             exchange.getMessage().setHeader(WhatsAppOutboundHeaders.PROVIDER, WhatsAppProviderType.SIMULATED.name());
             exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_TO, to != null ? to : "");
-            exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_TEXT, text != null ? text : "");
+            exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_TEXT, safeBody);
             exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_INTERACTIVE, null);
             return;
         }
@@ -156,7 +159,7 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         exchange.getMessage().setHeader(WhatsAppOutboundHeaders.PROVIDER, effective.name());
         exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_TENANT_CONFIG, config);
         exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_TO, to != null ? to : "");
-        exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_TEXT, text != null ? text : "");
+        exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_TEXT, safeBody);
         Object interactive = exchange.getIn().getHeader(WhatsAppOutboundHeaders.WHATSAPP_INTERACTIVE);
         exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_INTERACTIVE, interactive);
         if (interactive instanceof WhatsAppInteractiveReply reply
@@ -317,13 +320,13 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
             }
             WhatsAppInteractiveReply safeReply =
                     new WhatsAppInteractiveReply(
-                            reply.title(),
-                            reply.description(),
+                            sanitizeOutboundBody(reply.title()),
+                            sanitizeOutboundBody(reply.description()),
                             validTimes,
-                            reply.verificationText(),
+                            sanitizeOutboundBody(reply.verificationText()),
                             reply.requestedDate());
             if (!evolutionSendInteractiveButtons) {
-                String body = buildSlotsFormattedPlainText(safeReply, validTimes);
+                String body = sanitizeOutboundBody(buildSlotsFormattedPlainText(safeReply, validTimes));
                 LOG.info(
                         "Evolution: envio só texto formatado (send-interactive-buttons=false) instance={} to={}",
                         instanceId,
@@ -337,14 +340,14 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
             try {
                 String verification = safeReply.verificationText();
                 if (verification != null && !verification.isBlank()) {
-                    String textJson = buildEvolutionSendTextJson(digits, verification);
+                    String textJson = buildEvolutionSendTextJson(digits, sanitizeOutboundBody(verification));
                     evolutionOutboundHttp.postJson(base + "/message/sendText/" + instanceId, apiKey, textJson);
                 }
                 String buttonsJson = buildEvolutionSendButtonsJson(digits, safeReply);
                 LOG.info("Evolution sendButtons request JSON (instance={} to={}): {}", instanceId, digits, buttonsJson);
                 evolutionOutboundHttp.postJson(base + "/message/sendButtons/" + instanceId, apiKey, buttonsJson);
                 if (evolutionMirrorSlotsAsPlainText) {
-                    String mirror = buildMirrorSlotsPlainText(validTimes, reply.requestedDate());
+                    String mirror = sanitizeOutboundBody(buildMirrorSlotsPlainText(validTimes, reply.requestedDate()));
                     String mirrorJson = buildEvolutionSendTextJson(digits, mirror);
                     LOG.debug("Evolution mirror sendText após botões (instance={}): {}", instanceId, mirror);
                     evolutionOutboundHttp.postJson(base + "/message/sendText/" + instanceId, apiKey, mirrorJson);
@@ -370,8 +373,8 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
                 }
             }
         } else {
-            String text = exchange.getProperty(WhatsAppOutboundHeaders.PROP_WA_TEXT, String.class);
-            String textJson = buildEvolutionSendTextJson(digits, text != null ? text : "");
+            String text = sanitizeOutboundBody(exchange.getProperty(WhatsAppOutboundHeaders.PROP_WA_TEXT, String.class));
+            String textJson = buildEvolutionSendTextJson(digits, text);
             evolutionOutboundHttp.postJson(base + "/message/sendText/" + instanceId, apiKey, textJson);
         }
         exchange.getMessage().setBody("");
@@ -424,12 +427,12 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         ObjectNode root = objectMapper.createObjectNode();
         root.put("number", digits);
         String title = reply.title() != null && !reply.title().isBlank() ? reply.title() : "Horários disponíveis";
-        root.put("title", truncateForWhatsApp(title, 60));
+        root.put("title", truncateForWhatsApp(sanitizeOutboundBody(title), 60));
         String desc = reply.description() != null ? reply.description() : "";
         if (times.size() > 3) {
             desc = desc + "\n\nHá mais horários neste dia; pode digitar HH:mm ou usar um dos botões acima.";
         }
-        root.put("description", truncateForWhatsApp(desc, 1024));
+        root.put("description", truncateForWhatsApp(sanitizeOutboundBody(desc), 1024));
         root.put("footer", times.size() > 3 ? "Mais horários na descrição." : "Toque num botão.");
 
         ArrayNode buttons = root.putArray("buttons");
@@ -439,7 +442,7 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
             }
             ObjectNode b = buttons.addObject();
             b.put("type", "reply");
-            b.put("displayText", truncateForWhatsApp(time.strip(), 20));
+            b.put("displayText", truncateForWhatsApp(sanitizeOutboundBody(time.strip()), 20));
             b.put("id", "slot_" + time.strip().replace(':', '_'));
         }
 
@@ -499,5 +502,16 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * Sanitização completa antes de enviar ao Meta/Evolution: apêndices internos, URLs do Calendar e instruções de
+     * ferramenta que não devem ser vistas pelo cliente.
+     */
+    static String sanitizeOutboundBody(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        return AssistantOutputSanitizer.stripSquareBracketSegments(text);
     }
 }

@@ -2,6 +2,7 @@ package com.atendimento.cerebro.application.scheduling;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.atendimento.cerebro.application.service.AppointmentService;
 import com.atendimento.cerebro.domain.conversation.Message;
 import java.time.LocalDate;
 import java.util.List;
@@ -69,6 +70,18 @@ class SchedulingUserReplyNormalizerTest {
     }
 
     @Test
+    void stripInternalSlotAppendix_removesCancelOptionMap() {
+        String raw = "Lista\n[cancel_option_map:1=42,2=99]";
+        assertThat(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(raw)).isEqualTo("Lista");
+    }
+
+    @Test
+    void stripSlotSchedulingStateOnly_preservesCancelOptionMap() {
+        String raw = "x[slot_options:09:00]\n[cancel_option_map:1=5]";
+        assertThat(SchedulingUserReplyNormalizer.stripSlotSchedulingStateOnly(raw)).isEqualTo("x\n[cancel_option_map:1=5]");
+    }
+
+    @Test
     void resolveChoiceToTime_optionIndexBeyondList_empty() {
         assertThat(
                         SchedulingUserReplyNormalizer.resolveChoiceToTime(
@@ -129,5 +142,161 @@ class SchedulingUserReplyNormalizerTest {
         var e = SchedulingUserReplyNormalizer.expandNumericSlotChoice("sim", hist);
         assertThat(e.enforcedChoice().orElseThrow().timeHhMm()).isEqualTo("10:00");
         assertThat(e.blockCreateAppointmentThisTurn()).isFalse();
+    }
+
+    @Test
+    void expand_sim_afterCancelPrompt_doesNotUseStaleDraftFromOlderTurn() {
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage(
+                                "Posso confirmar?\n\n[slot_options:09:00,10:00]\n[slot_date:2026-04-14]\n\n[scheduling_draft:2026-04-14|17:00]"),
+                        Message.assistantMessage(
+                                "Agendamento confirmado.\n\n[cancel_option_map:10=123]"),
+                        Message.assistantMessage(
+                                "O agendamento de Revisão está como opção 10. Deseja cancelar?\n\n[cancel_option_map:10=123]"));
+        var e = SchedulingUserReplyNormalizer.expandNumericSlotChoice("sim", hist);
+        assertThat(e.expandedUserMessage()).isEqualTo("sim");
+        assertThat(e.enforcedChoice()).isEmpty();
+        assertThat(e.hardcodedAssistantReply()).isEmpty();
+    }
+
+    @Test
+    void isBackendCreateConfirmationInstruction_detectsExpandedSimFromChatService() {
+        assertThat(
+                        SchedulingUserReplyNormalizer.isBackendCreateConfirmationInstruction(
+                                "O cliente confirmou o agendamento. Chame create_appointment com date=2026-04-16 e time=17:30."))
+                .isTrue();
+        assertThat(SchedulingUserReplyNormalizer.isBackendCreateConfirmationInstruction("sim")).isFalse();
+    }
+
+    @Test
+    void parseLastDraftFromHistory_prefersNewestBotMessageWithDraftToken() {
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage("Antiga\n\n[scheduling_draft:2026-04-10|09:00]"),
+                        Message.assistantMessage("Reforço sem apêndice."));
+        var d = SchedulingUserReplyNormalizer.parseLastDraftFromHistory(hist);
+        assertThat(d).hasValueSatisfying(
+                c -> {
+                    assertThat(c.date()).isEqualTo(LocalDate.of(2026, 4, 10));
+                    assertThat(c.timeHhMm()).isEqualTo("09:00");
+                });
+    }
+
+    @Test
+    void looksLikeCancellationIntent_portuguesePhrases() {
+        assertThat(SchedulingUserReplyNormalizer.looksLikeCancellationIntent("Quero cancelar o agendamento")).isTrue();
+        assertThat(SchedulingUserReplyNormalizer.looksLikeCancellationIntent("desmarcar por favor")).isTrue();
+        assertThat(SchedulingUserReplyNormalizer.looksLikeCancellationIntent("Quero marcar às 10")).isFalse();
+    }
+
+    @Test
+    void looksLikeCancellationInBlob_detectsKeywordsInLongTranscript() {
+        assertThat(
+                        SchedulingUserReplyNormalizer.looksLikeCancellationInBlob(
+                                "Oi\nQuero excluir o compromisso de amanhã"))
+                .isTrue();
+        assertThat(SchedulingUserReplyNormalizer.looksLikeCancellationInBlob("favor remover o agendamento")).isTrue();
+        assertThat(SchedulingUserReplyNormalizer.looksLikeCancellationInBlob("só marcar revisão às 10")).isFalse();
+    }
+
+    @Test
+    void lastAssistantSuggestedAppointmentCancellation_trueWhenLatestAssistantIsAppointmentList() {
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage("slots\n[slot_options:09:00,10:00]\n[slot_date:2026-04-14]"),
+                        Message.assistantMessage(
+                                "Agendamentos AGENDADO:\n1) Serviço — 01/01/2026 10:00\n[cancel_option_map:1=5]"));
+        assertThat(SchedulingUserReplyNormalizer.lastAssistantSuggestedAppointmentCancellation(hist)).isTrue();
+    }
+
+    @Test
+    void expand_numericChoiceAfterAppointmentList_doesNotMapToOlderSlotOptions() {
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage("slots\n[slot_options:09:00,10:00]\n[slot_date:2026-04-14]"),
+                        Message.assistantMessage(
+                                "Agendamentos AGENDADO:\n1) Serviço — 01/01/2026 10:00\n[cancel_option_map:1=5]"));
+        var e = SchedulingUserReplyNormalizer.expandNumericSlotChoice("1", hist);
+        assertThat(e.expandedUserMessage()).isEqualTo("1");
+        assertThat(e.hardcodedAssistantReply()).isEmpty();
+        assertThat(e.pendingConfirmationDraft()).isEmpty();
+    }
+
+    @Test
+    void stripSchedulingStateFromHistory_removesInternalMarkers() {
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage(
+                                "Ok\n\n[slot_options:09:00,10:00]\n[slot_date:2026-04-14]\n\n[scheduling_draft:2026-04-14|10:00]"));
+        List<Message> stripped = SchedulingUserReplyNormalizer.stripSchedulingStateFromHistory(hist);
+        assertThat(stripped.get(0).content()).doesNotContain("scheduling_draft").doesNotContain("slot_options");
+    }
+
+    @Test
+    void looksLikeSchedulingRestartIntent_trueForAgendarMarcarHorario() {
+        assertThat(SchedulingUserReplyNormalizer.looksLikeSchedulingRestartIntent("Quero agendar para amanhã"))
+                .isTrue();
+        assertThat(SchedulingUserReplyNormalizer.looksLikeSchedulingRestartIntent("tem horário às 10?")).isTrue();
+        assertThat(SchedulingUserReplyNormalizer.looksLikeSchedulingRestartIntent("disponibilidade sexta")).isTrue();
+    }
+
+    @Test
+    void looksLikeSchedulingRestartIntent_falseForDesagendarSimOuCancel() {
+        assertThat(SchedulingUserReplyNormalizer.looksLikeSchedulingRestartIntent("desagendar o de amanhã")).isFalse();
+        assertThat(SchedulingUserReplyNormalizer.looksLikeSchedulingRestartIntent("sim")).isFalse();
+        assertThat(SchedulingUserReplyNormalizer.looksLikeSchedulingRestartIntent("Quero cancelar")).isFalse();
+    }
+
+    @Test
+    void stripInternalAppendicesFromHistory_removesCancelOptionMap() {
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage(
+                                "Lista\n[cancel_option_map:1=42]\n[slot_options:09:00,10:00]"));
+        List<Message> stripped = SchedulingUserReplyNormalizer.stripInternalAppendicesFromHistory(hist);
+        assertThat(stripped.get(0).content())
+                .doesNotContain("cancel_option_map")
+                .doesNotContain("slot_options");
+    }
+
+    @Test
+    void shouldRefuseAvailability_falseWhenOldCancelButUserPicksTimeAfterNoSuccess() {
+        String hint = "Quero cancelar\nNão chame check_availability quando o cliente quer cancelar.";
+        assertThat(
+                        SchedulingUserReplyNormalizer.shouldRefuseAvailabilityBecauseCancelIntent(
+                                hint, "Amanhã 12:00"))
+                .isFalse();
+    }
+
+    @Test
+    void shouldRefuseAvailability_trueWhenExplicitCancelInLatestMessage() {
+        assertThat(
+                        SchedulingUserReplyNormalizer.shouldRefuseAvailabilityBecauseCancelIntent(
+                                "texto neutro", "preciso cancelar o de amanhã"))
+                .isTrue();
+    }
+
+    @Test
+    void shouldRefuseAvailability_falseAfterCancellationSuccessInBlob() {
+        String hint =
+                "Quero cancelar\n"
+                        + AppointmentService.CANCELLATION_SUCCESS_MESSAGE_PREFIX
+                        + " Serviço: X.\n";
+        assertThat(
+                        SchedulingUserReplyNormalizer.shouldRefuseAvailabilityBecauseCancelIntent(
+                                hint, "Tem horário amanhã?"))
+                .isFalse();
+    }
+
+    @Test
+    void transcriptAfterLastCancellationSuccess_trimsOldCancelNoise() {
+        String blob =
+                "Quero cancelar\n"
+                        + AppointmentService.CANCELLATION_SUCCESS_MESSAGE_PREFIX
+                        + " ok\n"
+                        + "Gostaria de agendar";
+        assertThat(SchedulingUserReplyNormalizer.transcriptAfterLastCancellationSuccess(blob)).contains("Gostaria");
+        assertThat(SchedulingUserReplyNormalizer.transcriptAfterLastCancellationSuccess(blob)).doesNotContain("Quero cancelar");
     }
 }

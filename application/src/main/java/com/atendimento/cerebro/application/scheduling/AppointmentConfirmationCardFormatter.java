@@ -14,7 +14,43 @@ public final class AppointmentConfirmationCardFormatter {
     private static final DateTimeFormatter PT_DAY = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private static final Locale PT_BR = Locale.forLanguageTag("pt-BR");
 
+    /** Início do card formatado por {@link #formatConfirmationCard(String, String, LocalDate, String, String)}. */
+    public static final String CONFIRMATION_CARD_HEADLINE = "*✅ AGENDAMENTO CONFIRMADO*";
+
+    private static final String CONFIRMATION_CARD_DICA_FOOTER =
+            "_Dica: Chegue 5 minutos antes para garantirmos sua agilidade!_";
+
     private AppointmentConfirmationCardFormatter() {}
+
+    /**
+     * Remove uma ou mais cópias do card de confirmação (o mesmo formato de {@link #formatConfirmationCard}) do texto
+     * do modelo — evita duplicar quando o adaptador volta a anexar o card após {@code create_appointment}.
+     */
+    public static String stripFormattedConfirmationCards(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        String out = text;
+        while (out.contains(CONFIRMATION_CARD_HEADLINE)) {
+            int start = out.indexOf(CONFIRMATION_CARD_HEADLINE);
+            int end = out.indexOf(CONFIRMATION_CARD_DICA_FOOTER, start);
+            if (end < 0) {
+                break;
+            }
+            end += CONFIRMATION_CARD_DICA_FOOTER.length();
+            String before = out.substring(0, start).replaceAll("\\s+$", "");
+            String after = out.substring(end).replaceAll("^\\s+", "");
+            if (before.isEmpty()) {
+                out = after;
+            } else if (after.isEmpty()) {
+                out = before;
+            } else {
+                out = before + "\n\n" + after;
+            }
+            out = out.strip();
+        }
+        return out;
+    }
 
     /**
      * Monta o texto do card após agendamento criado com sucesso.
@@ -29,7 +65,7 @@ public final class AppointmentConfirmationCardFormatter {
         String weekday = capitalizeFirst(date.getDayOfWeek().getDisplayName(TextStyle.FULL, PT_BR));
         String dayStr = date.format(PT_DAY);
         String time = timeHhMm == null || timeHhMm.isBlank() ? "--:--" : timeHhMm.strip();
-        return "*✅ AGENDAMENTO CONFIRMADO*"
+        return CONFIRMATION_CARD_HEADLINE
                 + "\n\n"
                 + DIVIDER
                 + "\n\n"
@@ -52,7 +88,7 @@ public final class AppointmentConfirmationCardFormatter {
                 + "\n\n"
                 + DIVIDER
                 + "\n\n"
-                + "_Dica: Chegue 5 minutos antes para garantirmos sua agilidade!_";
+                + CONFIRMATION_CARD_DICA_FOOTER;
     }
 
     /** Mensagem curta só com o link do mapa (envio separado no WhatsApp). */

@@ -1,7 +1,9 @@
 package com.atendimento.cerebro.application.dto;
 
+import com.atendimento.cerebro.application.scheduling.AssistantOutputSanitizer;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 public record AICompletionResponse(
         String content,
@@ -20,8 +22,13 @@ public record AICompletionResponse(
         if (content == null) {
             throw new IllegalArgumentException("content is required");
         }
+        content = AssistantOutputSanitizer.stripSquareBracketSegments(content);
         whatsAppInteractive = whatsAppInteractive != null ? whatsAppInteractive : Optional.empty();
         additionalOutboundMessages =
-                additionalOutboundMessages != null ? List.copyOf(additionalOutboundMessages) : List.of();
+                additionalOutboundMessages != null
+                        ? additionalOutboundMessages.stream()
+                                .map(AssistantOutputSanitizer::stripSquareBracketSegments)
+                                .collect(Collectors.toUnmodifiableList())
+                        : List.of();
     }
 }

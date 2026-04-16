@@ -1,6 +1,7 @@
 package com.atendimento.cerebro.infrastructure.adapter.out.whatsapp;
 
 import com.atendimento.cerebro.application.dto.WhatsAppInteractiveReply;
+import com.atendimento.cerebro.application.scheduling.AssistantOutputSanitizer;
 import com.atendimento.cerebro.application.port.out.WhatsAppOutboundPort;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel.WhatsAppOutboundHeaders;
@@ -31,7 +32,8 @@ public class CamelWhatsAppOutboundAdapter implements WhatsAppOutboundPort {
         headers.put(WhatsAppOutboundHeaders.TENANT_ID, tenantId.value());
         headers.put(WhatsAppOutboundHeaders.TO, to);
         headers.put(WhatsAppOutboundHeaders.WHATSAPP_INTERACTIVE, whatsAppInteractive.orElse(null));
-        producerTemplate.sendBodyAndHeaders("direct:processWhatsAppResponse", text, headers);
+        String safe = AssistantOutputSanitizer.stripSquareBracketSegments(text);
+        producerTemplate.sendBodyAndHeaders("direct:processWhatsAppResponse", safe, headers);
     }
 
     @Override
@@ -40,6 +42,7 @@ public class CamelWhatsAppOutboundAdapter implements WhatsAppOutboundPort {
         headers.put(WhatsAppOutboundHeaders.TENANT_ID, tenantId.value());
         headers.put(WhatsAppOutboundHeaders.TO, to);
         headers.put(WhatsAppOutboundHeaders.ASSISTANT_MESSAGE_ID, existingAssistantMessageId);
-        producerTemplate.sendBodyAndHeaders("direct:processWhatsAppResponse", text, headers);
+        String safe = AssistantOutputSanitizer.stripSquareBracketSegments(text);
+        producerTemplate.sendBodyAndHeaders("direct:processWhatsAppResponse", safe, headers);
     }
 }

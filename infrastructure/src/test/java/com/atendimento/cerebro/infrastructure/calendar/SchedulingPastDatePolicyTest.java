@@ -2,6 +2,7 @@ package com.atendimento.cerebro.infrastructure.calendar;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.atendimento.cerebro.application.scheduling.SchedulingPastDatePolicy;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;

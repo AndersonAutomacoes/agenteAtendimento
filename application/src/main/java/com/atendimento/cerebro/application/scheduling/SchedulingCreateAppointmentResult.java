@@ -13,6 +13,7 @@ public final class SchedulingCreateAppointmentResult {
             return false;
         }
         String t = toolReturn.strip();
-        return t.startsWith("Agendamento criado");
+        // Mock/local: "Agendamento criado (simulado)…"; Google Calendar: "Agendamento confirmado para …"
+        return t.startsWith("Agendamento criado") || t.startsWith("Agendamento confirmado");
     }
 }

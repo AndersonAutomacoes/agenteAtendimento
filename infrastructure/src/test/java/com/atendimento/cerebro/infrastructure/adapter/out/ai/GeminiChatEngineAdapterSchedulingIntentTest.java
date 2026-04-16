@@ -4,10 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.atendimento.cerebro.application.ai.AiChatProvider;
 import com.atendimento.cerebro.application.dto.AICompletionRequest;
+import com.atendimento.cerebro.application.scheduling.SchedulingEnforcedChoice;
+import com.atendimento.cerebro.application.service.AppointmentService;
 import com.atendimento.cerebro.domain.conversation.Message;
 import com.atendimento.cerebro.domain.tenant.TenantId;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class GeminiChatEngineAdapterSchedulingIntentTest {
@@ -52,5 +56,180 @@ class GeminiChatEngineAdapterSchedulingIntentTest {
         AICompletionRequest req =
                 new AICompletionRequest(tenant, hist, List.of(), "13/04", "", AiChatProvider.GEMINI);
         assertThat(GeminiChatEngineAdapter.isConcreteDateInSchedulingFlow(req, ZONE)).isFalse();
+    }
+
+    @Test
+    void cancelContext_falseAfterSuccessfulCancellationWhenUserAsksAvailability() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist =
+                List.of(
+                        Message.userMessage("Quero cancelar"),
+                        Message.assistantMessage(
+                                AppointmentService.CANCELLATION_SUCCESS_MESSAGE_PREFIX
+                                        + " Serviço: X. Data: 01/01/2026. A vaga já está disponível."));
+        AICompletionRequest req =
+                new AICompletionRequest(tenant, hist, List.of(), "Tem horário amanhã?", "", AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.transcriptSuggestsCancellation(req)).isFalse();
+        assertThat(GeminiChatEngineAdapter.schedulingCancellationOrListManagementContext(req)).isFalse();
+    }
+
+    @Test
+    void cancelContext_falseAfterSuccessWhenOlderTurnStillContainsCancelKeyword() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist =
+                List.of(
+                        Message.userMessage("Quero cancelar"),
+                        Message.assistantMessage("Agendamentos AGENDADO:\n1) X\n[cancel_option_map:1=1]"),
+                        Message.userMessage("1"),
+                        Message.assistantMessage(
+                                "Claro! "
+                                        + AppointmentService.CANCELLATION_SUCCESS_MESSAGE_PREFIX
+                                        + " Serviço: X. Data: 01/01/2026."),
+                        Message.assistantMessage("Posso ajudar em mais alguma coisa?"));
+        AICompletionRequest req =
+                new AICompletionRequest(tenant, hist, List.of(), "Quais horários para terça?", "", AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.transcriptSuggestsCancellation(req)).isFalse();
+        assertThat(GeminiChatEngineAdapter.schedulingCancellationOrListManagementContext(req)).isFalse();
+    }
+
+    @Test
+    void cancelContext_trueAfterSuccessWhenUserInvokesCancelAgain() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist =
+                List.of(
+                        Message.userMessage("Quero cancelar"),
+                        Message.assistantMessage(
+                                AppointmentService.CANCELLATION_SUCCESS_MESSAGE_PREFIX
+                                        + " Serviço: X. Data: 01/01/2026."));
+        AICompletionRequest req =
+                new AICompletionRequest(tenant, hist, List.of(), "Preciso cancelar outro horário", "", AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.schedulingCancellationOrListManagementContext(req)).isTrue();
+    }
+
+    @Test
+    void transcriptSuggestsCancellation_trueWhenKeywordInHistoryOrCurrentMessage() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist = List.of(Message.userMessage("Quero remover o agendamento"));
+        AICompletionRequest req =
+                new AICompletionRequest(tenant, hist, List.of(), "amanhã", "", AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.transcriptSuggestsCancellation(req)).isTrue();
+    }
+
+    @Test
+    void transcriptSuggestsCancellation_falseForPureSchedulingAsk() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist = List.of(Message.userMessage("Quero marcar corte"));
+        AICompletionRequest req =
+                new AICompletionRequest(tenant, hist, List.of(), "tem horário amanhã?", "", AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.transcriptSuggestsCancellation(req)).isFalse();
+    }
+
+    @Test
+    void listManagementContext_trueWhenSimAfterAssistantAskedList() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist =
+                List.of(
+                        Message.userMessage("Quero cancelar"),
+                        Message.assistantMessage("Quer ver a lista de agendamentos antes?"));
+        AICompletionRequest req = new AICompletionRequest(tenant, hist, List.of(), "sim", "", AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.schedulingCancellationOrListManagementContext(req)).isTrue();
+    }
+
+    @Test
+    void cancelContext_falseWhenSchedulingEnforcedChoicePresent_evenIfHistoryMentionsCancel() {
+        TenantId tenant = new TenantId("tenant-1");
+        LocalDate day = LocalDate.of(2026, 4, 16);
+        List<Message> hist =
+                List.of(
+                        Message.userMessage("Quero cancelar o horário"),
+                        Message.assistantMessage(
+                                "Ótimo! Posso confirmar o agendamento?\n\n[scheduling_draft:"
+                                        + day
+                                        + "|17:30]"));
+        AICompletionRequest req =
+                new AICompletionRequest(
+                        tenant,
+                        hist,
+                        List.of(),
+                        "sim",
+                        "",
+                        AiChatProvider.GEMINI,
+                        false,
+                        true,
+                        "wa-1",
+                        null,
+                        Optional.of(new SchedulingEnforcedChoice(day, "17:30")),
+                        false,
+                        Optional.of(day));
+        assertThat(GeminiChatEngineAdapter.transcriptSuggestsCancellation(req)).isFalse();
+        assertThat(GeminiChatEngineAdapter.schedulingCancellationOrListManagementContext(req)).isFalse();
+    }
+
+    @Test
+    void schedulingRestart_falseCancelContextAfterUserWantsToBookAgain() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist =
+                List.of(
+                        Message.userMessage("Quero cancelar"),
+                        Message.assistantMessage(
+                                "Agendamentos AGENDADO:\n1) X — 01/01/2026\n[cancel_option_map:1=42]"));
+        AICompletionRequest req =
+                new AICompletionRequest(
+                        tenant, hist, List.of(), "Na verdade quero agendar para amanhã", "", AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.transcriptSuggestsCancellation(req)).isFalse();
+        assertThat(GeminiChatEngineAdapter.schedulingCancellationOrListManagementContext(req)).isFalse();
+    }
+
+    @Test
+    void listManagementContext_simAfterListPrompt_evenWithoutCancelKeywordInBlob() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist = List.of(Message.assistantMessage("Deseja ver a lista de agendamentos?"));
+        AICompletionRequest req = new AICompletionRequest(tenant, hist, List.of(), "sim", "", AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.transcriptSuggestsCancellation(req)).isFalse();
+        assertThat(GeminiChatEngineAdapter.schedulingCancellationOrListManagementContext(req)).isTrue();
+    }
+
+    @Test
+    void shouldForceProgrammaticCancel_trueWhenBareDigitAfterCancellationListing() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist =
+                List.of(
+                        Message.userMessage("Quero cancelar"),
+                        Message.assistantMessage(
+                                "Agendamentos AGENDADO:\n1) Serviço — 01/01/2026 10:00\n[cancel_option_map:1=42]"));
+        AICompletionRequest req = new AICompletionRequest(tenant, hist, List.of(), "1", "", AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.shouldForceProgrammaticCancelAppointment(req)).isTrue();
+    }
+
+    @Test
+    void shouldForceProgrammaticCancel_trueForOpcaoPhrase() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage("x\n[cancel_option_map:2=7]"));
+        AICompletionRequest req =
+                new AICompletionRequest(tenant, hist, List.of(), "opção 2", "", AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.shouldForceProgrammaticCancelAppointment(req)).isTrue();
+    }
+
+    @Test
+    void shouldForceProgrammaticCancel_trueWhenBareIdExceedsThreeDigitsAfterCancellationListing() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist =
+                List.of(
+                        Message.userMessage("Quero cancelar"),
+                        Message.assistantMessage(
+                                "Agendamentos AGENDADO:\n1234) Serviço — 01/01/2026 10:00\n[cancel_option_map:1234=1234]"));
+        AICompletionRequest req =
+                new AICompletionRequest(tenant, hist, List.of(), "1234", "", AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.shouldForceProgrammaticCancelAppointment(req)).isTrue();
+    }
+
+    @Test
+    void shouldForceProgrammaticCancel_falseWhenNoListingInHistory() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist = List.of(Message.assistantMessage("Seguem os horários: 09:00, 10:00"));
+        AICompletionRequest req = new AICompletionRequest(tenant, hist, List.of(), "1", "", AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.shouldForceProgrammaticCancelAppointment(req)).isFalse();
     }
 }

@@ -98,7 +98,7 @@ cerebro:
       # Agenda "Oficina" (partilhada com a service account). Sobrescreva com CEREBRO_GOOGLE_CALENDAR_ID se necessário.
       calendar-id: ${CEREBRO_GOOGLE_CALENDAR_ID:40b149d56c987f5c2511159d628af7383cb9194068386363ba9f1067362872ac@group.calendar.google.com}
       credentials-classpath: credentials.json
-      zone: ${CEREBRO_GOOGLE_CALENDAR_ZONE:America/Sao_Paulo}
+      zone: ${CEREBRO_GOOGLE_CALENDAR_ZONE:America/Bahia}
       slot-minutes: 30
       work-start-hour: 9
       work-end-hour: 18

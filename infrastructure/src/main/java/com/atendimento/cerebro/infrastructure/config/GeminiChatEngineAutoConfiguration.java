@@ -1,6 +1,8 @@
 package com.atendimento.cerebro.infrastructure.config;
 
 import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
+import com.atendimento.cerebro.application.service.AppointmentService;
+import com.atendimento.cerebro.application.service.AppointmentValidationService;
 import com.atendimento.cerebro.infrastructure.adapter.out.ai.GeminiChatEngineAdapter;
 import org.springframework.ai.google.genai.GoogleGenAiChatModel;
 import org.springframework.ai.model.google.genai.autoconfigure.chat.GoogleGenAiChatAutoConfiguration;
@@ -26,12 +28,16 @@ public class GeminiChatEngineAutoConfiguration {
             @Qualifier("googleGenAiChatModel") GoogleGenAiChatModel chatModel,
             @Value("${spring.ai.google.genai.chat.options.model:gemini-1.5-flash}") String chatModelName,
             AppointmentSchedulingPort appointmentSchedulingPort,
+            AppointmentValidationService appointmentValidationService,
+            AppointmentService appointmentService,
             CerebroGoogleCalendarProperties cerebroGoogleCalendarProperties,
             CerebroAppointmentConfirmationProperties cerebroAppointmentConfirmationProperties) {
         return new GeminiChatEngineAdapter(
                 chatModel,
                 chatModelName,
                 appointmentSchedulingPort,
+                appointmentValidationService,
+                appointmentService,
                 cerebroGoogleCalendarProperties,
                 cerebroAppointmentConfirmationProperties);
     }

@@ -13,11 +13,15 @@ import com.atendimento.cerebro.application.port.out.ConversationContextStorePort
 import com.atendimento.cerebro.application.port.out.CrmCustomerQueryPort;
 import com.atendimento.cerebro.application.port.out.CrmCustomerStorePort;
 import com.atendimento.cerebro.application.port.out.KnowledgeBasePort;
+import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentQueryPort;
+import com.atendimento.cerebro.application.port.out.TenantAppointmentStorePort;
 import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort;
 import com.atendimento.cerebro.application.port.out.TextExtractorPort;
 import com.atendimento.cerebro.application.service.AnalyticsService;
 import com.atendimento.cerebro.application.service.ChatService;
+import com.atendimento.cerebro.application.service.AppointmentService;
+import com.atendimento.cerebro.application.service.AppointmentValidationService;
 import com.atendimento.cerebro.application.service.LeadScoringService;
 import com.atendimento.cerebro.application.service.CrmLeadIntentUpdater;
 import com.atendimento.cerebro.application.service.ConversationCategoryAnalyticsService;
@@ -39,6 +43,21 @@ import org.springframework.context.annotation.Configuration;
 public class ApplicationConfiguration {
 
     @Bean
+    public AppointmentValidationService appointmentValidationService() {
+        return new AppointmentValidationService();
+    }
+
+    @Bean
+    public AppointmentService appointmentService(
+            TenantAppointmentQueryPort tenantAppointmentQuery,
+            TenantAppointmentStorePort tenantAppointmentStore,
+            AppointmentSchedulingPort appointmentSchedulingPort,
+            CrmCustomerQueryPort crmCustomerQuery) {
+        return new AppointmentService(
+                tenantAppointmentQuery, tenantAppointmentStore, appointmentSchedulingPort, crmCustomerQuery);
+    }
+
+    @Bean
     public ChatUseCase chatUseCase(
             ConversationContextStorePort conversationContextStore,
             KnowledgeBasePort knowledgeBase,
@@ -48,7 +67,8 @@ public class ApplicationConfiguration {
             CrmCustomerStorePort crmCustomerStore,
             CrmCustomerQueryPort crmCustomerQuery,
             TenantAppointmentQueryPort tenantAppointmentQuery,
-            @Value("${cerebro.google.calendar.zone:America/Sao_Paulo}") String schedulingZoneId) {
+            AppointmentSchedulingPort appointmentSchedulingPort,
+            @Value("${cerebro.google.calendar.zone:America/Bahia}") String schedulingZoneId) {
         return new ChatService(
                 conversationContextStore,
                 knowledgeBase,
@@ -58,6 +78,7 @@ public class ApplicationConfiguration {
                 crmCustomerStore,
                 crmCustomerQuery,
                 tenantAppointmentQuery,
+                appointmentSchedulingPort,
                 schedulingZoneId);
     }
 

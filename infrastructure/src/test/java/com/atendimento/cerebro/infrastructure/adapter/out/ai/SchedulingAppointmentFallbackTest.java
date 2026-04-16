@@ -57,6 +57,11 @@ class SchedulingAppointmentFallbackTest {
                             String conversationId) {
                         throw new AssertionError("persistência fallback desactivada");
                     }
+
+                    @Override
+                    public boolean deleteCalendarEvent(TenantId tenantId, String googleEventId) {
+                        return true;
+                    }
                 };
 
         AICompletionRequest req =
@@ -91,6 +96,11 @@ class SchedulingAppointmentFallbackTest {
                             String serviceName,
                             String conversationId) {
                         throw new AssertionError("should not call");
+                    }
+
+                    @Override
+                    public boolean deleteCalendarEvent(TenantId tenantId, String googleEventId) {
+                        return true;
                     }
                 };
 

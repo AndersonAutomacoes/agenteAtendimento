@@ -14,7 +14,7 @@ class SchedulingSlotCaptureTest {
         SchedulingSlotCapture.clear();
         LocalDate day = LocalDate.of(2026, 4, 15);
         SchedulingSlotCapture.setSlotsFromToolResult(
-                "Calendário (simulado): x. Horários livres em 2026-04-15 (UTC): 09:00, 10:00, 11:30", day);
+                "Calendário (simulado): x. Horários livres em 15/04/2026 (UTC): 09:00, 10:00, 11:30", day);
         assertThat(SchedulingSlotCapture.peekSlotTimes()).containsExactly("09:00", "10:00", "11:30");
         ZoneId utc = ZoneId.of("UTC");
         var reply = SchedulingSlotCapture.takeWhatsAppInteractive("Olá", utc).orElseThrow();
@@ -27,7 +27,7 @@ class SchedulingSlotCaptureTest {
     @Test
     void parseSlotTimes_mockAppointmentStyleLine_extractsCommaSeparated() {
         String line =
-                "Calendário (simulado): local-cal. Horários livres em 2026-04-13 (America/Sao_Paulo): 08:00, 09:00, 10:00";
+                "Calendário (simulado): local-cal. Horários livres em 13/04/2026 (America/Sao_Paulo): 08:00, 09:00, 10:00";
         assertThat(SchedulingSlotCapture.parseSlotTimesFromAvailabilityLine(line))
                 .containsExactly("08:00", "09:00", "10:00");
     }
@@ -35,7 +35,7 @@ class SchedulingSlotCaptureTest {
     @Test
     void parseSlotTimes_whenNenhumHorario_returnsEmpty() {
         String line =
-                "Calendário (simulado): x. Horários livres em 2026-04-13 (UTC): (nenhum horário livre neste dia com as regras atuais)";
+                "Calendário (simulado): x. Horários livres em 13/04/2026 (UTC): (nenhum horário livre neste dia com as regras atuais)";
         assertThat(SchedulingSlotCapture.parseSlotTimesFromAvailabilityLine(line)).isEmpty();
     }
 
@@ -48,9 +48,9 @@ class SchedulingSlotCaptureTest {
     }
 
     @Test
-    void formatNumberedSlotLines_usesEmojiPrefixes() {
+    void formatNumberedSlotLines_usesPlainNumbersForReadability() {
         String lines = SchedulingSlotCapture.formatNumberedSlotLines(List.of("09:00", "10:30"));
-        assertThat(lines).contains("09:00").contains("10:30").contains("1️⃣").contains("2️⃣");
+        assertThat(lines).contains("1) 09:00").contains("2) 10:30").doesNotContain("1️⃣");
     }
 
     @Test

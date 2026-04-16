@@ -76,7 +76,7 @@ class GeminiSchedulingToolsJsonTest {
 
         String mockLine =
 
-                "Calendário (simulado): id. Horários livres em 2026-04-12 (America/Sao_Paulo): 08:00,  09:00 , 10:00";
+                "Calendário (simulado): id. Horários livres em 12/04/2026 (America/Sao_Paulo): 08:00,  09:00 , 10:00";
 
         List<String> slots = SchedulingSlotCapture.parseSlotTimesFromAvailabilityLine(mockLine);
 
