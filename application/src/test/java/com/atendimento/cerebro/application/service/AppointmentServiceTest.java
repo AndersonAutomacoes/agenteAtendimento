@@ -12,8 +12,11 @@ import com.atendimento.cerebro.application.dto.TenantAppointmentListItem;
 import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
 import com.atendimento.cerebro.application.port.out.CrmCustomerQueryPort;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentQueryPort;
+import com.atendimento.cerebro.application.event.AppointmentConfirmedEvent;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentStorePort;
+import com.atendimento.cerebro.application.scheduling.CreateAppointmentResult;
 import com.atendimento.cerebro.domain.tenant.TenantId;
+import java.time.LocalDate;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
@@ -23,6 +26,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
+import org.springframework.context.ApplicationEventPublisher;
 
 class AppointmentServiceTest {
 
@@ -34,6 +38,7 @@ class AppointmentServiceTest {
     private TenantAppointmentStorePort store;
     private AppointmentSchedulingPort scheduling;
     private CrmCustomerQueryPort crm;
+    private ApplicationEventPublisher eventPublisher;
     private AppointmentService service;
 
     @BeforeEach
@@ -42,7 +47,8 @@ class AppointmentServiceTest {
         store = Mockito.mock(TenantAppointmentStorePort.class);
         scheduling = Mockito.mock(AppointmentSchedulingPort.class);
         crm = Mockito.mock(CrmCustomerQueryPort.class);
-        service = new AppointmentService(query, store, scheduling, crm);
+        eventPublisher = Mockito.mock(ApplicationEventPublisher.class);
+        service = new AppointmentService(query, store, scheduling, crm, eventPublisher);
         when(scheduling.deleteCalendarEvent(any(), any())).thenReturn(true);
         when(store.markCancelled(any(Long.class), any(Instant.class))).thenReturn(true);
     }
@@ -188,6 +194,59 @@ class AppointmentServiceTest {
                 .contains("base de dados")
                 .doesNotContain("liberado com sucesso");
         verify(scheduling).deleteCalendarEvent(TID, "ev-2");
+    }
+
+    @Test
+    void createAppointment_onSchedulingSuccess_publishesEvent() {
+        when(scheduling.createAppointment(
+                        eq(TID),
+                        eq("2026-06-10"),
+                        eq("14:00"),
+                        eq("Nome"),
+                        eq("Serviço"),
+                        eq("wa-5511999000000")))
+                .thenReturn(
+                        CreateAppointmentResult.success(
+                                "Agendamento confirmado para 10/06/2026 às 14:00. O horário foi registado na agenda da oficina.",
+                                9001L));
+
+        String out =
+                service.createAppointment(
+                        TID, "2026-06-10", "14:00", "Nome", "Serviço", "wa-5511999000000");
+
+        assertThat(out).contains("Agendamento confirmado");
+        ArgumentCaptor<AppointmentConfirmedEvent> cap = ArgumentCaptor.forClass(AppointmentConfirmedEvent.class);
+        verify(eventPublisher).publishEvent(cap.capture());
+        assertThat(cap.getValue().appointmentId()).isEqualTo(9001L);
+        assertThat(cap.getValue().phoneNumber()).isEqualTo("5511999000000");
+        assertThat(cap.getValue().date()).isEqualTo(LocalDate.of(2026, 6, 10));
+    }
+
+    @Test
+    void createAppointment_onSchedulingFailure_doesNotPublish() {
+        when(scheduling.createAppointment(any(), any(), any(), any(), any(), any()))
+                .thenReturn(CreateAppointmentResult.failure("O calendário ainda não está ligado"));
+
+        String out = service.createAppointment(TID, "2026-06-10", "14:00", "N", "S", "wa-5511");
+
+        assertThat(out).contains("calendário");
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void createAppointment_publishException_stillReturnsSchedulingResult() {
+        when(scheduling.createAppointment(any(), any(), any(), any(), any(), any()))
+                .thenReturn(
+                        CreateAppointmentResult.success(
+                                "Agendamento confirmado para 10/06/2026 às 14:00. O horário foi registado na agenda da oficina.",
+                                1L));
+        Mockito.doThrow(new RuntimeException("event bus down")).when(eventPublisher).publishEvent(any());
+
+        String out =
+                service.createAppointment(
+                        TID, "2026-06-10", "14:00", "N", "S", "wa-5511999000000");
+
+        assertThat(out).contains("Agendamento confirmado");
     }
 
     @Test

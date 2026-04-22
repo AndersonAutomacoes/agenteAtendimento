@@ -489,6 +489,9 @@ public final class SchedulingUserReplyNormalizer {
             return false;
         }
         String s = latestUserMessage.strip();
+        if (looksLikeRescheduleOrTimeChangeIntent(s)) {
+            return false;
+        }
         if (looksLikeCancellationIntent(s)) {
             return false;
         }
@@ -532,13 +535,24 @@ public final class SchedulingUserReplyNormalizer {
     }
 
     /**
-     * Palavras-chave de cancelamento/exclusão em qualquer parte do texto (histórico + mensagem atual). Usado para
-     * bloquear fallbacks de disponibilidade quando a intenção não é marcar horário.
+     * Cancelamento explícito no texto — sem «remover/excluir» isolados (evita oficina: «remover pneus», «remoção de
+     * filtro» no pitch de serviços).
      */
-    private static final Pattern CANCELLATION_ANYWHERE =
+    private static final Pattern CANCELLATION_BLOB_CORE =
             Pattern.compile(
-                    "(cancelar|cancelamento|cancela(ç|c)ão|desmarcar|desmarca|anular|anula|desagendar|desmarca(ç|c)ão|"
-                            + "excluir|exclus(ão|ao)|remover|remo(ç|c)ão)",
+                    "(cancelar|cancelamento|cancela(ç|c)ão|desmarcar|desmarca|anular|anula|desagendar|desmarca(ç|c)ão)",
+                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+
+    /**
+     * «Excluir/remover/remoção/exclusão» só contam quando ligados a agendamento ou equivalente (nunca «remover»
+     * sozinho no meio de descrição de serviço).
+     */
+    private static final Pattern CANCELLATION_BLOB_REMOVE_OR_EXCLUDE_NEAR_SCHEDULING =
+            Pattern.compile(
+                    "(?is)(?:\\b(excluir|remover)\\b[\\s\\S]{0,96}\\b(agendamentos?|compromissos?|marca(ç|c)ões?|marca(ç|c)ao|horários?|horarios?|consultas?)\\b"
+                            + "|\\b(agendamentos?|compromissos?|marca(ç|c)ões?|marca(ç|c)ao|horários?|horarios?|consultas?)[\\s\\S]{0,96}\\b(excluir|remover)\\b"
+                            + "|\\bremo(ç|c)ão\\b[\\s\\S]{0,72}\\b(de\\s+)?(o\\s+|a\\s+)?(agendamento|compromisso|marca(ç|c)ão|consulta)\\b"
+                            + "|\\b(exclusão|exclusao)\\b[\\s\\S]{0,72}\\b(de\\s+)?(o\\s+|a\\s+)?(agendamento|compromisso|consulta)\\b)",
                     Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
     /**
@@ -599,6 +613,44 @@ public final class SchedulingUserReplyNormalizer {
     }
 
     /**
+     * Cliente quer trocar/remarcar um horário já existente (cancelar + novo agendamento em sequência), não um pedido
+     * genérico de «ver vagas».
+     */
+    public static boolean looksLikeRescheduleOrTimeChangeIntent(String userMessage) {
+        if (userMessage == null || userMessage.isBlank()) {
+            return false;
+        }
+        if (looksLikeCancellationIntent(userMessage.strip())) {
+            return false;
+        }
+        String n = Normalizer.normalize(userMessage.strip(), Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
+        if (Pattern.compile("\\b(reagendar|remarcar)\\b").matcher(n).find()) {
+            return true;
+        }
+        boolean changeVerb = Pattern.compile("\\b(trocar|alterar|mudar)\\b").matcher(n).find();
+        boolean topic =
+                n.contains("horário")
+                        || n.contains("horario")
+                        || n.contains("marcação")
+                        || n.contains("marcacao")
+                        || n.contains("agendamento");
+        if (changeVerb && topic) {
+            return true;
+        }
+        return changeVerb && Pattern.compile("\\b(às|as)\\s+\\d").matcher(n).find();
+    }
+
+    /**
+     * Anexado à mensagem do utilizador só no pedido ao modelo (não é enviado ao cliente como texto de canal).
+     */
+    public static final String RESCHEDULE_FLOW_HINT =
+            "[Instrução interna — reagendar] O cliente quer trocar/mudar um horário já marcado. Fluxo obrigatório: "
+                    + "(1) get_active_appointments para identificar o compromisso; (2) cancel_appointment com o ID "
+                    + "correcto e confirmar sucesso; (3) só depois check_availability para a nova data; "
+                    + "(4) create_appointment após confirmação. Não mostre só horários livres sem tratar o agendamento "
+                    + "anterior quando o pedido for trocar/remarcar/reagendar.";
+
+    /**
      * {@code true} se o texto (mensagem única ou bloco com histórico) contiver intenção de cancelar, excluir ou
      * remover agendamento.
      */
@@ -607,7 +659,8 @@ public final class SchedulingUserReplyNormalizer {
             return false;
         }
         String n = Normalizer.normalize(blob.strip(), Normalizer.Form.NFKC);
-        return CANCELLATION_ANYWHERE.matcher(n).find();
+        return CANCELLATION_BLOB_CORE.matcher(n).find()
+                || CANCELLATION_BLOB_REMOVE_OR_EXCLUDE_NEAR_SCHEDULING.matcher(n).find();
     }
 
     /**

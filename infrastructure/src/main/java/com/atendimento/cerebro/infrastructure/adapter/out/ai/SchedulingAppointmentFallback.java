@@ -7,6 +7,7 @@ import com.atendimento.cerebro.domain.tenant.TenantId;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.text.Normalizer;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -30,6 +31,10 @@ public final class SchedulingAppointmentFallback {
     private static final Pattern ISO_DATE = Pattern.compile("\\b(\\d{4}-\\d{2}-\\d{2})\\b");
     /** dd/MM, dd/MM/yy ou dd/MM/yyyy */
     private static final Pattern BR_DATE = Pattern.compile("\\b(\\d{1,2})/(\\d{1,2})(?:/(\\d{2,4}))?\\b");
+    /** Ex.: «18 de abril de 2026», «3 de maio» (ano omisso = ano civil actual na zona). */
+    private static final Pattern PT_SPOKEN_DATE =
+            Pattern.compile(
+                    "(?i)\\b(\\d{1,2})\\s+de\\s+(janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\\s*(?:de\\s+(\\d{4}))?\\b");
     private static final Pattern TIME_HM = Pattern.compile("\\b(\\d{1,2}):(\\d{2})\\b");
     private static final Pattern SERVICE_HINT =
             Pattern.compile(
@@ -94,7 +99,44 @@ public final class SchedulingAppointmentFallback {
                 // skip invalid
             }
         }
+
+        Matcher spoken = PT_SPOKEN_DATE.matcher(blob);
+        while (spoken.find()) {
+            int day = Integer.parseInt(spoken.group(1));
+            Optional<Integer> monthNum = monthNumberPortuguese(spoken.group(2));
+            if (monthNum.isEmpty()) {
+                continue;
+            }
+            String yStr = spoken.group(3);
+            int year = yStr != null && !yStr.isEmpty() ? Integer.parseInt(yStr) : currentYear;
+            try {
+                hits.add(new DateHit(spoken.end(), LocalDate.of(year, monthNum.get(), day)));
+            } catch (Exception ignored) {
+                // skip invalid
+            }
+        }
         return hits.stream().max(Comparator.comparingInt(DateHit::end)).map(DateHit::date);
+    }
+
+    private static Optional<Integer> monthNumberPortuguese(String rawMonth) {
+        String k =
+                Normalizer.normalize(rawMonth.strip().toLowerCase(Locale.ROOT), Normalizer.Form.NFKC)
+                        .replace('ç', 'c');
+        return switch (k) {
+            case "janeiro" -> Optional.of(1);
+            case "fevereiro" -> Optional.of(2);
+            case "marco" -> Optional.of(3);
+            case "abril" -> Optional.of(4);
+            case "maio" -> Optional.of(5);
+            case "junho" -> Optional.of(6);
+            case "julho" -> Optional.of(7);
+            case "agosto" -> Optional.of(8);
+            case "setembro" -> Optional.of(9);
+            case "outubro" -> Optional.of(10);
+            case "novembro" -> Optional.of(11);
+            case "dezembro" -> Optional.of(12);
+            default -> Optional.empty();
+        };
     }
 
     private record DateHit(int end, LocalDate date) {}

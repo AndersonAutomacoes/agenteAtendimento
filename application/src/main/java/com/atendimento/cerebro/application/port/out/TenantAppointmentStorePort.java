@@ -5,7 +5,8 @@ import java.time.Instant;
 
 public interface TenantAppointmentStorePort {
 
-    void insert(TenantAppointmentRecord record);
+    /** @return {@code id} (PK) da linha inserida */
+    long insert(TenantAppointmentRecord record);
 
     /**
      * @return {@code true} se uma linha com {@code booking_status = AGENDADO} foi actualizada.

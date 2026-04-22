@@ -3,6 +3,7 @@ package com.atendimento.cerebro.application.service;
 import com.atendimento.cerebro.application.crm.CrmConversationSupport;
 import com.atendimento.cerebro.application.dto.CrmCustomerRecord;
 import com.atendimento.cerebro.application.dto.TenantAppointmentListItem;
+import com.atendimento.cerebro.application.event.AppointmentConfirmedEvent;
 import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
 import com.atendimento.cerebro.application.port.out.CrmCustomerQueryPort;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentQueryPort;
@@ -13,6 +14,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -20,6 +22,7 @@ import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 
 /**
  * Listagem e cancelamento de agendamentos: valida contacto contra a sessão, remove evento no calendário e grava
@@ -46,16 +49,65 @@ public class AppointmentService {
     private final TenantAppointmentStorePort appointmentStore;
     private final AppointmentSchedulingPort scheduling;
     private final CrmCustomerQueryPort crmCustomerQuery;
+    private final ApplicationEventPublisher eventPublisher;
 
     public AppointmentService(
             TenantAppointmentQueryPort appointmentQuery,
             TenantAppointmentStorePort appointmentStore,
             AppointmentSchedulingPort scheduling,
-            CrmCustomerQueryPort crmCustomerQuery) {
+            CrmCustomerQueryPort crmCustomerQuery,
+            ApplicationEventPublisher eventPublisher) {
         this.appointmentQuery = appointmentQuery;
         this.appointmentStore = appointmentStore;
         this.scheduling = scheduling;
         this.crmCustomerQuery = crmCustomerQuery;
+        this.eventPublisher = eventPublisher;
+    }
+
+    /**
+     * Cria agendamento no calendário e na base via {@link AppointmentSchedulingPort}; após sucesso tenta notificar o
+     * cliente por WhatsApp (falha de notificação não reverte o agendamento).
+     */
+    public String createAppointment(
+            TenantId tenantId,
+            String isoDate,
+            String localTime,
+            String clientName,
+            String serviceName,
+            String conversationId) {
+        var result =
+                scheduling.createAppointment(
+                        tenantId, isoDate, localTime, clientName, serviceName, conversationId);
+        if (result.isSuccess() && result.appointmentDatabaseId() != null) {
+            try {
+                LocalDate day = LocalDate.parse(isoDate.strip(), DateTimeFormatter.ISO_LOCAL_DATE);
+                String phone =
+                        CrmConversationSupport.phoneDigitsOnlyFromConversationId(conversationId)
+                                .orElse("");
+                eventPublisher.publishEvent(
+                        new AppointmentConfirmedEvent(
+                                tenantId,
+                                result.appointmentDatabaseId(),
+                                phone,
+                                clientName != null ? clientName.strip() : "",
+                                serviceName != null ? serviceName.strip() : "",
+                                day,
+                                localTime != null ? localTime.strip() : ""));
+            } catch (DateTimeParseException e) {
+                LOG.error(
+                        "createAppointment: evento omitido — isoDate inválido após sucesso do scheduling tenant={} isoDate={}",
+                        tenantId.value(),
+                        isoDate,
+                        e);
+            } catch (RuntimeException e) {
+                LOG.error(
+                        "createAppointment: falha ao publicar AppointmentConfirmedEvent tenant={} conversationId={}",
+                        tenantId.value(),
+                        conversationId,
+                        e);
+            }
+        }
+        return result.message();
     }
 
     /**
@@ -156,6 +208,7 @@ public class AppointmentService {
         }
         TenantAppointmentListItem row = any.get();
         if (row.bookingStatus() == TenantAppointmentListItem.BookingStatus.CANCELADO) {
+            logCancellationTransaction(row.id(), "JA_CANCELADO_NA_BASE", "GOOGLE_DELETE_NAO_REEXECUTADO");
             return alreadyCancelledConfirmation(row, z);
         }
 
@@ -218,7 +271,19 @@ public class AppointmentService {
             return "Não foi possível gravar o cancelamento na base de dados (o estado pode ter mudado). Não confirme "
                     + "sucesso ao cliente; peça para tentar de novo.";
         }
+        logCancellationTransaction(row.id(), "CANCELADO_GRAVADO", "GOOGLE_EVENTO_REMOVIDO");
         return slotReleasedConfirmation(row, z);
+    }
+
+    /**
+     * Log único por conclusão bem-sucedida do fluxo de cancelamento (suporte a operações e disputas de cliente).
+     */
+    private static void logCancellationTransaction(long appointmentId, String statusBanco, String statusGoogleCalendar) {
+        LOG.info(
+                "[cancel-transaction] appointmentId={} | STATUS_BANCO={} | STATUS_GOOGLE_CALENDAR={}",
+                appointmentId,
+                statusBanco,
+                statusGoogleCalendar);
     }
 
     private static String slotReleasedConfirmation(TenantAppointmentListItem row, ZoneId z) {

@@ -108,6 +108,8 @@ public class ChatService implements ChatUseCase {
 
     private final AppointmentSchedulingPort appointmentScheduling;
 
+    private final AppointmentService appointmentService;
+
     private final String schedulingZoneId;
 
 
@@ -132,6 +134,8 @@ public class ChatService implements ChatUseCase {
 
             AppointmentSchedulingPort appointmentScheduling,
 
+            AppointmentService appointmentService,
+
             String schedulingZoneId) {
 
         this.conversationContextStore = conversationContextStore;
@@ -151,6 +155,8 @@ public class ChatService implements ChatUseCase {
         this.tenantAppointmentQuery = tenantAppointmentQuery;
 
         this.appointmentScheduling = appointmentScheduling;
+
+        this.appointmentService = appointmentService;
 
         this.schedulingZoneId = schedulingZoneId != null && !schedulingZoneId.isBlank()
 
@@ -276,10 +282,14 @@ public class ChatService implements ChatUseCase {
                     "[scheduling-cancel] Rascunho de agendamento (slot_options/slot_date/scheduling_draft) removido do histórico — intenção cancelar.");
         }
 
+        boolean rescheduleIntent =
+                schedulingTools && SchedulingUserReplyNormalizer.looksLikeRescheduleOrTimeChangeIntent(userText);
+
         boolean schedulingRestartIntent =
                 schedulingTools
                         && SchedulingUserReplyNormalizer.looksLikeSchedulingRestartIntent(userText)
-                        && !cancelIntent;
+                        && !cancelIntent
+                        && !rescheduleIntent;
         if (schedulingRestartIntent) {
             clearCancellationContext(conversationId.value());
             historyForAi = SchedulingUserReplyNormalizer.stripInternalAppendicesFromHistory(historyForAi);
@@ -303,6 +313,11 @@ public class ChatService implements ChatUseCase {
                                                         userText, historyForSlotExpansion))
                         : SlotChoiceExpansion.unchanged(userText);
         String userMessageForAi = slotExpansion.expandedUserMessage();
+        if (rescheduleIntent) {
+            userMessageForAi =
+                    SchedulingUserReplyNormalizer.RESCHEDULE_FLOW_HINT + "\n\n" + userMessageForAi;
+            LOG.info("[scheduling-reschedule] Mensagem reforçada com fluxo cancelar → disponibilidade → criar.");
+        }
 
         Optional<LocalDate> schedulingSlotAnchorDate =
                 schedulingTools
@@ -366,7 +381,7 @@ public class ChatService implements ChatUseCase {
                     iso,
                     choice.timeHhMm());
             String result =
-                    appointmentScheduling.createAppointment(
+                    appointmentService.createAppointment(
                             tenantId,
                             iso,
                             choice.timeHhMm(),

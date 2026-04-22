@@ -94,6 +94,14 @@ public class GeminiChatEngineAdapter {
     private static final Pattern SHORT_SCHEDULING_CONFIRM =
             Pattern.compile("^(sim|sí|ok|confirmado|confirmo|pode|isso|perfeito|fechado)[.!\\s]*$", Pattern.CASE_INSENSITIVE);
 
+    /**
+     * Resposta típica a «quer que eu verifique os horários?» — deve disparar {@code check_availability} (reforço e
+     * backfill), não fluxo de cancelamento nem silêncio por falta de data parseável.
+     */
+    private static final Pattern EXPLICIT_AVAILABILITY_CHECK_MESSAGE =
+            Pattern.compile(
+                    "^(?is)(?:verifica|verifique|verifiquem|confere|conferes|checa|cheque|chequem)(?:[.!…]+|\\s.*)?$");
+
     /** Resposta só com o ID numérico da lista de cancelamento (ex.: «2», «1234», «opção 2») — forçar {@code cancel_appointment} no servidor. */
     private static final Pattern BARE_CANCEL_OPTION_INDEX = Pattern.compile("^\\d{1,19}$");
 
@@ -512,6 +520,9 @@ public class GeminiChatEngineAdapter {
         if (t.length() <= 24 && SHORT_SCHEDULING_CONFIRM.matcher(t).matches()) {
             return true;
         }
+        if (looksLikeExplicitAvailabilityCheckIntent(t)) {
+            return true;
+        }
         String lower = t.toLowerCase(Locale.ROOT);
         return lower.contains("agend")
                 || lower.contains("marcar")
@@ -525,6 +536,27 @@ public class GeminiChatEngineAdapter {
                 || lower.contains("vaga")
                 || t.contains("/")
                 || t.chars().filter(Character::isDigit).count() >= 2;
+    }
+
+    /**
+     * «Verifica», «verifique a disponibilidade», etc. — pedido de consulta de horários, não de lista de cancelamentos.
+     */
+    private static boolean looksLikeExplicitAvailabilityCheckIntent(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return false;
+        }
+        String s = raw.strip();
+        if (s.length() > 56) {
+            return false;
+        }
+        if (SchedulingUserReplyNormalizer.looksLikeCancellationIntent(s)) {
+            return false;
+        }
+        String lower = s.toLowerCase(Locale.ROOT);
+        if (lower.contains("cancel") || lower.contains("desmarc") || lower.contains("anula")) {
+            return false;
+        }
+        return EXPLICIT_AVAILABILITY_CHECK_MESSAGE.matcher(s).matches();
     }
 
     private String buildSystemContent(AICompletionRequest request) {
@@ -689,6 +721,9 @@ public class GeminiChatEngineAdapter {
                 && SchedulingUserReplyNormalizer.looksLikeSchedulingRestartIntent(request.userMessage())) {
             return false;
         }
+        if (request.userMessage() != null && looksLikeExplicitAvailabilityCheckIntent(request.userMessage())) {
+            return false;
+        }
         return SchedulingUserReplyNormalizer.looksLikeCancellationInBlob(
                 mergeConversationTranscriptForCancellationScoring(request));
     }
@@ -827,6 +862,30 @@ public class GeminiChatEngineAdapter {
         return shortConfirmAfterAssistantListOrCancelPrompt(request);
     }
 
+    /**
+     * «Ver a lista» na mensagem do assistente refere-se a agendamentos/compromissos — não a «ver a lista de
+     * serviços» do pitch comercial (evita que «sim» dispare get_active_appointments).
+     */
+    private static boolean assistantPromptVerAListaTargetsAppointments(String cLower) {
+        if (!cLower.contains("ver a lista")) {
+            return false;
+        }
+        if (Pattern.compile("lista\\s+de\\s+servi").matcher(cLower).find()) {
+            return false;
+        }
+        if ((cLower.contains("serviço")
+                        || cLower.contains("servico")
+                        || cLower.contains("servicos"))
+                && !(cLower.contains("agend")
+                        || cLower.contains("compromis")
+                        || cLower.contains("cancel")
+                        || cLower.contains("desmarc")
+                        || cLower.contains("marcad"))) {
+            return false;
+        }
+        return true;
+    }
+
     private static boolean shortConfirmAfterAssistantListOrCancelPrompt(AICompletionRequest request) {
         String um = request.userMessage();
         if (um == null || um.isBlank()) {
@@ -859,7 +918,7 @@ public class GeminiChatEngineAdapter {
                     || c.contains("agendamentos agendado")
                     || c.contains("cancel_option_map")
                     || c.contains("appointmentid=")
-                    || c.contains("ver a lista")
+                    || assistantPromptVerAListaTargetsAppointments(c)
                     || c.contains("lista de agendamento")
                     || (c.contains("listar") && (c.contains("agendamento") || c.contains("compromisso")))
                     || c.contains("qual deseja cancelar")
@@ -870,6 +929,9 @@ public class GeminiChatEngineAdapter {
 
     /** Pedido de listagem de horários / disponibilidade (não confirmação curta). */
     private static boolean isAvailabilityListingIntent(String msg) {
+        if (looksLikeExplicitAvailabilityCheckIntent(msg)) {
+            return true;
+        }
         String u = msg.toLowerCase(Locale.ROOT);
         if (u.length() <= 15 && SHORT_SCHEDULING_CONFIRM.matcher(msg.strip()).matches()) {
             return false;

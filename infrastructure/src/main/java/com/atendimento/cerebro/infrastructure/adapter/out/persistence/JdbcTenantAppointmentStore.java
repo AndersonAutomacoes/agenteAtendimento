@@ -23,14 +23,15 @@ public class JdbcTenantAppointmentStore implements TenantAppointmentStorePort {
 
     @Override
     @Transactional
-    public void insert(TenantAppointmentRecord record) {
-        jdbcClient
+    public long insert(TenantAppointmentRecord record) {
+        return jdbcClient
                 .sql(
                         """
                         INSERT INTO tenant_appointments (
                             tenant_id, conversation_id, client_name, service_name,
                             starts_at, ends_at, google_event_id, booking_status)
                         VALUES (?, ?, ?, ?, ?, ?, ?, 'AGENDADO')
+                        RETURNING id
                         """)
                 .param(record.tenantId().value())
                 .param(record.conversationId())
@@ -39,7 +40,8 @@ public class JdbcTenantAppointmentStore implements TenantAppointmentStorePort {
                 .param(Timestamp.from(record.startsAt()))
                 .param(Timestamp.from(record.endsAt()))
                 .param(record.googleEventId())
-                .update();
+                .query(Long.class)
+                .single();
     }
 
     @Override

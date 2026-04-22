@@ -44,9 +44,13 @@ import com.atendimento.cerebro.application.port.out.KnowledgeBasePort;
 
 import com.atendimento.cerebro.application.port.out.TenantAppointmentQueryPort;
 
+import com.atendimento.cerebro.application.port.out.TenantAppointmentStorePort;
+
 import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort;
 
 import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
+
+import com.atendimento.cerebro.application.scheduling.CreateAppointmentResult;
 
 import com.atendimento.cerebro.domain.conversation.ConversationContext;
 
@@ -79,6 +83,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import org.springframework.context.ApplicationEventPublisher;
 
 
 
@@ -138,7 +144,23 @@ class ChatServiceTest {
 
     @Mock
 
+    private TenantAppointmentStorePort tenantAppointmentStore;
+
+
+
+    @Mock
+
     private AppointmentSchedulingPort appointmentScheduling;
+
+
+
+    @Mock
+
+    private ApplicationEventPublisher applicationEventPublisher;
+
+
+
+    private AppointmentService appointmentService;
 
 
 
@@ -160,6 +182,14 @@ class ChatServiceTest {
 
         conversationId = new ConversationId("conv-1");
 
+        appointmentService =
+                new AppointmentService(
+                        tenantAppointmentQuery,
+                        tenantAppointmentStore,
+                        appointmentScheduling,
+                        crmCustomerQuery,
+                        applicationEventPublisher);
+
         chatService = new ChatService(
 
                 conversationContextStore,
@@ -179,6 +209,8 @@ class ChatServiceTest {
                 tenantAppointmentQuery,
 
                 appointmentScheduling,
+
+                appointmentService,
 
                 "America/Sao_Paulo");
 
@@ -507,7 +539,9 @@ class ChatServiceTest {
                         eq("revisão"),
                         eq(conversationId.value())))
                 .thenReturn(
-                        "Agendamento confirmado para 16/04/2026 às 17:30. O horário foi registado na agenda da oficina.");
+                        CreateAppointmentResult.success(
+                                "Agendamento confirmado para 16/04/2026 às 17:30. O horário foi registado na agenda da oficina.",
+                                1L));
 
         var result =
                 chatService.chat(new ChatCommand(tenantId, conversationId, "sim", null, AiChatProvider.GEMINI));

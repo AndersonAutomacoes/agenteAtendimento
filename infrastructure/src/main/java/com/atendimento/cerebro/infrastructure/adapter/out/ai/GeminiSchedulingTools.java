@@ -495,7 +495,7 @@ public class GeminiSchedulingTools {
                 service);
 
         String result =
-                scheduling.createAppointment(
+                appointmentService.createAppointment(
                         tenantId, prep.dateIso(), prep.timeHhMm(), client_name, service, conversationId);
         if (SchedulingCreateAppointmentResult.isSuccess(result)) {
             try {

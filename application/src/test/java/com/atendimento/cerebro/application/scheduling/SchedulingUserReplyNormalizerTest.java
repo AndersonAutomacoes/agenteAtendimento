@@ -201,6 +201,18 @@ class SchedulingUserReplyNormalizerTest {
     }
 
     @Test
+    void looksLikeCancellationInBlob_falseForRemoverInServicePitch() {
+        assertThat(
+                        SchedulingUserReplyNormalizer.looksLikeCancellationInBlob(
+                                "Alinhamento: precisamos remover os pneus antigos para calibrar."))
+                .isFalse();
+        assertThat(
+                        SchedulingUserReplyNormalizer.looksLikeCancellationInBlob(
+                                "Troca de óleo inclui remoção do filtro antigo."))
+                .isFalse();
+    }
+
+    @Test
     void lastAssistantSuggestedAppointmentCancellation_trueWhenLatestAssistantIsAppointmentList() {
         List<Message> hist =
                 List.of(
@@ -298,5 +310,25 @@ class SchedulingUserReplyNormalizerTest {
                         + "Gostaria de agendar";
         assertThat(SchedulingUserReplyNormalizer.transcriptAfterLastCancellationSuccess(blob)).contains("Gostaria");
         assertThat(SchedulingUserReplyNormalizer.transcriptAfterLastCancellationSuccess(blob)).doesNotContain("Quero cancelar");
+    }
+
+    @Test
+    void looksLikeRescheduleOrTimeChangeIntent_detectsPhrases() {
+        assertThat(SchedulingUserReplyNormalizer.looksLikeRescheduleOrTimeChangeIntent("Queria trocar o horário de amanhã"))
+                .isTrue();
+        assertThat(SchedulingUserReplyNormalizer.looksLikeRescheduleOrTimeChangeIntent("Quero reagendar"))
+                .isTrue();
+        assertThat(SchedulingUserReplyNormalizer.looksLikeRescheduleOrTimeChangeIntent("Quero desmarcar"))
+                .isFalse();
+        assertThat(SchedulingUserReplyNormalizer.looksLikeRescheduleOrTimeChangeIntent("Tem vaga amanhã?"))
+                .isFalse();
+    }
+
+    @Test
+    void userMessageOverridesCancel_rescheduleDoesNotOverrideAvailabilityGuard() {
+        assertThat(
+                        SchedulingUserReplyNormalizer.userMessageOverridesCancelForAvailabilityCheck(
+                                "Queria trocar o horário de amanhã"))
+                .isFalse();
     }
 }

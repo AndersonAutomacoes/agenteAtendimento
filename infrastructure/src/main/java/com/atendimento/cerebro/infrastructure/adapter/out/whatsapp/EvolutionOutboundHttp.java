@@ -29,6 +29,20 @@ public class EvolutionOutboundHttp {
      * @return código HTTP (2xx esperado)
      */
     public int postJson(String url, String apiKey, String jsonBody) throws IOException, InterruptedException {
+        HttpResponse<String> res = postJsonResponse(url, apiKey, jsonBody);
+        int code = res.statusCode();
+        if (code < 200 || code >= 300) {
+            throw new IllegalStateException(
+                    "Evolution HTTP " + code + " url=" + url + " body=" + truncate(res.body(), 500));
+        }
+        return code;
+    }
+
+    /**
+     * POST com corpo de resposta (auditoria de {@code messageId} na Evolution API).
+     */
+    public HttpResponse<String> postJsonResponse(String url, String apiKey, String jsonBody)
+            throws IOException, InterruptedException {
         HttpRequest req =
                 HttpRequest.newBuilder()
                         .uri(URI.create(url))
@@ -48,11 +62,7 @@ public class EvolutionOutboundHttp {
         } else {
             LOG.debug("Evolution HTTP {} url={} response={}", code, url, truncate(responseBody, 800));
         }
-        if (code < 200 || code >= 300) {
-            throw new IllegalStateException(
-                    "Evolution HTTP " + code + " url=" + url + " body=" + truncate(responseBody, 500));
-        }
-        return code;
+        return res;
     }
 
     private static String truncate(String s, int max) {

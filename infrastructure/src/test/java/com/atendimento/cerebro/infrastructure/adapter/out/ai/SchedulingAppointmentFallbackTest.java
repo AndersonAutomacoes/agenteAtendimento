@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.atendimento.cerebro.application.ai.AiChatProvider;
 import com.atendimento.cerebro.application.dto.AICompletionRequest;
 import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
+import com.atendimento.cerebro.application.scheduling.CreateAppointmentResult;
 import com.atendimento.cerebro.domain.conversation.Message;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import java.time.LocalDate;
@@ -33,6 +34,13 @@ class SchedulingAppointmentFallbackTest {
     }
 
     @Test
+    void lastDateInTranscript_parsesPortugueseSpokenDate() {
+        String blob = "Para sábado, 18 de abril de 2026, aditivo de radiador.";
+        assertThat(SchedulingAppointmentFallback.lastDateInTranscript(blob, ZONE))
+                .contains(LocalDate.of(2026, 4, 18));
+    }
+
+    @Test
     void lastTimeInTranscript_picksLastClockTime() {
         String blob = "08:00 não serve, prefiro 14:30.";
         assertThat(SchedulingAppointmentFallback.lastTimeInTranscript(blob)).contains(LocalTime.of(14, 30));
@@ -48,7 +56,7 @@ class SchedulingAppointmentFallbackTest {
                     }
 
                     @Override
-                    public String createAppointment(
+                    public CreateAppointmentResult createAppointment(
                             TenantId tenantId,
                             String isoDate,
                             String localTime,
@@ -88,7 +96,7 @@ class SchedulingAppointmentFallbackTest {
                     }
 
                     @Override
-                    public String createAppointment(
+                    public CreateAppointmentResult createAppointment(
                             TenantId tenantId,
                             String isoDate,
                             String localTime,

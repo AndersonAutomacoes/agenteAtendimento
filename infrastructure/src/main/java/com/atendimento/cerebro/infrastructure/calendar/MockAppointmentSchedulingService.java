@@ -2,6 +2,7 @@ package com.atendimento.cerebro.infrastructure.calendar;
 
 import com.atendimento.cerebro.application.dto.TenantAppointmentRecord;
 import com.atendimento.cerebro.application.scheduling.AppointmentCalendarValidationResult;
+import com.atendimento.cerebro.application.scheduling.CreateAppointmentResult;
 import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
 import com.atendimento.cerebro.application.port.out.CrmCustomerStorePort;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentQueryPort;
@@ -104,7 +105,7 @@ public class MockAppointmentSchedulingService implements AppointmentSchedulingPo
     }
 
     @Override
-    public String createAppointment(
+    public CreateAppointmentResult createAppointment(
             TenantId tenantId,
             String isoDate,
             String localTime,
@@ -113,14 +114,15 @@ public class MockAppointmentSchedulingService implements AppointmentSchedulingPo
             String conversationId) {
         Optional<String> calId = resolveCalendarId(tenantId);
         if (calId.isEmpty()) {
-            return "O calendário ainda não está ligado a este espaço. Informe o cliente com cordialidade que não é "
-                    + "possível concluir o agendamento agora.";
+            return CreateAppointmentResult.failure(
+                    "O calendário ainda não está ligado a este espaço. Informe o cliente com cordialidade que não é "
+                            + "possível concluir o agendamento agora.");
         }
         ZoneId zone = ZoneId.of(props.getZone());
         AppointmentCalendarValidationResult validated =
                 appointmentValidationService.validateIsoDateAndTimeForCalendar(isoDate, localTime, zone);
         if (!validated.valid()) {
-            return validated.userMessage();
+            return CreateAppointmentResult.failure(validated.userMessage());
         }
         LocalDate day = validated.day();
         LocalTime time = validated.time();
@@ -131,7 +133,8 @@ public class MockAppointmentSchedulingService implements AppointmentSchedulingPo
             LOG.warn(
                     "createAppointment (mock) bloqueado: intervalo já ocupado em tenant_appointments tenant={}",
                     tenantId.value());
-            return appointmentValidationService.duplicateSlotConflictMessageForGemini();
+            return CreateAppointmentResult.failure(
+                    appointmentValidationService.duplicateSlotConflictMessageForGemini());
         }
         LocalDate dataGravadaGoogle = start.atZone(zone).toLocalDate();
         LOG.info(
@@ -150,8 +153,10 @@ public class MockAppointmentSchedulingService implements AppointmentSchedulingPo
         }
         String eventId = "mock-" + UUID.randomUUID();
         String conv = conversationId == null || conversationId.isBlank() ? null : conversationId.strip();
-        appointmentStore.insert(
-                new TenantAppointmentRecord(tenantId, conv, clientName.strip(), serviceName.strip(), start, end, eventId));
+        long appointmentRowId =
+                appointmentStore.insert(
+                        new TenantAppointmentRecord(
+                                tenantId, conv, clientName.strip(), serviceName.strip(), start, end, eventId));
         try {
             crmCustomerStore.recordSuccessfulAppointment(tenantId, conv != null ? conv : "", clientName.strip());
         } catch (RuntimeException e) {
@@ -163,14 +168,16 @@ public class MockAppointmentSchedulingService implements AppointmentSchedulingPo
                 conv,
                 start,
                 eventId);
-        return "Agendamento criado (simulado) no calendário "
-                + calId.get()
-                + " para "
-                + day.format(PT_BR_DATE)
-                + " "
-                + localTime
-                + ". ID interno: "
-                + eventId;
+        return CreateAppointmentResult.success(
+                "Agendamento criado (simulado) no calendário "
+                        + calId.get()
+                        + " para "
+                        + day.format(PT_BR_DATE)
+                        + " "
+                        + localTime
+                        + ". ID interno: "
+                        + eventId,
+                appointmentRowId);
     }
 
     @Override

@@ -72,7 +72,12 @@ public final class RagSystemPromptComposer {
                     + "(ex.: ID não encontrado), sem pedir telefone em loop. "
                     + "Se perguntou se o cliente quer ver a lista de agendamentos e o cliente responde «sim», «sí», «ok» ou "
                     + "equivalente, invoque get_active_appointments nesse mesmo turno — não responda só com texto sem chamar a "
-                    + "ferramenta.";
+                    + "ferramenta. "
+                    + "Reagendar / trocar horário: expressões como «trocar o horário», «mudar a marcação», «reagendar», "
+                    + "«remarcar para amanhã» significam cancelar o compromisso existente e depois marcar outro — nunca "
+                    + "apenas check_availability + create_appointment sem passar por get_active_appointments e "
+                    + "cancel_appointment do agendamento correcto primeiro. Depois do cancelamento confirmado, siga o "
+                    + "fluxo normal de disponibilidade e confirmação.";
 
     private RagSystemPromptComposer() {}
 

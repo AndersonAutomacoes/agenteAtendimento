@@ -1,5 +1,6 @@
 package com.atendimento.cerebro.application.port.out;
 
+import com.atendimento.cerebro.application.scheduling.CreateAppointmentResult;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 
 /**
@@ -17,7 +18,7 @@ public interface AppointmentSchedulingPort {
      * @param localTime {@code HH:mm} (24h)
      *     <p>Implementações rejeitam datas civis estritamente anteriores a "hoje" no fuso do calendário.
      */
-    String createAppointment(
+    CreateAppointmentResult createAppointment(
             TenantId tenantId,
             String isoDate,
             String localTime,

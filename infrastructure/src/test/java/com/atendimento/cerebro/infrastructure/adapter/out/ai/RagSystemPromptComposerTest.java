@@ -61,7 +61,9 @@ class RagSystemPromptComposerTest {
                 .contains("Não peça o telefone outra vez")
                 .contains("não peça permissão")
                 .contains("lista devolvida pela ferramenta")
-                .contains("IMEDIATAMENTE");
+                .contains("IMEDIATAMENTE")
+                .contains("Reagendar / trocar horário")
+                .contains("cancel_appointment do agendamento correcto primeiro");
     }
 
     @Test

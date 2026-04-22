@@ -36,6 +36,7 @@ import com.atendimento.cerebro.infrastructure.config.AnalyticsCategorizationProp
 import com.atendimento.cerebro.infrastructure.config.AnalyticsIntentClassificationProperties;
 import com.atendimento.cerebro.infrastructure.config.ChatAnalyticsProperties;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -52,9 +53,14 @@ public class ApplicationConfiguration {
             TenantAppointmentQueryPort tenantAppointmentQuery,
             TenantAppointmentStorePort tenantAppointmentStore,
             AppointmentSchedulingPort appointmentSchedulingPort,
-            CrmCustomerQueryPort crmCustomerQuery) {
+            CrmCustomerQueryPort crmCustomerQuery,
+            ApplicationEventPublisher applicationEventPublisher) {
         return new AppointmentService(
-                tenantAppointmentQuery, tenantAppointmentStore, appointmentSchedulingPort, crmCustomerQuery);
+                tenantAppointmentQuery,
+                tenantAppointmentStore,
+                appointmentSchedulingPort,
+                crmCustomerQuery,
+                applicationEventPublisher);
     }
 
     @Bean
@@ -68,6 +74,7 @@ public class ApplicationConfiguration {
             CrmCustomerQueryPort crmCustomerQuery,
             TenantAppointmentQueryPort tenantAppointmentQuery,
             AppointmentSchedulingPort appointmentSchedulingPort,
+            AppointmentService appointmentService,
             @Value("${cerebro.google.calendar.zone:America/Bahia}") String schedulingZoneId) {
         return new ChatService(
                 conversationContextStore,
@@ -79,6 +86,7 @@ public class ApplicationConfiguration {
                 crmCustomerQuery,
                 tenantAppointmentQuery,
                 appointmentSchedulingPort,
+                appointmentService,
                 schedulingZoneId);
     }
 

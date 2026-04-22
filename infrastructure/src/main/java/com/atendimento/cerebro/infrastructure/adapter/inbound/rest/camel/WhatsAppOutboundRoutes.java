@@ -242,7 +242,7 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         }
     }
 
-    static WhatsAppProviderType effectiveProvider(TenantConfiguration c) {
+    public static WhatsAppProviderType effectiveProvider(TenantConfiguration c) {
         return switch (c.whatsappProviderType()) {
             case META -> (c.whatsappApiKey() != null && !c.whatsappApiKey().isBlank())
                             && (c.whatsappInstanceId() != null && !c.whatsappInstanceId().isBlank())
