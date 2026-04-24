@@ -1,32 +1,26 @@
 package com.atendimento.cerebro.infrastructure.notification;
 
+import com.atendimento.cerebro.application.crm.CrmConversationSupport;
+import com.atendimento.cerebro.application.dto.WhatsAppTextPayload;
+import com.atendimento.cerebro.application.logging.AppointmentAuditLog;
+import com.atendimento.cerebro.application.event.AppointmentCancelledEvent;
 import com.atendimento.cerebro.application.event.AppointmentConfirmedEvent;
-import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort;
-import com.atendimento.cerebro.application.port.out.WhatsAppOutboundPort;
-import com.atendimento.cerebro.domain.tenant.TenantConfiguration;
+import com.atendimento.cerebro.application.port.out.TenantAppointmentStorePort;
+import com.atendimento.cerebro.application.port.out.WhatsAppTextOutboundPort;
 import com.atendimento.cerebro.domain.tenant.TenantId;
-import com.atendimento.cerebro.domain.tenant.WhatsAppProviderType;
-import com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel.WhatsAppOutboundRoutes;
-import com.atendimento.cerebro.infrastructure.adapter.out.whatsapp.EvolutionOutboundHttp;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.net.http.HttpResponse;
-import java.time.LocalTime;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
 import java.util.Locale;
-import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 /**
- * Notificação assíncrona pós-confirmação de agendamento: Evolution (POST directo com auditoria de {@code messageId}) ou
- * Meta/simulado via {@link WhatsAppOutboundPort} (rotas Camel {@code direct:processWhatsAppResponse}).
+ * Notificações assíncronas pós-agendamento e pós-cancelamento via {@code direct:processWhatsAppResponse} (Evolution /
+ * Meta / simulado).
  */
 @Component
 public class AppointmentNotificationListener {
@@ -35,29 +29,15 @@ public class AppointmentNotificationListener {
 
     private static final DateTimeFormatter DATE_BR =
             DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.forLanguageTag("pt-BR"));
-    private static final DateTimeFormatter TIME_OUT = DateTimeFormatter.ofPattern("HH:mm");
-    private static final DateTimeFormatter TIME_PARSE_H =
-            DateTimeFormatter.ofPattern("H:mm");
-    private static final DateTimeFormatter TIME_PARSE_HH =
-            DateTimeFormatter.ofPattern("HH:mm");
+    private static final DateTimeFormatter TIME_BR = DateTimeFormatter.ofPattern("HH:mm");
 
-    private final TenantConfigurationStorePort tenantConfigurationStore;
-    private final EvolutionOutboundHttp evolutionOutboundHttp;
-    private final WhatsAppOutboundPort whatsAppOutboundPort;
-    private final ObjectMapper objectMapper;
-    private final String evolutionBaseUrlOverride;
+    private final WhatsAppTextOutboundPort whatsAppTextOutboundPort;
+    private final TenantAppointmentStorePort appointmentStore;
 
     public AppointmentNotificationListener(
-            TenantConfigurationStorePort tenantConfigurationStore,
-            EvolutionOutboundHttp evolutionOutboundHttp,
-            WhatsAppOutboundPort whatsAppOutboundPort,
-            ObjectMapper objectMapper,
-            @Value("${cerebro.whatsapp.evolution.base-url-override:}") String evolutionBaseUrlOverride) {
-        this.tenantConfigurationStore = tenantConfigurationStore;
-        this.evolutionOutboundHttp = evolutionOutboundHttp;
-        this.whatsAppOutboundPort = whatsAppOutboundPort;
-        this.objectMapper = objectMapper;
-        this.evolutionBaseUrlOverride = evolutionBaseUrlOverride != null ? evolutionBaseUrlOverride : "";
+            WhatsAppTextOutboundPort whatsAppTextOutboundPort, TenantAppointmentStorePort appointmentStore) {
+        this.whatsAppTextOutboundPort = whatsAppTextOutboundPort;
+        this.appointmentStore = appointmentStore;
     }
 
     @Async
@@ -65,165 +45,153 @@ public class AppointmentNotificationListener {
     public void onAppointmentConfirmed(AppointmentConfirmedEvent event) {
         Long appointmentId = event.appointmentId();
         TenantId tenantId = event.tenantId();
-        String phone = event.phoneNumber() != null ? event.phoneNumber().strip() : "";
-        if (phone.isEmpty()) {
+        String rawDigits = event.phoneNumber() != null ? event.phoneNumber().strip() : "";
+        String number = CrmConversationSupport.digitsForEvolutionApi(rawDigits);
+        if (number.isEmpty()) {
             LOG.warn(
-                    "[appointment-notify-audit] appointmentId={} tenant={} skipped: phoneNumber vazio",
+                    "Notificação de confirmação omitida: telefone vazio (appointmentId={} tenant={})",
                     appointmentId,
                     tenantId.value());
             return;
         }
 
-        String dateBr = event.date() != null ? event.date().format(DATE_BR) : "";
-        String timeBr = normalizeTimeHhMm(event.timeHhMm());
-        String body =
+        ZoneId zone = calendarZone(event.calendarZoneId());
+        LocalDateTime ldt = LocalDateTime.ofInstant(event.startsAt(), zone);
+        String dateBr = ldt.format(DATE_BR);
+        String timeBr = ldt.format(TIME_BR);
+        String service = sanitizeServiceNameForCustomer(event.serviceName());
+
+        String text =
                 """
-                        Confirmação Realizada! 🚗💨
-                        Olá, %s! Seu agendamento para %s foi confirmado com sucesso.
-                        📅 Data: %s
-                        ⏰ Horário: %s
+                        *Agendamento confirmado*
 
-                        Te aguardamos na oficina! Se precisar desmarcar, é só falar comigo por aqui.
+                        Olá, *%s*!
+
+                        🛠️ *Serviço:* %s
+                        📅 *Data:* %s
+                        ⏰ *Horário:* %s
+
+                        Se precisar alterar ou cancelar, é só responder por aqui.
                         """
-                        .formatted(
-                                nullSafe(event.clientName()),
-                                nullSafe(event.serviceName()),
-                                dateBr,
-                                timeBr)
-                        .strip();
+                        .stripIndent()
+                        .formatted(nullSafe(event.clientName()), service, dateBr, timeBr);
 
-        TenantConfiguration cfg =
-                tenantConfigurationStore.findByTenantId(tenantId).orElseGet(() -> TenantConfiguration.defaults(tenantId));
-        WhatsAppProviderType effective = WhatsAppOutboundRoutes.effectiveProvider(cfg);
+        var payload = new WhatsAppTextPayload(tenantId, number, text);
 
         try {
-            if (effective == WhatsAppProviderType.EVOLUTION) {
-                sendEvolutionWithAudit(cfg, phone, body, appointmentId, tenantId);
-            } else {
-                whatsAppOutboundPort.sendMessage(tenantId, phone, body);
+            var response = whatsAppTextOutboundPort.sendText(payload);
+            if (response.isSuccess()) {
+                if (!appointmentStore.markAsNotified(event.appointmentId(), response.getMessageId())) {
+                    LOG.warn(
+                            "Notificação enviada mas não foi possível actualizar tenant_appointments (appointmentId={} tenant={})",
+                            appointmentId,
+                            tenantId.value());
+                }
+                String masked = CrmConversationSupport.maskPhoneForAudit(rawDigits);
                 LOG.info(
-                        "[appointment-notify-audit] appointmentId={} tenant={} channel={} evolutionMessageId=n/a",
+                        "[APP-CONFIRMED] ID: {} | Phone: {} | notificação WhatsApp enviada | messageId={}",
                         appointmentId,
-                        tenantId.value(),
-                        effective.name());
+                        masked,
+                        response.getMessageId() != null ? response.getMessageId() : "—");
+            } else {
+                AppointmentAuditLog.appErrorWithAppointmentId(
+                        "WhatsApp",
+                        event.appointmentId().longValue(),
+                        response.getError() != null ? response.getError() : "sendText failure");
             }
         } catch (Exception e) {
-            LOG.error(
-                    "[appointment-notify-audit] appointmentId={} tenant={} falha: {}",
-                    appointmentId,
-                    tenantId.value(),
-                    e.toString());
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("appointment notify stack", e);
-            }
+            AppointmentAuditLog.appErrorWithAppointmentId(
+                    "EvolutionAPI", event.appointmentId().longValue(), e.getMessage() != null ? e.getMessage() : e.toString());
         }
     }
 
-    private void sendEvolutionWithAudit(
-            TenantConfiguration cfg, String phoneDigits, String text, Long appointmentId, TenantId tenantId)
-            throws Exception {
-        String baseRaw =
-                evolutionBaseUrlOverride.isBlank() ? cfg.whatsappBaseUrl() : evolutionBaseUrlOverride;
-        String base = trimTrailingSlash(baseRaw);
-        String apiKey = cfg.whatsappApiKey();
-        String instanceId = cfg.whatsappInstanceId();
-        if (base.isBlank() || apiKey == null || apiKey.isBlank() || instanceId == null || instanceId.isBlank()) {
+    @Async
+    @EventListener
+    public void onAppointmentCancelled(AppointmentCancelledEvent event) {
+        TenantId tenantId = event.tenantId();
+        String rawDigits = event.phoneNumber() != null ? event.phoneNumber().strip() : "";
+        String number = CrmConversationSupport.digitsForEvolutionApi(rawDigits);
+        if (number.isEmpty()) {
             LOG.warn(
-                    "[appointment-notify-audit] appointmentId={} tenant={} evolution config incompleta — a usar WhatsAppOutboundPort",
-                    appointmentId,
+                    "Notificação de cancelamento omitida: telefone vazio (appointmentId={} tenant={})",
+                    event.appointmentId(),
                     tenantId.value());
-            whatsAppOutboundPort.sendMessage(tenantId, phoneDigits, text);
             return;
         }
 
-        String url = base + "/message/sendText/" + instanceId;
-        String json = buildEvolutionSendTextJson(phoneDigits, text);
-        HttpResponse<String> res = evolutionOutboundHttp.postJsonResponse(url, apiKey, json);
-        int code = res.statusCode();
-        String responseBody = res.body();
-        if (code >= 200 && code < 300) {
-            Optional<String> mid = extractEvolutionMessageId(responseBody);
-            LOG.info(
-                    "[appointment-notify-audit] appointmentId={} tenant={} evolutionHttp={} evolutionMessageId={} responseSnippet={}",
-                    appointmentId,
-                    tenantId.value(),
-                    code,
-                    mid.orElse("unknown"),
-                    truncate(responseBody, 400));
-        } else {
-            LOG.error(
-                    "[appointment-notify-audit] appointmentId={} tenant={} evolutionHttp={} erro={}",
-                    appointmentId,
-                    tenantId.value(),
-                    code,
-                    truncate(responseBody, 800));
-        }
-    }
+        ZoneId zone = calendarZone(event.calendarZoneId());
+        LocalDateTime ldt = LocalDateTime.ofInstant(event.startsAt(), zone);
+        String dateBr = ldt.format(DATE_BR);
+        String timeBr = ldt.format(TIME_BR);
 
-    private String buildEvolutionSendTextJson(String digits, String messageText) throws Exception {
-        ObjectNode root = objectMapper.createObjectNode();
-        root.put("number", digits);
-        root.put("text", messageText != null ? messageText : "");
-        return objectMapper.writeValueAsString(root);
-    }
+        String cancelledService = sanitizeServiceNameForCustomer(event.serviceName());
+        String text =
+                """
+                        *Cancelamento confirmado*
 
-    private Optional<String> extractEvolutionMessageId(String json) {
-        if (json == null || json.isBlank()) {
-            return Optional.empty();
-        }
+                        Olá, *%s*!
+
+                        O agendamento de *%s* foi cancelado.
+                        📅 *Data:* %s
+                        ⏰ *Horário:* %s
+
+                        Se precisar de um novo horário, é só avisar por aqui.
+                        """
+                        .stripIndent()
+                        .formatted(nullSafe(event.clientName()), cancelledService, dateBr, timeBr);
+
+        var payload = new WhatsAppTextPayload(tenantId, number, text);
+
         try {
-            JsonNode root = objectMapper.readTree(json);
-            JsonNode key = root.path("key");
-            if (key.isObject() && key.has("id")) {
-                return Optional.ofNullable(key.get("id").asText(null));
-            }
-            if (root.hasNonNull("messageId")) {
-                return Optional.of(root.get("messageId").asText());
-            }
-            if (root.hasNonNull("id")) {
-                return Optional.of(root.get("id").asText());
+            var response = whatsAppTextOutboundPort.sendText(payload);
+            if (response.isSuccess()) {
+                String masked = CrmConversationSupport.maskPhoneForAudit(rawDigits);
+                LOG.info(
+                        "[APP-CANCELLED] ID: {} | Phone: {} | notificação WhatsApp enviada (cancel)",
+                        event.appointmentId(),
+                        masked);
+            } else {
+                AppointmentAuditLog.appErrorWithAppointmentId(
+                        "WhatsApp",
+                        event.appointmentId().longValue(),
+                        response.getError() != null ? response.getError() : "sendText cancel failure");
             }
         } catch (Exception e) {
-            LOG.debug("extractEvolutionMessageId parse: {}", e.toString());
+            AppointmentAuditLog.appErrorWithAppointmentId(
+                    "EvolutionAPI", event.appointmentId().longValue(), e.getMessage() != null ? e.getMessage() : e.toString());
         }
-        return Optional.empty();
+    }
+
+    private static ZoneId calendarZone(String calendarZoneId) {
+        if (calendarZoneId == null || calendarZoneId.isBlank()) {
+            return ZoneId.systemDefault();
+        }
+        try {
+            return ZoneId.of(calendarZoneId.strip());
+        } catch (RuntimeException e) {
+            return ZoneId.systemDefault();
+        }
     }
 
     private static String nullSafe(String s) {
         return s == null ? "" : s.strip();
     }
 
-    static String normalizeTimeHhMm(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return "";
+    private static String sanitizeServiceNameForCustomer(String serviceName) {
+        String s = nullSafe(serviceName);
+        if (s.isBlank()) {
+            return "Atendimento";
         }
-        String s = raw.strip();
-        try {
-            return LocalTime.parse(s, TIME_PARSE_H).format(TIME_OUT);
-        } catch (DateTimeParseException e1) {
-            try {
-                return LocalTime.parse(s, TIME_PARSE_HH).format(TIME_OUT);
-            } catch (DateTimeParseException e2) {
-                return s;
-            }
+        String lower = s.toLowerCase(Locale.ROOT);
+        if (lower.contains("criar agendamento")
+                || lower.contains("novo agendamento")
+                || lower.contains("fazer um agendamento")
+                || lower.contains("horário")) {
+            return "Atendimento";
         }
-    }
-
-    private static String trimTrailingSlash(String url) {
-        if (url == null || url.isEmpty()) {
-            return "";
+        if (s.length() > 48 && (lower.contains("agendamento") || lower.contains("amanhã") || lower.contains("amanha"))) {
+            return "Atendimento";
         }
-        int end = url.length();
-        while (end > 0 && url.charAt(end - 1) == '/') {
-            end--;
-        }
-        return url.substring(0, end);
-    }
-
-    private static String truncate(String s, int max) {
-        if (s == null) {
-            return "";
-        }
-        return s.length() <= max ? s : s.substring(0, max) + "…";
+        return s;
     }
 }

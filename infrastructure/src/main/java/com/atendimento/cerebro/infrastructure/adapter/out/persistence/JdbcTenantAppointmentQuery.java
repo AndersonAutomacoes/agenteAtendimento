@@ -1,13 +1,14 @@
 package com.atendimento.cerebro.infrastructure.adapter.out.persistence;
 
+import com.atendimento.cerebro.application.dto.AppointmentReminderCandidate;
 import com.atendimento.cerebro.application.dto.TenantAppointmentListItem;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentQueryPort;
 import com.atendimento.cerebro.domain.tenant.TenantId;
+import java.time.LocalDate;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -300,6 +301,37 @@ public class JdbcTenantAppointmentQuery implements TenantAppointmentQueryPort {
                         .query((rs, rowNum) -> mapRow(rs, now, z))
                         .list();
         return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AppointmentReminderCandidate> listAgendadoForReminderOnLocalDate(LocalDate localDay, String zoneId) {
+        if (localDay == null || zoneId == null || zoneId.isBlank()) {
+            return List.of();
+        }
+        String z = zoneId.strip();
+        return jdbcClient
+                .sql(
+                        """
+                        SELECT id, tenant_id, conversation_id, client_name, starts_at
+                        FROM tenant_appointments
+                        WHERE booking_status = 'AGENDADO'
+                          AND reminder_sent = false
+                          AND (starts_at AT TIME ZONE ?)::date = ?
+                        ORDER BY tenant_id, starts_at
+                        LIMIT 5000
+                        """)
+                .param(z)
+                .param(localDay)
+                .query(
+                        (rs, rowNum) ->
+                                new AppointmentReminderCandidate(
+                                        rs.getLong("id"),
+                                        new TenantId(rs.getString("tenant_id")),
+                                        rs.getString("conversation_id"),
+                                        rs.getString("client_name"),
+                                        rs.getTimestamp("starts_at").toInstant()))
+                .list();
     }
 
     private static Optional<String> digitsFromConversationId(String conversationId) {

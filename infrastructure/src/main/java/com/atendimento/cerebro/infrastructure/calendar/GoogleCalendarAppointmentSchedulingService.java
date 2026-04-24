@@ -4,8 +4,7 @@ import com.atendimento.cerebro.application.dto.TenantAppointmentRecord;
 import com.atendimento.cerebro.application.scheduling.AppointmentCalendarValidationResult;
 import com.atendimento.cerebro.application.scheduling.CreateAppointmentResult;
 import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
-import com.atendimento.cerebro.application.port.out.CrmCustomerStorePort;
-import com.atendimento.cerebro.application.port.out.TenantAppointmentStorePort;
+import com.atendimento.cerebro.application.logging.AppointmentAuditLog;
 import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort;
 import com.atendimento.cerebro.application.service.AppointmentValidationService;
 import com.atendimento.cerebro.domain.tenant.TenantId;
@@ -45,25 +44,22 @@ public class GoogleCalendarAppointmentSchedulingService implements AppointmentSc
     private static final DateTimeFormatter PT_BR_DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.forLanguageTag("pt-BR"));
 
     private final TenantConfigurationStorePort tenantConfigurationStore;
-    private final TenantAppointmentStorePort appointmentStore;
-    private final CrmCustomerStorePort crmCustomerStore;
     private final CerebroGoogleCalendarProperties props;
     private final GoogleCalendarService googleCalendarService;
     private final AppointmentValidationService appointmentValidationService;
+    private final SchedulingAppointmentTransactionHelper appointmentTx;
 
     public GoogleCalendarAppointmentSchedulingService(
             TenantConfigurationStorePort tenantConfigurationStore,
-            TenantAppointmentStorePort appointmentStore,
-            CrmCustomerStorePort crmCustomerStore,
             CerebroGoogleCalendarProperties props,
             GoogleCalendarService googleCalendarService,
-            AppointmentValidationService appointmentValidationService) {
+            AppointmentValidationService appointmentValidationService,
+            SchedulingAppointmentTransactionHelper appointmentTx) {
         this.tenantConfigurationStore = tenantConfigurationStore;
-        this.appointmentStore = appointmentStore;
-        this.crmCustomerStore = crmCustomerStore;
         this.props = props;
         this.googleCalendarService = googleCalendarService;
         this.appointmentValidationService = appointmentValidationService;
+        this.appointmentTx = appointmentTx;
         LOG.info(
                 "GoogleCalendarAppointmentSchedulingService ATIVO (cerebro.google.calendar.mock=false): "
                         + "createAppointment e checkAvailability usam a Google Calendar API.");
@@ -73,21 +69,19 @@ public class GoogleCalendarAppointmentSchedulingService implements AppointmentSc
     public String checkAvailability(TenantId tenantId, String isoDate) {
         Optional<String> calId = googleCalendarService.resolveEffectiveCalendarId(resolveCalendarId(tenantId));
         if (calId.isEmpty()) {
-            return "O calendário ainda não está ligado a este espaço. Peça ao cliente para tentar mais tarde ou contactar o "
-                    + "estabelecimento, sem mencionar códigos técnicos.";
+            return "O calendário ainda não está ligado a este espaço. Pode voltar a tentar daqui a pouco ou falar com a "
+                    + "oficina por outro canal.";
         }
         LocalDate day;
         try {
             day = LocalDate.parse(isoDate.strip(), ISO_DATE);
         } catch (DateTimeParseException e) {
-            return "A data indicada não pôde ser interpretada. Peça ao cliente uma data clara (dia, mês e ano), sem "
-                    + "mencionar formatos técnicos.";
+            return "Não consegui entender a data. Pode dizer o dia, o mês e o ano (ou escolher na lista)?";
         }
         ZoneId zone = GoogleCalendarService.CALENDAR_ZONE;
         LocalDate today = LocalDate.now(zone);
         if (day.isBefore(today)) {
-            return "Não é possível consultar disponibilidade para dias que já passaram neste fuso. Peça ao cliente uma data "
-                    + "a partir de hoje, com tom cordial.";
+            return "Esse dia já passou. Pode dizer outra data a partir de hoje?";
         }
         try {
             Instant startOfDay = GoogleCalendarService.startOfDayInstant(day);
@@ -120,8 +114,7 @@ public class GoogleCalendarAppointmentSchedulingService implements AppointmentSc
                     + WorkingDaySlotPlanner.formatSlotsLine(free);
         } catch (Exception e) {
             LOG.warn("checkAvailability falhou: {}", e.toString());
-            return "Não foi possível consultar a disponibilidade neste momento. Peça ao cliente para tentar de novo dentro de "
-                    + "instantes, sem mencionar detalhes técnicos.";
+            return "Não foi possível consultar a disponibilidade agora. Tente de novo daqui a pouco.";
         }
     }
 
@@ -164,8 +157,8 @@ public class GoogleCalendarAppointmentSchedulingService implements AppointmentSc
         Optional<String> calId = googleCalendarService.resolveEffectiveCalendarId(resolveCalendarId(tenantId));
         if (calId.isEmpty()) {
             return CreateAppointmentResult.failure(
-                    "O calendário ainda não está ligado a este espaço. Informe o cliente com cordialidade que não é "
-                            + "possível concluir o agendamento agora.");
+                    "Desculpe, não consigo concluir o agendamento agora — o calendário ainda não está ligado a este espaço. "
+                            + "Pode tentar mais tarde ou falar com a oficina por outro canal.");
         }
         ZoneId zone = GoogleCalendarService.CALENDAR_ZONE;
         AppointmentCalendarValidationResult validated =
@@ -190,9 +183,10 @@ public class GoogleCalendarAppointmentSchedulingService implements AppointmentSc
             }
         } catch (Exception e) {
             LOG.warn("Verificação de duplicidade no Google Calendar falhou: {}", e.toString());
+            AppointmentAuditLog.appError("GoogleAPI", e.getMessage() != null ? e.getMessage() : e.toString());
             return CreateAppointmentResult.failure(
-                    "Não foi possível confirmar se este horário continua livre. Peça ao cliente para escolher outro horário ou "
-                            + "tentar novamente dentro de instantes, sem mencionar detalhes técnicos.");
+                    "Não foi possível confirmar se este horário ainda está livre. Pode sugerir outro horário ou tentar de novo "
+                            + "daqui a instantes.");
         }
         try {
             String title = serviceName.strip() + " — " + clientName.strip();
@@ -232,14 +226,24 @@ public class GoogleCalendarAppointmentSchedulingService implements AppointmentSc
                     start);
             // htmlLink e eventId ficam só em log — o cliente final não deve receber URL do Google Calendar.
             String conv = conversationId == null || conversationId.isBlank() ? null : conversationId.strip();
-            long appointmentRowId =
-                    appointmentStore.insert(
-                            new TenantAppointmentRecord(
-                                    tenantId, conv, clientName.strip(), serviceName.strip(), start, end, googleId));
-            try {
-                crmCustomerStore.recordSuccessfulAppointment(tenantId, conv != null ? conv : "", clientName.strip());
-            } catch (RuntimeException e) {
-                LOG.warn("CRM após agendamento Google ignorado: {}", e.toString());
+            TenantAppointmentRecord record =
+                    new TenantAppointmentRecord(
+                            tenantId, conv, clientName.strip(), serviceName.strip(), start, end, googleId);
+            Optional<Long> rowIdOpt = appointmentTx.insertIfNoDbOverlap(tenantId, start, end, record);
+            if (rowIdOpt.isEmpty()) {
+                try {
+                    googleCalendarService.deleteEvent(calId.get(), googleId);
+                } catch (Exception de) {
+                    LOG.error(
+                            "Compensação: falha ao apagar evento Google após conflito na base tenant={} eventId={}",
+                            tenantId.value(),
+                            googleId,
+                            de);
+                }
+                AppointmentAuditLog.appError(
+                        "GoogleAPI", "Conflito na base após criar evento no Google — evento compensado no calendário");
+                return CreateAppointmentResult.failure(
+                        appointmentValidationService.duplicateSlotConflictMessageForGemini());
             }
             return CreateAppointmentResult.success(
                     "Agendamento confirmado para "
@@ -247,12 +251,14 @@ public class GoogleCalendarAppointmentSchedulingService implements AppointmentSc
                             + " às "
                             + localTime
                             + ". O horário foi registado na agenda da oficina.",
-                    appointmentRowId);
+                    rowIdOpt.get());
         } catch (IOException e) {
             LOG.warn("createAppointment falhou: {}", e.toString());
+            AppointmentAuditLog.appError("GoogleAPI", e.getMessage() != null ? e.getMessage() : e.toString());
             return CreateAppointmentResult.failure("Erro ao criar evento no Google Calendar: " + e.getMessage());
         } catch (Exception e) {
             LOG.warn("createAppointment falhou: {}", e.toString());
+            AppointmentAuditLog.appError("GoogleAPI", e.getMessage() != null ? e.getMessage() : e.toString());
             return CreateAppointmentResult.failure("Erro ao criar evento: " + e.getMessage());
         }
     }

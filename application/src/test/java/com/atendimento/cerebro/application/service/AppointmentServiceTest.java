@@ -12,13 +12,17 @@ import com.atendimento.cerebro.application.dto.TenantAppointmentListItem;
 import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
 import com.atendimento.cerebro.application.port.out.CrmCustomerQueryPort;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentQueryPort;
+import com.atendimento.cerebro.application.event.AppointmentCancelledEvent;
 import com.atendimento.cerebro.application.event.AppointmentConfirmedEvent;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentStorePort;
 import com.atendimento.cerebro.application.scheduling.CreateAppointmentResult;
 import com.atendimento.cerebro.domain.tenant.TenantId;
-import java.time.LocalDate;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -59,9 +63,7 @@ class AppointmentServiceTest {
         when(query.findByIdForTenantAndConversation(eq(TID), eq(42L), eq("wa-5511888777666"), eq(ZONE_STR)))
                 .thenReturn(Optional.of(row));
 
-        assertThat(service.cancelAppointment(TID, "wa-5511888777666", "", "42", ZONE))
-                .contains("liberado com sucesso")
-                .contains("Serviço X");
+        assertThat(service.cancelAppointment(TID, "wa-5511888777666", "", "42", ZONE)).isEmpty();
         verify(scheduling).deleteCalendarEvent(TID, "google-ev-x");
         verify(store).markCancelled(eq(42L), any(Instant.class));
 
@@ -70,10 +72,24 @@ class AppointmentServiceTest {
         when(store.markCancelled(any(Long.class), any(Instant.class))).thenReturn(true);
         when(query.findByIdForTenantAndConversation(eq(TID), eq(42L), eq("wa-5511888777666"), eq(ZONE_STR)))
                 .thenReturn(Optional.of(row));
-        assertThat(service.cancelAppointment(TID, "wa-5511888777666", "(11) 99999-0000", "42", ZONE))
-                .contains("liberado com sucesso");
+        assertThat(service.cancelAppointment(TID, "wa-5511888777666", "(11) 99999-0000", "42", ZONE)).isEmpty();
         verify(scheduling).deleteCalendarEvent(TID, "google-ev-x");
         verify(store).markCancelled(eq(42L), any(Instant.class));
+    }
+
+    @Test
+    void cancelAppointment_onSuccess_publishesCancelledEvent() {
+        TenantAppointmentListItem row = sampleRowAgendado("wa-5511999887766", "Serviço X", "google-ev-x", 42L);
+        when(query.findByIdForTenantAndConversation(eq(TID), eq(42L), eq("wa-5511999887766"), eq(ZONE_STR)))
+                .thenReturn(Optional.of(row));
+
+        assertThat(service.cancelAppointment(TID, "wa-5511999887766", "", "42", ZONE)).isEmpty();
+
+        ArgumentCaptor<AppointmentCancelledEvent> cap = ArgumentCaptor.forClass(AppointmentCancelledEvent.class);
+        verify(eventPublisher).publishEvent(cap.capture());
+        assertThat(cap.getValue().appointmentId()).isEqualTo(42L);
+        assertThat(cap.getValue().phoneNumber()).isEqualTo("5511999887766");
+        assertThat(cap.getValue().calendarZoneId()).isEqualTo(ZONE.getId());
     }
 
     @Test
@@ -97,7 +113,7 @@ class AppointmentServiceTest {
         String out =
                 service.cancelAppointment(TID, "wa-5511999887766", "+55 11 99988-7766", "42", ZONE);
 
-        assertThat(out).contains("liberado com sucesso").contains("Alinhamento").contains("20/04/2026");
+        assertThat(out).isEmpty();
         verify(scheduling).deleteCalendarEvent(TID, "google-ev-1");
         ArgumentCaptor<Long> idCap = ArgumentCaptor.forClass(Long.class);
         verify(store).markCancelled(idCap.capture(), any(Instant.class));
@@ -145,7 +161,7 @@ class AppointmentServiceTest {
 
         String out = service.cancelAppointment(TID, "portal-conv-1", "Cliente@Example.com", "99", ZONE);
 
-        assertThat(out).contains("liberado com sucesso").contains("Serviço Z");
+        assertThat(out).isEmpty();
         verify(scheduling).deleteCalendarEvent(TID, "ev-z");
     }
 
@@ -178,7 +194,7 @@ class AppointmentServiceTest {
         when(scheduling.deleteCalendarEvent(eq(TID), eq("ev-1"))).thenReturn(false);
 
         assertThat(service.cancelAppointment(TID, "wa-5511999887766", "", "12", ZONE))
-                .contains("Google Calendar")
+                .contains("problema técnico na agenda")
                 .doesNotContain("liberado com sucesso");
         verify(store, never()).markCancelled(any(Long.class), any());
     }
@@ -191,7 +207,7 @@ class AppointmentServiceTest {
         when(store.markCancelled(eq(13L), any(Instant.class))).thenReturn(false);
 
         assertThat(service.cancelAppointment(TID, "wa-5511999887766", "", "13", ZONE))
-                .contains("base de dados")
+                .contains("falha ao atualizar o sistema")
                 .doesNotContain("liberado com sucesso");
         verify(scheduling).deleteCalendarEvent(TID, "ev-2");
     }
@@ -212,14 +228,17 @@ class AppointmentServiceTest {
 
         String out =
                 service.createAppointment(
-                        TID, "2026-06-10", "14:00", "Nome", "Serviço", "wa-5511999000000");
+                        TID, "2026-06-10", "14:00", "Nome", "Serviço", "wa-5511999000000", ZONE);
 
         assertThat(out).contains("Agendamento confirmado");
+        verify(store).markConfirmationNotificationPending(9001L);
         ArgumentCaptor<AppointmentConfirmedEvent> cap = ArgumentCaptor.forClass(AppointmentConfirmedEvent.class);
         verify(eventPublisher).publishEvent(cap.capture());
         assertThat(cap.getValue().appointmentId()).isEqualTo(9001L);
         assertThat(cap.getValue().phoneNumber()).isEqualTo("5511999000000");
-        assertThat(cap.getValue().date()).isEqualTo(LocalDate.of(2026, 6, 10));
+        assertThat(cap.getValue().startsAt())
+                .isEqualTo(LocalDateTime.of(2026, 6, 10, 14, 0).atZone(ZONE).toInstant());
+        assertThat(cap.getValue().calendarZoneId()).isEqualTo(ZONE.getId());
     }
 
     @Test
@@ -227,9 +246,10 @@ class AppointmentServiceTest {
         when(scheduling.createAppointment(any(), any(), any(), any(), any(), any()))
                 .thenReturn(CreateAppointmentResult.failure("O calendário ainda não está ligado"));
 
-        String out = service.createAppointment(TID, "2026-06-10", "14:00", "N", "S", "wa-5511");
+        String out = service.createAppointment(TID, "2026-06-10", "14:00", "N", "S", "wa-5511", ZONE);
 
         assertThat(out).contains("calendário");
+        verify(store, never()).markConfirmationNotificationPending(any(Long.class));
         verify(eventPublisher, never()).publishEvent(any());
     }
 
@@ -244,7 +264,7 @@ class AppointmentServiceTest {
 
         String out =
                 service.createAppointment(
-                        TID, "2026-06-10", "14:00", "N", "S", "wa-5511999000000");
+                        TID, "2026-06-10", "14:00", "N", "S", "wa-5511999000000", ZONE);
 
         assertThat(out).contains("Agendamento confirmado");
     }
@@ -256,6 +276,7 @@ class AppointmentServiceTest {
                                 AppointmentService.CANCELLATION_SUCCESS_MESSAGE_PREFIX
                                         + " Serviço: X. Data: 01/01/2026. A vaga já está disponível."))
                 .isTrue();
+        assertThat(AppointmentService.isSuccessfulCancellationReply("")).isTrue();
         assertThat(AppointmentService.isSuccessfulCancellationReply("Não foi possível concluir o cancelamento."))
                 .isFalse();
         assertThat(AppointmentService.isSuccessfulCancellationReply(null)).isFalse();
@@ -273,6 +294,52 @@ class AppointmentServiceTest {
     }
 
     @Test
+    void resolveActiveAppointmentIdForReschedule_withHint_matchesSlotAmongSeveral() {
+        Instant at11 = ZonedDateTime.of(LocalDate.of(2026, 4, 24), LocalTime.of(11, 0), ZONE).toInstant();
+        Instant at11End = at11.plusSeconds(30 * 60);
+        Instant at15 = ZonedDateTime.of(LocalDate.of(2026, 4, 24), LocalTime.of(15, 0), ZONE).toInstant();
+        Instant at15End = at15.plusSeconds(30 * 60);
+        TenantAppointmentListItem morning = sampleRowAt("wa-5511", "Polimento", "g1", 7L, at11, at11End);
+        TenantAppointmentListItem afternoon = sampleRowAt("wa-5511", "Corte", "g2", 8L, at15, at15End);
+        when(query.listAgendadoByConversationOrderedAscending(eq(TID), eq("wa-5511"), eq(ZONE_STR)))
+                .thenReturn(List.of(morning, afternoon));
+        String msg = "Gostaria de reagendar o serviço do dia 24/04/2026 11:00 para as 15:00";
+        assertThat(service.resolveActiveAppointmentIdForReschedule(TID, "wa-5511", ZONE, msg))
+                .hasValue(7L);
+    }
+
+    @Test
+    void resolveActiveAppointmentIdForReschedule_fallbackByDayWhenListEmpty() {
+        when(query.listAgendadoByConversationOrderedAscending(eq(TID), eq("wa-5511"), eq(ZONE_STR)))
+                .thenReturn(List.of());
+        Instant at11 = ZonedDateTime.of(LocalDate.of(2026, 4, 24), LocalTime.of(11, 0), ZONE).toInstant();
+        TenantAppointmentListItem row = sampleRowAt("wa-5511", "Polimento", "g1", 77L, at11, at11.plusSeconds(1800));
+        when(query.findActiveByConversationAndLocalDate(
+                        eq(TID), eq("wa-5511"), eq(LocalDate.of(2026, 4, 24)), eq(ZONE_STR)))
+                .thenReturn(Optional.of(row));
+
+        String msg = "Gostaria de reagendar o atendimento amanhã das 11:00 para as 12:00";
+        assertThat(service.resolveActiveAppointmentIdForReschedule(TID, "wa-5511", ZONE, msg))
+                .hasValue(77L);
+    }
+
+    @Test
+    void resolveActiveAppointmentIdForReschedule_fallbackToSingleAppointmentInDayWhenTimeDiffers() {
+        Instant at1030 = ZonedDateTime.of(LocalDate.of(2026, 4, 24), LocalTime.of(10, 30), ZONE).toInstant();
+        TenantAppointmentListItem row =
+                sampleRowAt("wa-5511", "Polimento", "g1", 88L, at1030, at1030.plusSeconds(1800));
+        when(query.listAgendadoByConversationOrderedAscending(eq(TID), eq("wa-5511"), eq(ZONE_STR)))
+                .thenReturn(List.of(row));
+        when(query.findActiveByConversationAndLocalDate(
+                        eq(TID), eq("wa-5511"), eq(LocalDate.of(2026, 4, 24)), eq(ZONE_STR)))
+                .thenReturn(Optional.of(row));
+
+        String msg = "Gostaria de reagendar o atendimento amanhã das 11:00 para as 12:00";
+        assertThat(service.resolveActiveAppointmentIdForReschedule(TID, "wa-5511", ZONE, msg))
+                .hasValue(88L);
+    }
+
+    @Test
     void getActiveAppointments_listsMultipleWithInstruction() {
         TenantAppointmentListItem a =
                 sampleRowAgendado("wa-5511", "A", "g1", 2L);
@@ -283,10 +350,34 @@ class AppointmentServiceTest {
 
         String out = service.getActiveAppointments(TID, "wa-5511", ZONE);
         assertThat(out)
-                .contains("vários")
-                .contains("2) ")
-                .contains("5) ")
+                .contains("*Agendamentos*")
+                .contains("Quais dos atendimentos abaixo gostaria de cancelar?")
+                .contains("2) *A*")
+                .contains("5) *B*")
+                .contains(AppointmentService.LIST_APPOINTMENTS_CANCEL_HINT_FOOTER_PT)
                 .contains("[cancel_option_map:2=2,5=5]");
+    }
+
+    @Test
+    void getActiveAppointments_singleRow_includesCancelHintFooter() {
+        TenantAppointmentListItem one = sampleRowAgendado("wa-5511", "Serviço", "g1", 24L);
+        when(query.listAgendadoByConversationOrderedAscending(eq(TID), eq("wa-5511"), eq(ZONE_STR)))
+                .thenReturn(List.of(one));
+
+        String out = service.getActiveAppointments(TID, "wa-5511", ZONE);
+        assertThat(out)
+                .contains("Segue o seu agendamento ativo:")
+                .contains("24) *Serviço*")
+                .contains(AppointmentService.LIST_APPOINTMENTS_CANCEL_HINT_FOOTER_PT);
+    }
+
+    @Test
+    void getActiveAppointments_whenEmpty_returnsFriendlyNewBookingPrompt() {
+        when(query.listAgendadoByConversationOrderedAscending(eq(TID), eq("wa-5511"), eq(ZONE_STR)))
+                .thenReturn(List.of());
+
+        String out = service.getActiveAppointments(TID, "wa-5511", ZONE);
+        assertThat(out).isEqualTo(AppointmentService.NO_ACTIVE_APPOINTMENTS_FRIENDLY_MESSAGE);
     }
 
     private static TenantAppointmentListItem sampleRowAgendado(String conv, String service, String googleId, long id) {
@@ -311,5 +402,21 @@ class AppointmentServiceTest {
                 Instant.parse("2026-04-01T10:00:00Z"),
                 TenantAppointmentListItem.AppointmentStatus.UPCOMING,
                 booking);
+    }
+
+    private static TenantAppointmentListItem sampleRowAt(
+            String conv, String service, String googleId, long id, Instant startsAt, Instant endsAt) {
+        return new TenantAppointmentListItem(
+                id,
+                TID.value(),
+                conv,
+                "Cliente",
+                service,
+                startsAt,
+                endsAt,
+                googleId,
+                Instant.parse("2026-04-01T10:00:00Z"),
+                TenantAppointmentListItem.AppointmentStatus.UPCOMING,
+                TenantAppointmentListItem.BookingStatus.AGENDADO);
     }
 }

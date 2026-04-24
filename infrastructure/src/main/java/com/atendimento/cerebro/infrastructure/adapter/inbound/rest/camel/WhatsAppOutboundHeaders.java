@@ -36,5 +36,14 @@ public final class WhatsAppOutboundHeaders {
     /** Property Camel: id da linha ASSISTANT em curso (novo insert ou reenvio). */
     public static final String PROP_ASSISTANT_MESSAGE_ID = "assistantMessageRowId";
 
+    /**
+     * Se {@code true}, o ramo Evolution em texto simples usa {@code postJsonResponse} e grava
+     * {@link #PROP_EVOLUTION_MESSAGE_ID} para auditoria (ex.: confirmação de agendamento).
+     */
+    public static final String CAPTURE_EVOLUTION_MESSAGE_ID = "captureEvolutionMessageId";
+
+    /** Property Camel: id da mensagem na resposta da Evolution ({@code sendText}), quando capturado. */
+    public static final String PROP_EVOLUTION_MESSAGE_ID = "evolutionMessageId";
+
     private WhatsAppOutboundHeaders() {}
 }

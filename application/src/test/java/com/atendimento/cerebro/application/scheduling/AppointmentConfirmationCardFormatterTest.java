@@ -11,20 +11,21 @@ class AppointmentConfirmationCardFormatterTest {
     void formatConfirmationCard_includesBoldMarkersAndWeekdayPt() {
         String card =
                 AppointmentConfirmationCardFormatter.formatConfirmationCard(
+                        42L,
                         "Alinhamento 3D",
                         "Sr. Anderson",
                         LocalDate.of(2026, 4, 14),
                         "15:30",
                         "Oficina InteliZap - Salvador, BA");
         assertThat(card)
-                .contains("*✅ AGENDAMENTO CONFIRMADO*")
+                .contains("*Agendamento confirmado* *#42*")
+                .contains("Olá, *Sr. Anderson*!")
                 .contains("Alinhamento 3D")
-                .contains("Sr. Anderson")
                 .contains("Terça-feira")
                 .contains("14/04/2026")
                 .contains("15:30")
                 .contains("Oficina InteliZap")
-                .contains("Chegue 5 minutos");
+                .contains("alterar ou cancelar");
     }
 
     @Test
@@ -43,6 +44,7 @@ class AppointmentConfirmationCardFormatterTest {
     void stripFormattedConfirmationCards_removesDuplicateBlocks() {
         String card =
                 AppointmentConfirmationCardFormatter.formatConfirmationCard(
+                        7L,
                         "troca de óleo",
                         "Anderson",
                         LocalDate.of(2026, 4, 16),
@@ -53,9 +55,19 @@ class AppointmentConfirmationCardFormatterTest {
     }
 
     @Test
+    void stripEchoOfSchedulingCreateToolReturn_removesGoogleSuccessLines() {
+        String raw =
+                "Perfeito.\n"
+                        + "Agendamento confirmado para 24/04/2026 às 11:00. O horário foi registado na agenda da oficina.";
+        assertThat(AppointmentConfirmationCardFormatter.stripEchoOfSchedulingCreateToolReturn(raw))
+                .isEqualTo("Perfeito.");
+    }
+
+    @Test
     void stripFormattedConfirmationCards_keepsIntroBeforeCard() {
         String card =
                 AppointmentConfirmationCardFormatter.formatConfirmationCard(
+                        1L,
                         "Serviço",
                         "Cliente",
                         LocalDate.of(2026, 4, 16),

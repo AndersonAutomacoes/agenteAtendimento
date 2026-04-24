@@ -18,12 +18,10 @@ class WhatsAppOutboundRoutesMirrorTextTest {
                 SchedulingSlotCapture.buildPremiumFormattedSlotList(
                         d, z, List.of("09:00", "10:30", "14:00", "16:30"));
         assertThat(t)
-                .startsWith("📅")
                 .contains("13/04")
                 .contains("1) 09:00")
                 .contains("2) 10:30")
                 .contains("3) 14:00")
-                .contains("4) 16:30")
-                .contains(SchedulingSlotCapture.SLOT_LIST_FOOTER_PT);
+                .contains("4) 16:30");
     }
 }

@@ -53,8 +53,7 @@ public final class AppointmentValidationService {
             day = LocalDate.parse(isoDate.strip(), ISO_DATE);
         } catch (DateTimeParseException e) {
             return AppointmentCalendarValidationResult.invalid(
-                    "A data indicada não pôde ser interpretada. Peça ao cliente uma data válida, sem mencionar formatos "
-                            + "técnicos.");
+                    "Não consegui interpretar a data. Pode informar o dia, o mês e o ano?");
         }
         String past = SchedulingPastDatePolicy.rejectIfDayBeforeToday(day, zone);
         if (past != null) {
@@ -65,8 +64,7 @@ public final class AppointmentValidationService {
             time = LocalTime.parse(localTime.strip(), TIME);
         } catch (DateTimeParseException e) {
             return AppointmentCalendarValidationResult.invalid(
-                    "A hora indicada não pôde ser interpretada. Peça ao cliente um horário claro (ex.: 14:30), sem "
-                            + "mencionar códigos técnicos.");
+                    "Não consegui interpretar o horário. Pode dizer o horário claramente (por exemplo 14:30)?");
         }
         return AppointmentCalendarValidationResult.ok(day, time);
     }
@@ -97,15 +95,13 @@ public final class AppointmentValidationService {
                 LocalDate modelDay = LocalDate.parse(dateWorking, ISO_DATE);
                 if (!modelDay.equals(anchor)) {
                     return ToolCreateAppointmentPreparation.failure(
-                            "Não foi possível confirmar o agendamento: a data indicada não corresponde ao dia em que os "
-                                    + "horários foram mostrados ao cliente. Peça-o a escolher de novo ou confirme o dia "
-                                    + "correto ("
+                            "A data não bate com o dia em que a lista de horários foi mostrada. Use o dia "
                                     + anchor.format(ISO_DATE)
-                                    + " em yyyy-MM-DD). Não avance com create_appointment até alinhar data e horário.");
+                                    + " e o horário que o cliente escolheu.");
                 }
             } catch (DateTimeParseException e) {
                 return ToolCreateAppointmentPreparation.failure(
-                        "A data em yyyy-MM-DD não é válida. Use o mesmo dia da lista de horários ("
+                        "Data inválida. Use o mesmo dia da lista ("
                                 + anchor.format(ISO_DATE)
                                 + ") e o horário que o cliente escolheu.");
             }
@@ -118,13 +114,11 @@ public final class AppointmentValidationService {
             Optional<String> mapped = mapSlotOptionToTime(n, options);
             if (mapped.isEmpty()) {
                 return ToolCreateAppointmentPreparation.failure(
-                        "Não foi possível confirmar: a opção escolhida não corresponde a nenhum horário da lista mostrada "
-                                + "(há "
+                        "A opção não corresponde à lista (há "
                                 + options.size()
-                                + " horários disponíveis). Explique com cordialidade ao cliente que houve um erro na "
-                                + "seleção e peça que escolha um número entre 1 e "
+                                + " horários). Pode escolher um número de 1 a "
                                 + options.size()
-                                + ", ou que digite o horário no formato HH:mm como na lista.");
+                                + " ou digitar o horário como na lista.");
             }
             String expected = mapped.get();
             String normalizedModel = SchedulingSlotCapture.normalizeSingleSlotToken(timeWorking);
@@ -146,7 +140,6 @@ public final class AppointmentValidationService {
      * Gemini repassar ao utilizador (sem detalhes técnicos).
      */
     public String duplicateSlotConflictMessageForGemini() {
-        return "Conflito de horário: este horário já está preenchido ou acabou de ser reservado. Explique com cordialidade "
-                + "ao cliente que deve escolher outro horário da lista ou outro dia — sem mencionar códigos técnicos.";
+        return "Desculpe, esse horário já está ocupado. Pode escolher outro da lista ou outro dia?";
     }
 }

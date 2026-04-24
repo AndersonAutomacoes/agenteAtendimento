@@ -5,10 +5,66 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.atendimento.cerebro.application.service.AppointmentService;
 import com.atendimento.cerebro.domain.conversation.Message;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class SchedulingUserReplyNormalizerTest {
+
+    @Test
+    void looksLikeListActiveAppointmentsIntent_detectsPhrases() {
+        assertThat(SchedulingUserReplyNormalizer.looksLikeListActiveAppointmentsIntent("Listar meus agendamentos"))
+                .isTrue();
+        assertThat(SchedulingUserReplyNormalizer.looksLikeListActiveAppointmentsIntent("Lista de agendamentos"))
+                .isTrue();
+        assertThat(SchedulingUserReplyNormalizer.looksLikeListActiveAppointmentsIntent("Lista meus agendamentos"))
+                .isTrue();
+        assertThat(SchedulingUserReplyNormalizer.looksLikeListActiveAppointmentsIntent("Quais são meus agendamentos?"))
+                .isTrue();
+        assertThat(SchedulingUserReplyNormalizer.looksLikeListActiveAppointmentsIntent("ver os agendamentos ativos"))
+                .isTrue();
+    }
+
+    @Test
+    void looksLikeListActiveAppointmentsIntent_rejectsNewBooking() {
+        assertThat(SchedulingUserReplyNormalizer.looksLikeListActiveAppointmentsIntent("Quero agendar para sexta"))
+                .isFalse();
+        assertThat(SchedulingUserReplyNormalizer.looksLikeListActiveAppointmentsIntent("reagendar o de amanhã"))
+                .isFalse();
+    }
+
+    @Test
+    void parseReagendamentoDeParaHint_extractsDateAndFromToTime() {
+        var h =
+                SchedulingUserReplyNormalizer.parseReagendamentoDeParaHint(
+                        "Gostaria de reagendar o serviço do dia 24/04/2026 11:00 para as 15:00");
+        assertThat(h).hasValueSatisfying(
+                x -> {
+                    assertThat(x.day()).isEqualTo(LocalDate.of(2026, 4, 24));
+                    assertThat(x.fromTime()).isEqualTo(LocalTime.of(11, 0));
+                    assertThat(x.toTime()).isEqualTo(LocalTime.of(15, 0));
+                });
+    }
+
+    @Test
+    void parseReagendamentoDeParaHint_extractsRelativeTomorrow() {
+        var h =
+                SchedulingUserReplyNormalizer.parseReagendamentoDeParaHint(
+                        "Gostaria de reagendar de amanhã às 11:00 para amanhã às 15:00");
+        assertThat(h).isPresent();
+        assertThat(h.get().fromTime()).isEqualTo(LocalTime.of(11, 0));
+        assertThat(h.get().toTime()).isEqualTo(LocalTime.of(15, 0));
+    }
+
+    @Test
+    void parseReagendamentoDeParaHint_extractsRelativeTomorrowDasPara() {
+        var h =
+                SchedulingUserReplyNormalizer.parseReagendamentoDeParaHint(
+                        "Gostaria de reagendar o atendimento amanhã das 11:00 para as 12:00");
+        assertThat(h).isPresent();
+        assertThat(h.get().fromTime()).isEqualTo(LocalTime.of(11, 0));
+        assertThat(h.get().toTime()).isEqualTo(LocalTime.of(12, 0));
+    }
 
     @Test
     void expand_mapsSoloDigitToSlotFromAppendix_hardcodedReply() {
@@ -54,6 +110,16 @@ class SchedulingUserReplyNormalizerTest {
         assertThat(e.expandedUserMessage()).contains("10:00").contains("2026-04-14").contains("create_appointment");
         assertThat(e.enforcedChoice().orElseThrow().timeHhMm()).isEqualTo("10:00");
         assertThat(e.blockCreateAppointmentThisTurn()).isFalse();
+    }
+
+    @Test
+    void expand_doesNotCaptureTimeWhenMessageIsRescheduleDePara() {
+        List<Message> hist = List.of(Message.assistantMessage("x\n\n[slot_options:09:30,10:00,10:30]\n[slot_date:2026-04-24]"));
+        String msg = "Gostaria de solicitar um reagendamento do atendimento de amanhã às 09:30 para as 10:30";
+        var e = SchedulingUserReplyNormalizer.expandNumericSlotChoice(msg, hist);
+        assertThat(e.expandedUserMessage()).isEqualTo(msg);
+        assertThat(e.enforcedChoice()).isEmpty();
+        assertThat(e.hardcodedAssistantReply()).isEmpty();
     }
 
     @Test
@@ -184,6 +250,16 @@ class SchedulingUserReplyNormalizerTest {
     }
 
     @Test
+    void parseLastDraftFromHistory_ignoresDraftWhenBookingAlreadyCompletedAfterDraft() {
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage("Confirme?\n\n[scheduling_draft:2026-04-24|16:00]"),
+                        Message.assistantMessage(
+                                "Confirmação Realizada! O agendamento foi confirmado com sucesso."));
+        assertThat(SchedulingUserReplyNormalizer.parseLastDraftFromHistory(hist)).isEmpty();
+    }
+
+    @Test
     void looksLikeCancellationIntent_portuguesePhrases() {
         assertThat(SchedulingUserReplyNormalizer.looksLikeCancellationIntent("Quero cancelar o agendamento")).isTrue();
         assertThat(SchedulingUserReplyNormalizer.looksLikeCancellationIntent("desmarcar por favor")).isTrue();
@@ -219,6 +295,30 @@ class SchedulingUserReplyNormalizerTest {
                         Message.assistantMessage("slots\n[slot_options:09:00,10:00]\n[slot_date:2026-04-14]"),
                         Message.assistantMessage(
                                 "Agendamentos AGENDADO:\n1) Serviço — 01/01/2026 10:00\n[cancel_option_map:1=5]"));
+        assertThat(SchedulingUserReplyNormalizer.lastAssistantSuggestedAppointmentCancellation(hist)).isTrue();
+    }
+
+    @Test
+    void lastAssistantSuggestedAppointmentCancellation_trueForFriendlyAgendamentosAtivosPrompt() {
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage(
+                                """
+                                *Agendamentos*
+
+                                Quais dos atendimentos abaixo gostaria de cancelar?
+
+                                12) *X* — 24/04/2026 13:30"""));
+        assertThat(SchedulingUserReplyNormalizer.lastAssistantSuggestedAppointmentCancellation(hist)).isTrue();
+    }
+
+    @Test
+    void lastAssistantSuggestedAppointmentCancellation_trueForLegacyActivosSpelling() {
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage(
+                                "Existem vários agendamentos activos. Pergunte qual deseja cancelar.\n\n"
+                                        + "Escolha uma das opções entre os serviços AGENDADOS:\n20) x — 24/04/2026 13:00"));
         assertThat(SchedulingUserReplyNormalizer.lastAssistantSuggestedAppointmentCancellation(hist)).isTrue();
     }
 
@@ -330,5 +430,30 @@ class SchedulingUserReplyNormalizerTest {
                         SchedulingUserReplyNormalizer.userMessageOverridesCancelForAvailabilityCheck(
                                 "Queria trocar o horário de amanhã"))
                 .isFalse();
+    }
+
+    @Test
+    void parseLastSlotOptionsFromHistory_emptyWhenBookingCompletedAfterList() {
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage(
+                                "Segue a lista.\n\n[slot_options:09:00,10:00]\n[slot_date:2026-04-24]"),
+                        Message.userMessage("sim"),
+                        Message.assistantMessage(
+                                "Agendamento confirmado para 24/04/2026 às 11:00. O horário foi registado na agenda da oficina."));
+        assertThat(SchedulingUserReplyNormalizer.parseLastSlotOptionsFromHistory(hist)).isEmpty();
+    }
+
+    @Test
+    void expand_okAfterSuccessfulBooking_doesNotMapStaleSlot() {
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage(
+                                "Segue a lista.\n\n[slot_options:09:00,10:00]\n[slot_date:2026-04-24]"),
+                        Message.assistantMessage(
+                                "Agendamento confirmado para 24/04/2026 às 11:00. O horário foi registado na agenda da oficina."));
+        var e = SchedulingUserReplyNormalizer.expandNumericSlotChoice("ok", hist);
+        assertThat(e.expandedUserMessage()).isEqualTo("ok");
+        assertThat(e.enforcedChoice()).isEmpty();
     }
 }

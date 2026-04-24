@@ -13,13 +13,16 @@ import com.atendimento.cerebro.domain.tenant.TenantConfiguration;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import com.atendimento.cerebro.domain.tenant.WhatsAppProviderType;
 import com.atendimento.cerebro.infrastructure.adapter.out.whatsapp.EvolutionOutboundHttp;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.net.http.HttpResponse;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.springframework.beans.factory.annotation.Value;
@@ -375,10 +378,62 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         } else {
             String text = sanitizeOutboundBody(exchange.getProperty(WhatsAppOutboundHeaders.PROP_WA_TEXT, String.class));
             String textJson = buildEvolutionSendTextJson(digits, text);
-            evolutionOutboundHttp.postJson(base + "/message/sendText/" + instanceId, apiKey, textJson);
+            boolean capture =
+                    Boolean.TRUE.equals(
+                            exchange.getIn()
+                                    .getHeader(WhatsAppOutboundHeaders.CAPTURE_EVOLUTION_MESSAGE_ID, Boolean.class));
+            String sendTextUrl = base + "/message/sendText/" + instanceId;
+            if (capture) {
+                HttpResponse<String> res = evolutionOutboundHttp.postJsonResponse(sendTextUrl, apiKey, textJson);
+                int code = res.statusCode();
+                String responseBody = res.body();
+                if (code < 200 || code >= 300) {
+                    throw new IllegalStateException(
+                            "Evolution HTTP "
+                                    + code
+                                    + " url="
+                                    + sendTextUrl
+                                    + " body="
+                                    + truncateForEvolutionError(responseBody, 1200));
+                }
+                Optional<String> mid = parseEvolutionMessageId(responseBody);
+                exchange.setProperty(
+                        WhatsAppOutboundHeaders.PROP_EVOLUTION_MESSAGE_ID, mid.map(String::strip).orElse(null));
+            } else {
+                evolutionOutboundHttp.postJson(sendTextUrl, apiKey, textJson);
+            }
         }
         exchange.getMessage().setBody("");
         markAssistantSent(exchange);
+    }
+
+    private Optional<String> parseEvolutionMessageId(String json) {
+        if (json == null || json.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            JsonNode root = objectMapper.readTree(json);
+            JsonNode key = root.path("key");
+            if (key.isObject() && key.has("id")) {
+                return Optional.ofNullable(key.get("id").asText(null));
+            }
+            if (root.hasNonNull("messageId")) {
+                return Optional.of(root.get("messageId").asText());
+            }
+            if (root.hasNonNull("id")) {
+                return Optional.of(root.get("id").asText());
+            }
+        } catch (Exception e) {
+            LOG.debug("parseEvolutionMessageId: {}", e.toString());
+        }
+        return Optional.empty();
+    }
+
+    private static String truncateForEvolutionError(String s, int max) {
+        if (s == null) {
+            return "";
+        }
+        return s.length() <= max ? s : s.substring(0, max) + "…";
     }
 
     private String buildEvolutionSendTextJson(String digits, String text) throws Exception {

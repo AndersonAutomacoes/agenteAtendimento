@@ -37,6 +37,18 @@ public final class AssistantOutputSanitizer {
             Pattern.compile(
                     "(?im)^\\s*Chame\\s+(?:check_availability|create_appointment|get_active_appointments|cancel_appointment)\\b.*$");
 
+    /**
+     * Instruções internas com prefixo entre colchetes (eco do system ou do backend) — nunca mostrar ao cliente.
+     */
+    private static final Pattern BRACKETED_INTERNAL_PREFIX =
+            Pattern.compile(
+                    "(?m)^\\s*\\[(?:Instru[çc]ão\\s+interna|Refor[çc]o\\s+do\\s+sistema|Gest[ãa]o\\s+de\\s+agendamentos\\s+existentes)[^\\]]*\\]\\s*\\n*");
+
+    /** Rasto legado: linha a avisar o modelo, não o utilizador. */
+    private static final Pattern LINE_AGENT_META_CONFLICT =
+            Pattern.compile(
+                    "(?im)^\\s*Conflito\\s+de\\s+hor[áa]rio:.+?(sem\\s+mencionar|Explique|cordialidade\\s+ao\\s+cliente).*$");
+
     private AssistantOutputSanitizer() {}
 
     /**
@@ -54,7 +66,8 @@ public final class AssistantOutputSanitizer {
             s = s.replaceAll("\\[[^\\]]*\\]", "");
         } while (!s.equals(prev));
         s = s.replaceAll("[ \t]{2,}", " ");
-        s = s.replaceAll("(?s)\\*{1,2}\\s*\\n*\\s*\\*{1,2}", "");
+        // Não usar \\s* entre * — abrangeria \\n e colaria blocos WhatsApp (*...*\\n*...*) numa só linha.
+        s = s.replaceAll("\\*{1,2}[ \\t]*\\*{1,2}", "");
         s = s.replaceAll("(?s)\\n{3,}", "\n\n");
         s = stripGoogleCalendarUrlsFromCustomerMessage(s.strip());
         return stripInternalAgentDirectivesForCustomer(s);
@@ -71,8 +84,13 @@ public final class AssistantOutputSanitizer {
         String s = INTERNAL_CLIENT_CONFIRM_AND_CHAME_CREATE.matcher(text).replaceAll("");
         s = USE_ESTA_DATA_EM_CREATE.matcher(s).replaceAll("");
         s = LINE_START_CHAME_TOOL.matcher(s).replaceAll("");
+        s = BRACKETED_INTERNAL_PREFIX.matcher(s).replaceAll("");
+        s = LINE_AGENT_META_CONFLICT.matcher(s).replaceAll("");
+        s = s.replaceAll("(?im)^\\s*Pe[çc]a\\s+ao\\s+cliente\\b.*$", "");
+        s = s.replaceAll("(?im)^\\s*Diga\\s+ao\\s+cliente\\b.*$", "");
+        s = s.replaceAll("(?im)^\\s*Explique\\s+com\\s+cordialidade\\b.*$", "");
         s = s.replaceAll("(?i)dispon[ií]vel\\s+para\\s+Posso\\s", "disponível. Posso ");
-        s = s.replaceAll("(?s)\\*{1,2}\\s*\\*{1,2}", " ");
+        s = s.replaceAll("\\*{1,2}[ \\t]*\\*{1,2}", " ");
         s = s.replaceAll("[ \t]{2,}", " ");
         s = s.replaceAll("(?s)\\n{3,}", "\n\n");
         return s.strip();
@@ -88,7 +106,11 @@ public final class AssistantOutputSanitizer {
         String t = GOOGLE_CALENDAR_EVENT_URL.matcher(text).replaceAll("");
         t = CALENDAR_GOOGLE_HOST_URL.matcher(t).replaceAll("");
         t = t.replaceAll("(?i)\\bLink\\s*:\\s*", "");
-        t = t.replaceAll("\\s{2,}", " ").strip();
+        // Preserve intentional line breaks for WhatsApp readability.
+        t = t.replaceAll("[ \\t]{2,}", " ");
+        t = t.replaceAll("[ \\t]*\\n[ \\t]*", "\n");
+        t = t.replaceAll("(?s)\\n{3,}", "\n\n");
+        t = t.strip();
         return t;
     }
 }

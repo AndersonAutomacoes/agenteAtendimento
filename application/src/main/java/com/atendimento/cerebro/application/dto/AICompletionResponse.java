@@ -8,14 +8,24 @@ import java.util.stream.Collectors;
 public record AICompletionResponse(
         String content,
         Optional<WhatsAppInteractiveReply> whatsAppInteractive,
-        List<String> additionalOutboundMessages) {
+        List<String> additionalOutboundMessages,
+        /**
+         * Se presente, texto enviado ao WhatsApp (pode ser vazio {@link String#isBlank()} para não duplicar a
+         * notificação assíncrona). O campo {@code content} permanece para o histórico do assistente.
+         */
+        Optional<String> outboundWhatsappTextOverride) {
 
     public AICompletionResponse(String content) {
-        this(content, Optional.empty(), List.of());
+        this(content, Optional.empty(), List.of(), Optional.empty());
     }
 
     public AICompletionResponse(String content, Optional<WhatsAppInteractiveReply> whatsAppInteractive) {
-        this(content, whatsAppInteractive, List.of());
+        this(content, whatsAppInteractive, List.of(), Optional.empty());
+    }
+
+    public AICompletionResponse(
+            String content, Optional<WhatsAppInteractiveReply> whatsAppInteractive, List<String> additional) {
+        this(content, whatsAppInteractive, additional, Optional.empty());
     }
 
     public AICompletionResponse {
@@ -30,5 +40,12 @@ public record AICompletionResponse(
                                 .map(AssistantOutputSanitizer::stripSquareBracketSegments)
                                 .collect(Collectors.toUnmodifiableList())
                         : List.of();
+        if (outboundWhatsappTextOverride == null) {
+            outboundWhatsappTextOverride = Optional.empty();
+        } else {
+            outboundWhatsappTextOverride =
+                    outboundWhatsappTextOverride
+                            .map(s -> s == null ? "" : AssistantOutputSanitizer.stripSquareBracketSegments(s));
+        }
     }
 }

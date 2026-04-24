@@ -254,9 +254,7 @@ public class GeminiSchedulingTools {
 
         } catch (DateTimeParseException e) {
 
-            return "Peça ao cliente uma data válida (dia, mês e ano) de forma clara, sem mencionar formatos técnicos "
-
-                    + "nem códigos de erro ao utilizador.";
+            return "Não consegui interpretar a data. Pode pedir o dia, o mês e o ano com calma?";
 
         }
 
@@ -303,10 +301,8 @@ public class GeminiSchedulingTools {
                     "check_availability: linha do calendário sem a data pedida {} (tenant={})",
                     isoDate,
                     tenantId.value());
-            return "Não foi possível confirmar os horários para a data "
-                    + isoDate
-                    + " neste momento. Diga ao cliente com cordialidade que pode haver uma inconsistência e pergunta se "
-                    + "deseja tentar outro dia ou repetir o pedido.";
+            return "Não foi possível confirmar os horários para essa data neste momento. Pode tentar outro dia ou repetir o "
+                    + "pedido daqui a pouco?";
         }
 
         List<String> times = SchedulingSlotCapture.parseSlotTimesFromAvailabilityLine(calendarLine);
@@ -494,9 +490,16 @@ public class GeminiSchedulingTools {
 
                 service);
 
-        String result =
-                appointmentService.createAppointment(
-                        tenantId, prep.dateIso(), prep.timeHhMm(), client_name, service, conversationId);
+        var created =
+                appointmentService.createAppointmentWithResult(
+                        tenantId,
+                        prep.dateIso(),
+                        prep.timeHhMm(),
+                        client_name,
+                        service,
+                        conversationId,
+                        calendarZone);
+        String result = created.message();
         if (SchedulingCreateAppointmentResult.isSuccess(result)) {
             try {
                 successfulAppointmentDetails.set(
@@ -504,7 +507,8 @@ public class GeminiSchedulingTools {
                                 service != null ? service.strip() : "",
                                 client_name != null ? client_name.strip() : "",
                                 validated.day(),
-                                prep.timeHhMm()));
+                                prep.timeHhMm(),
+                                created.appointmentDatabaseId()));
             } catch (Exception e) {
                 LOG.warn("Não foi possível guardar dados para o card de confirmação: {}", e.toString());
             }
@@ -513,16 +517,27 @@ public class GeminiSchedulingTools {
 
     }
 
+    /**
+     * Texto exacto devolvido pela última chamada a {@link #get_active_appointments()} neste pedido — o adaptador usa para
+     * substituir parafrases do modelo e manter o formato de listagem no cliente.
+     */
+    private String lastGetActiveAppointmentsListText;
+
+    public String peekLastGetActiveAppointmentsListText() {
+        return lastGetActiveAppointmentsListText;
+    }
+
     @Tool(
             name = "get_active_appointments",
             description =
                     "Lista agendamentos com estado AGENDADO para o número/contacto desta conversa. Cada linha começa com "
-                            + "o ID da base (PK) antes do serviço. Se houver mais de um, o assistente deve mostrar a lista "
-                            + "ao cliente antes de cancelar. Chame antes de cancel_appointment quando o cliente quiser "
+                            + "o ID da base (PK) antes do serviço. O texto devolvido é o que o cliente vê: copie-o "
+                            + "na íntegra, sem reescrever parafrases. Chame antes de cancel_appointment quando o cliente quiser "
                             + "cancelar e ainda não houver id escolhido.")
     public String get_active_appointments() {
         toolInvocationCount.incrementAndGet();
         String listed = appointmentService.getActiveAppointments(tenantId, conversationId, calendarZone);
+        lastGetActiveAppointmentsListText = listed;
         Map<Integer, Long> optionMap = CancelOptionMap.parseLastFromText(listed);
         if (!optionMap.isEmpty()) {
             SchedulingCancelSessionCapture.setOptionToAppointmentId(optionMap);

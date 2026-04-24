@@ -30,6 +30,8 @@ import com.atendimento.cerebro.application.service.IngestionService;
 import com.atendimento.cerebro.application.port.out.FirebaseCustomClaimsPort;
 import com.atendimento.cerebro.application.port.out.PortalUserStorePort;
 import com.atendimento.cerebro.application.port.out.TenantInviteStorePort;
+import com.atendimento.cerebro.application.port.out.WhatsAppTextOutboundPort;
+import com.atendimento.cerebro.application.service.AppointmentReminderNotificationService;
 import com.atendimento.cerebro.application.service.PortalRegistrationService;
 import com.atendimento.cerebro.application.service.TenantSettingsService;
 import com.atendimento.cerebro.infrastructure.config.AnalyticsCategorizationProperties;
@@ -64,6 +66,12 @@ public class ApplicationConfiguration {
     }
 
     @Bean
+    public AppointmentReminderNotificationService appointmentReminderNotificationService(
+            WhatsAppTextOutboundPort whatsAppTextOutboundPort) {
+        return new AppointmentReminderNotificationService(whatsAppTextOutboundPort);
+    }
+
+    @Bean
     public ChatUseCase chatUseCase(
             ConversationContextStorePort conversationContextStore,
             KnowledgeBasePort knowledgeBase,
@@ -75,7 +83,9 @@ public class ApplicationConfiguration {
             TenantAppointmentQueryPort tenantAppointmentQuery,
             AppointmentSchedulingPort appointmentSchedulingPort,
             AppointmentService appointmentService,
-            @Value("${cerebro.google.calendar.zone:America/Bahia}") String schedulingZoneId) {
+            @Value("${cerebro.google.calendar.zone:America/Bahia}") String schedulingZoneId,
+            @Value("${cerebro.appointment.confirmation.whatsapp-suppress-in-chat-when-notifying:true}")
+                    boolean whatsappSuppressInChatWhenNotifying) {
         return new ChatService(
                 conversationContextStore,
                 knowledgeBase,
@@ -87,7 +97,8 @@ public class ApplicationConfiguration {
                 tenantAppointmentQuery,
                 appointmentSchedulingPort,
                 appointmentService,
-                schedulingZoneId);
+                schedulingZoneId,
+                whatsappSuppressInChatWhenNotifying);
     }
 
     @Bean

@@ -1,5 +1,6 @@
 package com.atendimento.cerebro.application.port.out;
 
+import com.atendimento.cerebro.application.dto.AppointmentReminderCandidate;
 import com.atendimento.cerebro.application.dto.TenantAppointmentListItem;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import java.time.Instant;
@@ -59,4 +60,10 @@ public interface TenantAppointmentQueryPort {
 
     Optional<TenantAppointmentListItem> findByIdForTenantAndConversation(
             TenantId tenantId, long appointmentId, String conversationId, String zoneId);
+
+    /**
+     * Agendamentos {@code AGENDADO} com início no dia civil {@code localDay} no fuso {@code zoneId}, ainda sem lembrete
+     * de véspera enviado.
+     */
+    List<AppointmentReminderCandidate> listAgendadoForReminderOnLocalDate(LocalDate localDay, String zoneId);
 }

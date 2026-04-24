@@ -8,6 +8,7 @@ import com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel.WhatsAp
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import org.apache.camel.Exchange;
 import org.apache.camel.ProducerTemplate;
 import org.springframework.stereotype.Component;
 
@@ -44,5 +45,26 @@ public class CamelWhatsAppOutboundAdapter implements WhatsAppOutboundPort {
         headers.put(WhatsAppOutboundHeaders.ASSISTANT_MESSAGE_ID, existingAssistantMessageId);
         String safe = AssistantOutputSanitizer.stripSquareBracketSegments(text);
         producerTemplate.sendBodyAndHeaders("direct:processWhatsAppResponse", safe, headers);
+    }
+
+    @Override
+    public Optional<String> sendMessageCapturingEvolutionMessageId(TenantId tenantId, String to, String text) {
+        String safe = AssistantOutputSanitizer.stripSquareBracketSegments(text);
+        Exchange exchange =
+                producerTemplate.send(
+                        "direct:processWhatsAppResponse",
+                        ex -> {
+                            ex.getMessage().setBody(safe);
+                            ex.getMessage().setHeader(WhatsAppOutboundHeaders.TENANT_ID, tenantId.value());
+                            ex.getMessage().setHeader(WhatsAppOutboundHeaders.TO, to);
+                            ex.getMessage().setHeader(WhatsAppOutboundHeaders.WHATSAPP_INTERACTIVE, null);
+                            ex.getMessage()
+                                    .setHeader(WhatsAppOutboundHeaders.CAPTURE_EVOLUTION_MESSAGE_ID, Boolean.TRUE);
+                        });
+        String mid = exchange.getProperty(WhatsAppOutboundHeaders.PROP_EVOLUTION_MESSAGE_ID, String.class);
+        if (mid != null && !mid.isBlank()) {
+            return Optional.of(mid.strip());
+        }
+        return Optional.empty();
     }
 }

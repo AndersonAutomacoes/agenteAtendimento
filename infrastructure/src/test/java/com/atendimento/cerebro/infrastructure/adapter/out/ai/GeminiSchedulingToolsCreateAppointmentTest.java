@@ -184,8 +184,9 @@ class GeminiSchedulingToolsCreateAppointmentTest {
                         false,
                         Optional.of(anchorDay));
         String out = tools.create_appointment(modelDay.toString(), "10:30", "Cliente", "Serviço");
-        assertThat(out).contains(anchorDay.toString()).contains("não corresponde");
-        verify(appointmentService, never()).createAppointment(any(), any(), any(), any(), any(), any());
+        assertThat(out).contains(anchorDay.toString()).contains("não bate");
+        verify(appointmentService, never())
+                .createAppointmentWithResult(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test

@@ -37,6 +37,7 @@ import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
 import com.atendimento.cerebro.domain.conversation.ConversationContext;
 
 import com.atendimento.cerebro.domain.conversation.Message;
+import com.atendimento.cerebro.domain.conversation.MessageRole;
 
 import com.atendimento.cerebro.domain.knowledge.KnowledgeHit;
 
@@ -47,6 +48,7 @@ import com.atendimento.cerebro.application.scheduling.SlotChoiceExpansion;
 import com.atendimento.cerebro.application.scheduling.SchedulingExplicitTimeShortcut;
 import com.atendimento.cerebro.application.scheduling.SchedulingToolContext;
 import com.atendimento.cerebro.application.scheduling.SystemPromptPlaceholders;
+import com.atendimento.cerebro.application.scheduling.SchedulingCreateAppointmentResult;
 import com.atendimento.cerebro.application.scheduling.SchedulingUserReplyNormalizer;
 
 import java.time.LocalDate;
@@ -58,9 +60,10 @@ import java.util.ArrayList;
 
 import java.util.List;
 
+import java.text.Normalizer;
 import java.util.Locale;
-
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 
@@ -78,11 +81,26 @@ import org.slf4j.LoggerFactory;
 
 public class ChatService implements ChatUseCase {
 
-
+    private static final Pattern GREETING_HEAD =
+            Pattern.compile(
+                    "^(oi|ola|bom dia|boa tarde|boa noite|hi|hello)([\\s!,.…?]|$)",
+                    Pattern.CASE_INSENSITIVE);
 
     private static final Logger LOG = LoggerFactory.getLogger(ChatService.class);
 
+    /**
+     * O domínio rejeita {@link Message} com conteúdo em branco. Em fluxos que não ecoam texto no chat (ex. cancelamento
+     * com confirmação assíncrona no WhatsApp), ainda assim o turno de assistente é guardado com este carácter invisível
+     * (U+200C) para o histórico; o {@link ChatResult} continua a devolver o outbound vazio.
+     */
+    private static final String ASSISTANT_HISTORY_PLACEHOLDER_WHEN_NO_VISIBLE_TEXT = "\u200C";
 
+    private static String forAssistantMessageRecord(String content) {
+        if (content == null || content.isBlank()) {
+            return ASSISTANT_HISTORY_PLACEHOLDER_WHEN_NO_VISIBLE_TEXT;
+        }
+        return content;
+    }
 
     /** Últimas mensagens em {@code conversation_message} enviadas ao modelo (incl. HUMAN_ADMIN). */
 
@@ -112,6 +130,8 @@ public class ChatService implements ChatUseCase {
 
     private final String schedulingZoneId;
 
+    private final boolean whatsappSuppressInChatWhenNotifying;
+
 
 
     public ChatService(
@@ -136,7 +156,8 @@ public class ChatService implements ChatUseCase {
 
             AppointmentService appointmentService,
 
-            String schedulingZoneId) {
+            String schedulingZoneId,
+            boolean whatsappSuppressInChatWhenNotifying) {
 
         this.conversationContextStore = conversationContextStore;
 
@@ -164,6 +185,8 @@ public class ChatService implements ChatUseCase {
 
                 : "America/Bahia";
 
+        this.whatsappSuppressInChatWhenNotifying = whatsappSuppressInChatWhenNotifying;
+
     }
 
 
@@ -178,7 +201,10 @@ public class ChatService implements ChatUseCase {
 
         var userText = command.userMessage();
 
-
+        if (isGreetingMessage(userText)) {
+            forceResetContext();
+            LOG.info("[ContextReset] reason=greeting | conversationId={}", conversationId.value());
+        }
 
         crmCustomerStore.ensureOnConversationStart(tenantId, conversationId.value(), Optional.empty());
 
@@ -297,10 +323,20 @@ public class ChatService implements ChatUseCase {
                     "[scheduling-restart] Apêndices internos (slots e cancel_option_map) removidos do histórico — intenção marcar horário após fluxo de cancelamento.");
         }
 
+        if (rescheduleIntent) {
+            historyForAi = SchedulingUserReplyNormalizer.stripSchedulingStateFromHistory(historyForAi);
+            systemPrompt =
+                    systemPrompt == null || systemPrompt.isEmpty()
+                            ? SchedulingUserReplyNormalizer.RESCHEDULE_SYSTEM_BLOCK
+                            : systemPrompt + "\n\n" + SchedulingUserReplyNormalizer.RESCHEDULE_SYSTEM_BLOCK;
+            LOG.info(
+                    "[scheduling-reschedule] Histórico sem rascunho de slots; systemPrompt com RESCHEDULE_SYSTEM_BLOCK.");
+        }
+
         final List<Message> historyForSlotExpansion = historyForAi;
 
         SlotChoiceExpansion slotExpansion =
-                schedulingTools && !cancelIntent
+                schedulingTools && !cancelIntent && !rescheduleIntent
                         ? SchedulingExplicitTimeShortcut.tryExpand(
                                         tenantId,
                                         userText,
@@ -313,11 +349,6 @@ public class ChatService implements ChatUseCase {
                                                         userText, historyForSlotExpansion))
                         : SlotChoiceExpansion.unchanged(userText);
         String userMessageForAi = slotExpansion.expandedUserMessage();
-        if (rescheduleIntent) {
-            userMessageForAi =
-                    SchedulingUserReplyNormalizer.RESCHEDULE_FLOW_HINT + "\n\n" + userMessageForAi;
-            LOG.info("[scheduling-reschedule] Mensagem reforçada com fluxo cancelar → disponibilidade → criar.");
-        }
 
         Optional<LocalDate> schedulingSlotAnchorDate =
                 schedulingTools
@@ -349,7 +380,7 @@ public class ChatService implements ChatUseCase {
                 stored = SchedulingUserReplyNormalizer.appendSchedulingDraft(
                         hardcoded, slotExpansion.pendingConfirmationDraft().get());
             }
-            Message assistantMessage = Message.assistantMessage(stored);
+            Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(stored));
             ConversationContext updated = context.append(userMessage, assistantMessage);
             conversationContextStore.save(updated);
             return new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(stored));
@@ -361,6 +392,7 @@ public class ChatService implements ChatUseCase {
                 && SchedulingUserReplyNormalizer.isBackendCreateConfirmationInstruction(userMessageForAi)) {
             SchedulingEnforcedChoice choice = slotExpansion.enforcedChoice().get();
             String iso = choice.date().format(DateTimeFormatter.ISO_LOCAL_DATE);
+            ZoneId calendarZone = ZoneId.of(schedulingZoneId);
             String clientName =
                     crmRow
                             .map(CrmCustomerRecord::fullName)
@@ -375,6 +407,38 @@ public class ChatService implements ChatUseCase {
                                             .filter(s -> s != null && !s.isBlank())
                                             .map(String::strip))
                             .orElse("Serviço");
+            Optional<String> recentRescheduleRequest =
+                    findRecentRescheduleRequestFromHistory(historyForAi, calendarZone);
+            if (recentRescheduleRequest.isPresent()) {
+                Optional<Long> toCancel =
+                        appointmentService.resolveActiveAppointmentIdForReschedule(
+                                tenantId, conversationId.value(), calendarZone, recentRescheduleRequest.get());
+                if (toCancel.isPresent()) {
+                    LOG.info(
+                            "[scheduling-reschedule] confirmação de novo horário após indisponibilidade; a cancelar agendamento anterior antes de criar novo (tenant={} appointmentId={})",
+                            tenantId.value(),
+                            toCancel.get());
+                    String cancelReply =
+                            appointmentService.cancelAppointment(
+                                    tenantId,
+                                    conversationId.value(),
+                                    "",
+                                    String.valueOf(toCancel.get()),
+                                    calendarZone);
+                    if (!AppointmentService.isSuccessfulCancellationReply(cancelReply)) {
+                        LOG.warn(
+                                "[scheduling-reschedule] cancelamento prévio falhou; criação abortada (tenant={} appointmentId={} reply={})",
+                                tenantId.value(),
+                                toCancel.get(),
+                                cancelReply);
+                        Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(cancelReply));
+                        ConversationContext updatedFail = context.append(userMessage, assistantMessage);
+                        conversationContextStore.save(updatedFail);
+                        return new ChatResult(
+                                SchedulingUserReplyNormalizer.stripInternalSlotAppendix(cancelReply));
+                    }
+                }
+            }
             LOG.info(
                     "[scheduling-bypass] create_appointment directo no ChatService (sem motor de IA) tenant={} date={} time={}",
                     tenantId.value(),
@@ -387,11 +451,20 @@ public class ChatService implements ChatUseCase {
                             choice.timeHhMm(),
                             clientName,
                             serviceName,
-                            conversationId.value());
-            Message assistantMessage = Message.assistantMessage(result.strip());
+                            conversationId.value(),
+                            calendarZone);
+            String r = result != null ? result.strip() : "";
+            String forHistory = r;
+            if (whatsappSuppressInChatWhenNotifying && SchedulingCreateAppointmentResult.isSuccess(r)) {
+                forHistory =
+                        "Agendamento confirmado. O cliente recebeu a confirmação automática no WhatsApp.";
+            }
+            Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(forHistory));
             ConversationContext updatedConfirm = context.append(userMessage, assistantMessage);
             conversationContextStore.save(updatedConfirm);
-            return new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(result.strip()));
+            String outbound =
+                    whatsappSuppressInChatWhenNotifying && SchedulingCreateAppointmentResult.isSuccess(r) ? "" : r;
+            return new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(outbound));
         }
 
         var aiRequest = new AICompletionRequest(
@@ -412,26 +485,34 @@ public class ChatService implements ChatUseCase {
         var aiResponse = aiEngine.complete(aiRequest);
 
         String assistantContent = aiResponse.content();
+        Optional<String> outboundOverride = aiResponse.outboundWhatsappTextOverride();
+        String outboundForWhatsapp = outboundOverride.orElse(assistantContent);
         if (schedulingTools && aiResponse.whatsAppInteractive().isPresent()) {
             var w = aiResponse.whatsAppInteractive().get();
             if (w.slotTimes() != null && !w.slotTimes().isEmpty()) {
                 assistantContent =
                         SchedulingUserReplyNormalizer.appendSchedulingAppendices(
                                 assistantContent, w.slotTimes(), w.requestedDate());
+                if (outboundOverride.isEmpty()) {
+                    outboundForWhatsapp = assistantContent;
+                }
             }
         }
         if (schedulingTools && slotExpansion.pendingConfirmationDraft().isPresent()) {
             assistantContent =
                     SchedulingUserReplyNormalizer.appendSchedulingDraft(
                             assistantContent, slotExpansion.pendingConfirmationDraft().get());
+            if (outboundOverride.isEmpty()) {
+                outboundForWhatsapp = assistantContent;
+            }
         }
-        Message assistantMessage = Message.assistantMessage(assistantContent);
+        Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(assistantContent));
 
         ConversationContext updated = context.append(userMessage, assistantMessage);
         conversationContextStore.save(updated);
 
         return new ChatResult(
-                assistantContent, aiResponse.whatsAppInteractive(), aiResponse.additionalOutboundMessages());
+                outboundForWhatsapp, aiResponse.whatsAppInteractive(), aiResponse.additionalOutboundMessages());
 
     }
 
@@ -544,12 +625,55 @@ public class ChatService implements ChatUseCase {
 
     }
 
+    private static Optional<String> findRecentRescheduleRequestFromHistory(
+            List<Message> history, ZoneId calendarZone) {
+        if (history == null || history.isEmpty()) {
+            return Optional.empty();
+        }
+        int lowerBound = Math.max(0, history.size() - 12);
+        for (int i = history.size() - 1; i >= lowerBound; i--) {
+            Message m = history.get(i);
+            if (m.role() != MessageRole.USER) {
+                continue;
+            }
+            String content = m.content();
+            if (content == null || content.isBlank()) {
+                continue;
+            }
+            String stripped = content.strip();
+            if (!SchedulingUserReplyNormalizer.looksLikeRescheduleOrTimeChangeIntent(stripped)) {
+                continue;
+            }
+            if (SchedulingUserReplyNormalizer.parseReagendamentoDeParaHint(stripped, calendarZone).isPresent()) {
+                return Optional.of(stripped);
+            }
+        }
+        return Optional.empty();
+    }
+
     /**
      * Obrigatório após {@code cancel_appointment} concluir com sucesso: liberta listas de horário, mapa opção→ID e
      * {@code waiting_for_cancellation_choice} na sessão HTTP (ThreadLocal).
      */
     public static void resetContext() {
         SchedulingToolContext.resetContext();
+    }
+
+    /**
+     * Limpa flags de cancelamento e rascunhos de agendamento (ThreadLocal). Usado após saudação no início do turno.
+     */
+    public void forceResetContext() {
+        resetContext();
+    }
+
+    static boolean isGreetingMessage(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return false;
+        }
+        String t = raw.strip();
+        String normalized =
+                Normalizer.normalize(t, Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
+        return GREETING_HEAD.matcher(normalized).find();
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.atendimento.cerebro.infrastructure.adapter.out.whatsapp;
 
+import io.github.resilience4j.retry.annotation.Retry;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -8,6 +9,8 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 /**
@@ -19,8 +22,13 @@ public class EvolutionOutboundHttp {
 
     private static final Logger LOG = LoggerFactory.getLogger(EvolutionOutboundHttp.class);
 
-    private static final Duration CONNECT = Duration.ofSeconds(15);
-    private static final Duration REQUEST = Duration.ofSeconds(45);
+    @Lazy
+    @Autowired
+    @SuppressWarnings("checkstyle:VisibilityModifier")
+    private EvolutionOutboundHttp self;
+
+    private static final Duration CONNECT = Duration.ofSeconds(5);
+    private static final Duration REQUEST = Duration.ofSeconds(10);
 
     private final HttpClient http =
             HttpClient.newBuilder().connectTimeout(CONNECT).build();
@@ -29,7 +37,8 @@ public class EvolutionOutboundHttp {
      * @return código HTTP (2xx esperado)
      */
     public int postJson(String url, String apiKey, String jsonBody) throws IOException, InterruptedException {
-        HttpResponse<String> res = postJsonResponse(url, apiKey, jsonBody);
+        EvolutionOutboundHttp api = self != null ? self : this;
+        HttpResponse<String> res = api.postJsonResponse(url, apiKey, jsonBody);
         int code = res.statusCode();
         if (code < 200 || code >= 300) {
             throw new IllegalStateException(
@@ -40,7 +49,10 @@ public class EvolutionOutboundHttp {
 
     /**
      * POST com corpo de resposta (auditoria de {@code messageId} na Evolution API).
+     * <p>Timeout: {@code HttpRequest#timeout(10s)}. Resilience4j {@code @TimeLimiter} não se usa em métodos síncronos
+     * (Spring 6 exige {@link java.util.concurrent.CompletionStage}).
      */
+    @Retry(name = "evolutionApi")
     public HttpResponse<String> postJsonResponse(String url, String apiKey, String jsonBody)
             throws IOException, InterruptedException {
         HttpRequest req =

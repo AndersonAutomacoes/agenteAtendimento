@@ -146,6 +146,22 @@ chat:
     # Inclui Redis + embedding (RAG) + chat Gemini + Redis; 15s pode disparar fallback com latência real.
     timeout-ms: 45000
 
+# Resilience4j: retry (3 tentativas, backoff). Timeout 10s na Evolution: HttpRequest.timeout em EvolutionOutboundHttp.
+# @TimeLimiter síncrono não é suportado (Resilience4j Spring 6 exige CompletionStage).
+resilience4j:
+  retry:
+    instances:
+      evolutionApi:
+        maxAttempts: 3
+        waitDuration: 200ms
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+      googleCalendarApi:
+        maxAttempts: 3
+        waitDuration: 200ms
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+
 # Contrato único: classpath/static/openapi.yaml — UI em /swagger-ui/index.html
 springdoc:
   api-docs:

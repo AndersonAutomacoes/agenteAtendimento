@@ -10,7 +10,9 @@ import com.atendimento.cerebro.application.service.AppointmentValidationService;
 import com.atendimento.cerebro.application.service.ChatService;
 import com.atendimento.cerebro.application.scheduling.AppointmentConfirmationDetails;
 import com.atendimento.cerebro.application.scheduling.CancelOptionMap;
+import com.atendimento.cerebro.application.scheduling.ReagendamentoDeParaHint;
 import com.atendimento.cerebro.application.scheduling.SchedulingCancelSessionCapture;
+import com.atendimento.cerebro.application.scheduling.SchedulingCreateAppointmentResult;
 import com.atendimento.cerebro.application.scheduling.SchedulingSlotCapture;
 import com.atendimento.cerebro.application.scheduling.SchedulingEnforcedChoice;
 import com.atendimento.cerebro.application.scheduling.SchedulingToolContext;
@@ -21,6 +23,7 @@ import com.atendimento.cerebro.domain.conversation.SenderType;
 import com.atendimento.cerebro.infrastructure.config.CerebroAppointmentConfirmationProperties;
 import com.atendimento.cerebro.infrastructure.config.CerebroGoogleCalendarProperties;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -91,6 +94,14 @@ public class GeminiChatEngineAdapter {
                     + "Se a mensagem actual for só confirmação («sim», «ok») para ver a lista, chame get_active_appointments "
                     + "neste turno, sem resposta só em texto.";
 
+    /**
+     * O Gemini às vezes devolve string vazia após executar ferramentas sem texto de follow-up, o que derrubava o
+     * request com excepção. Preferimos resposta canónica em vez de falhar o circuito.
+     */
+    private static final String SCHEDULING_EMPTY_ASSISTANT_FALLBACK_PT =
+            "Não recebi uma resposta do assistente neste momento. Pode repetir a sua pergunta ou, se estava a escolher "
+                    + "um horário, responda com o número da opção.";
+
     private static final Pattern SHORT_SCHEDULING_CONFIRM =
             Pattern.compile("^(sim|sí|ok|confirmado|confirmo|pode|isso|perfeito|fechado)[.!\\s]*$", Pattern.CASE_INSENSITIVE);
 
@@ -160,6 +171,11 @@ public class GeminiChatEngineAdapter {
                 if (directCreate.isPresent()) {
                     return directCreate.get();
                 }
+                Optional<AICompletionResponse> directReschedule =
+                        tryDirectRescheduleWithoutGemini(request, calendarZone);
+                if (directReschedule.isPresent()) {
+                    return directReschedule.get();
+                }
                 GeminiSchedulingTools tools =
                         new GeminiSchedulingTools(
                                 request.tenantId(),
@@ -173,17 +189,28 @@ public class GeminiChatEngineAdapter {
                                 request.schedulingEnforcedChoice(),
                                 request.schedulingBlockCreateAppointment(),
                                 request.schedulingSlotAnchorDate());
-                ChatClientResponse clientResponse = invokeSchedulingChat(schedulingSystemContent, request, tools);
+                String systemForInvoke = schedulingSystemContent;
+                ChatClientResponse clientResponse = invokeSchedulingChat(systemForInvoke, request, tools);
                 int afterFirst = tools.schedulingToolInvocationCount();
                 // non-null após execução programática de get_active_appointments (valor pode ser vazio)
                 String cancelFlowListingResult = null;
-                if (afterFirst == 0 && cancelContext) {
+                boolean listMyAppointmentsIntent =
+                        request.userMessage() != null
+                                && SchedulingUserReplyNormalizer.looksLikeListActiveAppointmentsIntent(
+                                        request.userMessage());
+                if (afterFirst == 0 && (cancelContext || listMyAppointmentsIntent)) {
                     LOG.warn(
-                            "Gemini (agendamento): cancelContext sem ferramentas na 1ª tentativa (tenant={}); "
+                            "Gemini (agendamento): gestão/listagem sem ferramentas na 1ª tentativa (tenant={}); "
+                                    + "cancelContext={} listAppointmentsIntent={}; "
                                     + "a executar get_active_appointments no servidor (sem segunda chamada ao modelo).",
-                            request.tenantId().value());
+                            request.tenantId().value(),
+                            cancelContext,
+                            listMyAppointmentsIntent);
                     cancelFlowListingResult = tools.get_active_appointments();
-                } else if (afterFirst == 0 && likelySchedulingOrConfirmationTurn(request.userMessage())) {
+                } else if (afterFirst == 0
+                        && shouldRetrySchedulingToolPass(request)
+                        && !isShortPostBookingAckAfterCompletedBooking(
+                                request.userMessage(), request.conversationHistory())) {
                     boolean cancelTranscript = schedulingCancellationOrListManagementContext(request);
                     String retrySuffix =
                             cancelTranscript ? SCHEDULING_CANCEL_TOOL_RETRY_SUFFIX : SCHEDULING_TOOL_RETRY_SUFFIX;
@@ -192,7 +219,7 @@ public class GeminiChatEngineAdapter {
                                     + "a repetir com reforço (cancelContext={}).",
                             request.tenantId().value(),
                             cancelTranscript);
-                    clientResponse = invokeSchedulingChat(schedulingSystemContent + retrySuffix, request, tools);
+                    clientResponse = invokeSchedulingChat(systemForInvoke + retrySuffix, request, tools);
                     if (tools.schedulingToolInvocationCount() == 0) {
                         LOG.warn(
                                 "Gemini (agendamento): após reforço ainda sem execução de ferramentas (tenant={}). "
@@ -217,10 +244,14 @@ public class GeminiChatEngineAdapter {
                             request.tenantId().value());
                     String um = request.userMessage() != null ? request.userMessage().strip() : "";
                     String forced = tools.cancel_appointment("", um);
-                    if (forced != null && !forced.isBlank()) {
-                        content = forced.strip();
+                    if (forced != null) {
+                        if (forced.isEmpty()) {
+                            content = "";
+                        } else if (!forced.isBlank()) {
+                            content = forced.strip();
+                        }
                     }
-                    if (AppointmentService.isSuccessfulCancellationReply(content)) {
+                    if (AppointmentService.isSuccessfulCancellationReply(forced)) {
                         ChatService.clearCancellationContext(request.conversationId());
                         LOG.info(
                                 "Gemini (agendamento): cancelamento concluído (fallback) — fluxo de cancelamento encerrado "
@@ -232,6 +263,15 @@ public class GeminiChatEngineAdapter {
                     String listing = cancelFlowListingResult.strip();
                     if (!listing.isBlank()) {
                         content = listing;
+                    }
+                }
+                String canonicalList = tools.peekLastGetActiveAppointmentsListText();
+                if (canonicalList != null && !canonicalList.isBlank()) {
+                    if (cancelContext) {
+                        content = canonicalList.strip();
+                    } else if (content == null || content.isBlank()) {
+                        // Modelo frequentemente devolve texto vazio após get_active_appointments; injir o canónico.
+                        content = canonicalList.strip();
                     }
                 }
                 if (!SchedulingSlotCapture.peekSlotTimes().isEmpty()) {
@@ -251,21 +291,33 @@ public class GeminiChatEngineAdapter {
                                     + ".";
                 }
                 List<String> extraOutbound = List.of();
+                Optional<String> whatsappTextOverride = Optional.empty();
                 Optional<AppointmentConfirmationDetails> confirmation = tools.takeSuccessfulAppointmentDetails();
                 if (confirmation.isPresent()) {
                     AppointmentConfirmationDetails d = confirmation.get();
-                    String card =
-                            AppointmentConfirmationCardFormatter.formatConfirmationCard(
-                                    d.serviceName(),
-                                    d.clientDisplayName(),
-                                    d.date(),
-                                    d.timeHhMm(),
-                                    appointmentConfirmationProperties.getLocationLine());
                     String base =
                             AppointmentConfirmationCardFormatter.stripFormattedConfirmationCards(
                                     content == null ? "" : content.strip());
-                    content = base.isBlank() ? card : base + "\n\n" + card;
-                    extraOutbound = mapsFollowUpMessages(appointmentConfirmationProperties.getMapsUrl());
+                    base = AppointmentConfirmationCardFormatter.stripEchoOfSchedulingCreateToolReturn(base);
+                    if (appointmentConfirmationProperties.isWhatsappSuppressInChatWhenNotifying()) {
+                        content =
+                                base.isBlank()
+                                        ? "Agendamento confirmado. O cliente recebeu a confirmação automática no WhatsApp."
+                                        : base;
+                        extraOutbound = mapsFollowUpMessages(appointmentConfirmationProperties.getMapsUrl());
+                        whatsappTextOverride = Optional.of("");
+                    } else {
+                        String card =
+                                AppointmentConfirmationCardFormatter.formatConfirmationCard(
+                                        d.appointmentDatabaseId(),
+                                        d.serviceName(),
+                                        d.clientDisplayName(),
+                                        d.date(),
+                                        d.timeHhMm(),
+                                        appointmentConfirmationProperties.getLocationLine());
+                        content = base.isBlank() ? card : base + "\n\n" + card;
+                        extraOutbound = mapsFollowUpMessages(appointmentConfirmationProperties.getMapsUrl());
+                    }
                 }
                 if (content.isBlank()) {
                     if (cancelContext) {
@@ -278,18 +330,24 @@ public class GeminiChatEngineAdapter {
                             content = listed != null && !listed.isBlank() ? listed.strip() : "";
                         }
                         if (content.isBlank()) {
-                            content =
-                                    "Não foi possível obter a lista de agendamentos neste momento. Peça ao cliente para "
-                                            + "tentar de novo em instantes.";
+                            content = AppointmentService.CANCEL_LIST_UNAVAILABLE_FRIENDLY_MESSAGE;
                         }
                     } else {
-                        throw new IllegalStateException("Resposta vazia do modelo de chat");
+                        if (listMyAppointmentsIntent) {
+                            String listed = tools.get_active_appointments();
+                            if (listed != null && !listed.isBlank()) {
+                                content = listed.strip();
+                            }
+                        }
+                        if (content.isBlank()) {
+                            content = recoverEmptyNonCancelSchedulingContent(content, request, calendarZone);
+                        }
                     }
                 }
                 content = ensureCancelOptionMapOnAssistantText(content);
                 Optional<WhatsAppInteractiveReply> interactive =
                         SchedulingSlotCapture.takeWhatsAppInteractive(content, calendarZone);
-                return new AICompletionResponse(content, interactive, extraOutbound);
+                return new AICompletionResponse(content, interactive, extraOutbound, whatsappTextOverride);
             } finally {
                 SchedulingToolContext.resetContext();
             }
@@ -331,6 +389,36 @@ public class GeminiChatEngineAdapter {
             spec = spec.messages(hist);
         }
         return spec.user(request.userMessage()).call().chatClientResponse();
+    }
+
+    /**
+     * Evita excepção quando o texto final fica vazio fora de contexto de cancelamento (ex.: modelo sem mensagem após
+     * tools). Reutiliza a lista de slots em sessão, se houver.
+     */
+    private static String recoverEmptyNonCancelSchedulingContent(
+            String content, AICompletionRequest request, ZoneId calendarZone) {
+        if (content != null && !content.isBlank()) {
+            return content;
+        }
+        if (!SchedulingSlotCapture.peekSlotTimes().isEmpty()) {
+            String premium =
+                    SchedulingSlotCapture.buildPremiumFormattedSlotList(
+                            SchedulingSlotCapture.peekRequestedDate().orElse(null),
+                            calendarZone,
+                            SchedulingSlotCapture.peekSlotTimes());
+            if (!premium.isBlank()) {
+                return "Segue a disponibilidade para "
+                        + SchedulingSlotCapture.peekRequestedDate()
+                                .map(d -> d.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")))
+                                .orElse("a data pedida")
+                        + ".\n\n"
+                        + premium;
+            }
+        }
+        LOG.warn(
+                "Gemini (agendamento): resposta vazia do modelo sem conteúdo recuperável (tenant={}).",
+                request.tenantId().value());
+        return SCHEDULING_EMPTY_ASSISTANT_FALLBACK_PT;
     }
 
     /**
@@ -538,6 +626,159 @@ public class GeminiChatEngineAdapter {
                 || t.chars().filter(Character::isDigit).count() >= 2;
     }
 
+    static boolean shouldRetrySchedulingToolPass(AICompletionRequest request) {
+        if (request == null || request.userMessage() == null || request.userMessage().isBlank()) {
+            return false;
+        }
+        String t = request.userMessage().strip();
+        if (!(t.length() <= 24 && SHORT_SCHEDULING_CONFIRM.matcher(t).matches())) {
+            return likelySchedulingOrConfirmationTurn(t);
+        }
+        return isShortConfirmationInSchedulingContext(request);
+    }
+
+    private static boolean isShortConfirmationInSchedulingContext(AICompletionRequest request) {
+        if (lastAssistantIndicatesNoActiveAppointments(request)) {
+            return false;
+        }
+        List<Message> h = request.conversationHistory();
+        if (h == null || h.isEmpty()) {
+            return false;
+        }
+        for (int i = h.size() - 1; i >= 0 && i >= h.size() - 8; i--) {
+            Message m = h.get(i);
+            if (m.content() == null) {
+                continue;
+            }
+            String c = m.content().toLowerCase(Locale.ROOT);
+            if (c.contains(SchedulingUserReplyNormalizer.SLOT_OPTIONS_APPENDIX_TOKEN.toLowerCase(Locale.ROOT))
+                    || c.contains(SchedulingUserReplyNormalizer.SCHEDULING_DRAFT_APPENDIX_TOKEN.toLowerCase(Locale.ROOT))
+                    || c.contains(CancelOptionMap.APPENDIX_PREFIX)
+                    || c.contains("posso confirmar o agendamento")
+                    || c.contains("agendamentos agendado")
+                    || c.contains("check_availability")
+                    || c.contains("create_appointment")
+                    || c.contains("cancel_appointment")
+                    || c.contains("horário")
+                    || c.contains("horario")
+                    || c.contains("disponibil")
+                    || c.contains("agend")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * «ok» / «sim» após confirmação de agendamento no histórico — não forçar segunda chamada com reforço de
+     * ferramentas.
+     */
+    static boolean isShortPostBookingAckAfterCompletedBooking(String userMessage, List<Message> history) {
+        if (userMessage == null || history == null || history.isEmpty()) {
+            return false;
+        }
+        String t = userMessage.strip();
+        if (t.length() > 28 || !SHORT_SCHEDULING_CONFIRM.matcher(t).matches()) {
+            return false;
+        }
+        for (int i = history.size() - 1; i >= 0; i--) {
+            Message m = history.get(i);
+            if (m.role() == MessageRole.ASSISTANT
+                    && m.senderType() == SenderType.BOT
+                    && SchedulingUserReplyNormalizer.assistantMessageIndicatesCompletedScheduling(m.content())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Optional<AICompletionResponse> tryDirectRescheduleWithoutGemini(
+            AICompletionRequest request, ZoneId calendarZone) {
+        if (request.conversationId() == null || request.conversationId().isBlank()) {
+            return Optional.empty();
+        }
+        String um = request.userMessage() != null ? request.userMessage().strip() : "";
+        if (!SchedulingUserReplyNormalizer.looksLikeRescheduleOrTimeChangeIntent(um)) {
+            return Optional.empty();
+        }
+        Optional<ReagendamentoDeParaHint> hintOpt =
+                SchedulingUserReplyNormalizer.parseReagendamentoDeParaHint(um, calendarZone);
+        if (hintOpt.isEmpty()) {
+            return Optional.empty();
+        }
+        ReagendamentoDeParaHint hint = hintOpt.get();
+        Optional<Long> toCancel =
+                appointmentService.resolveActiveAppointmentIdForReschedule(
+                        request.tenantId(), request.conversationId(), calendarZone, um);
+        if (toCancel.isEmpty()) {
+            LOG.warn(
+                    "Gemini (agendamento): reagendamento directo não resolveu appointmentId para cancelar "
+                            + "(tenant={} conv={} msg={})",
+                    request.tenantId().value(),
+                    request.conversationId(),
+                    um);
+            return Optional.empty();
+        }
+        String iso = hint.day().format(DateTimeFormatter.ISO_LOCAL_DATE);
+        String availability = appointmentSchedulingPort.checkAvailability(request.tenantId(), iso);
+        List<String> slots = SchedulingSlotCapture.parseSlotTimesFromAvailabilityLine(availability);
+        String target = hm(hint.toTime());
+        if (!slots.contains(target)) {
+            String msg =
+                    "O horário "
+                            + target
+                            + " não está disponível para "
+                            + hint.day().format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+                            + ". O horário anterior "
+                            + hm(hint.fromTime())
+                            + " foi mantido. Escolha uma das opções disponíveis:";
+            SchedulingSlotCapture.setStructuredAvailability(msg, slots, hint.day());
+            Optional<WhatsAppInteractiveReply> interactive =
+                    SchedulingSlotCapture.takeWhatsAppInteractive(msg, calendarZone);
+            String rich = slots.isEmpty() ? msg : msg + "\n\n" + SchedulingSlotCapture.formatNumberedSlotLines(slots);
+            return Optional.of(new AICompletionResponse(rich, interactive, List.of()));
+        }
+        String cancelResult =
+                appointmentService.cancelAppointment(
+                        request.tenantId(),
+                        request.conversationId(),
+                        "",
+                        String.valueOf(toCancel.get()),
+                        calendarZone);
+        if (!AppointmentService.isSuccessfulCancellationReply(cancelResult)) {
+            return Optional.of(new AICompletionResponse(cancelResult != null ? cancelResult.strip() : ""));
+        }
+        String client = parseClientNameFromCrmContext(request.crmContext()).orElse("Cliente");
+        String service = parseServiceNameFromCrmContext(request.crmContext()).orElse("Serviço");
+        String createResult =
+                appointmentService.createAppointment(
+                        request.tenantId(),
+                        iso,
+                        target,
+                        client,
+                        service,
+                        request.conversationId(),
+                        calendarZone);
+        String result = createResult != null ? createResult.strip() : "";
+        if (SchedulingCreateAppointmentResult.isSuccess(result)
+                && appointmentConfirmationProperties.isWhatsappSuppressInChatWhenNotifying()) {
+            String stored =
+                    "Reagendamento concluído de "
+                            + hm(hint.fromTime())
+                            + " para "
+                            + target
+                            + " em "
+                            + hint.day().format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+                            + ". O cliente recebeu a confirmação automática no WhatsApp.";
+            return Optional.of(new AICompletionResponse(stored, Optional.empty(), List.of(), Optional.of("")));
+        }
+        return Optional.of(new AICompletionResponse(result));
+    }
+
+    private static String hm(LocalTime t) {
+        return String.format(Locale.ROOT, "%02d:%02d", t.getHour(), t.getMinute());
+    }
+
     /**
      * «Verifica», «verifique a disponibilidade», etc. — pedido de consulta de horários, não de lista de cancelamentos.
      */
@@ -717,6 +958,15 @@ public class GeminiChatEngineAdapter {
         if (request.schedulingEnforcedChoice().isPresent()) {
             return false;
         }
+        if (lastAssistantIndicatesNoActiveAppointments(request)
+                && (request.userMessage() == null
+                        || !SchedulingUserReplyNormalizer.looksLikeCancellationIntent(request.userMessage()))) {
+            return false;
+        }
+        if (request.userMessage() != null
+                && SchedulingUserReplyNormalizer.looksLikeRescheduleOrTimeChangeIntent(request.userMessage())) {
+            return false;
+        }
         if (request.userMessage() != null
                 && SchedulingUserReplyNormalizer.looksLikeSchedulingRestartIntent(request.userMessage())) {
             return false;
@@ -726,6 +976,30 @@ public class GeminiChatEngineAdapter {
         }
         return SchedulingUserReplyNormalizer.looksLikeCancellationInBlob(
                 mergeConversationTranscriptForCancellationScoring(request));
+    }
+
+    private static boolean lastAssistantIndicatesNoActiveAppointments(AICompletionRequest request) {
+        List<Message> h = request.conversationHistory();
+        if (h == null || h.isEmpty()) {
+            return false;
+        }
+        for (int i = h.size() - 1; i >= 0; i--) {
+            Message m = h.get(i);
+            if (m.role() != MessageRole.ASSISTANT || m.content() == null) {
+                continue;
+            }
+            String c = m.content().toLowerCase(Locale.ROOT);
+            return c.contains("não há agendamentos com estado agendado")
+                    || c.contains("nao ha agendamentos com estado agendado")
+                    || c.contains("não há agendamentos ativos para cancelar")
+                    || c.contains("nao ha agendamentos ativos para cancelar")
+                    || c.contains("sem agendamentos ativos no momento")
+                    || c.contains("não há agendamentos ativos no momento")
+                    || c.contains("nao ha agendamentos ativos no momento")
+                    || c.contains("não há agendamentos ativos")
+                    || c.contains("nao ha agendamentos ativos");
+        }
+        return false;
     }
 
     /**
@@ -817,21 +1091,33 @@ public class GeminiChatEngineAdapter {
         String result = tools.create_appointment(iso, time, client, service);
         String content = result != null ? result.strip() : "";
         List<String> extraOutbound = List.of();
+        Optional<String> whatsappTextOverride = Optional.empty();
         Optional<AppointmentConfirmationDetails> confirmation = tools.takeSuccessfulAppointmentDetails();
         if (confirmation.isPresent()) {
             AppointmentConfirmationDetails d = confirmation.get();
-            String card =
-                    AppointmentConfirmationCardFormatter.formatConfirmationCard(
-                            d.serviceName(),
-                            d.clientDisplayName(),
-                            d.date(),
-                            d.timeHhMm(),
-                            appointmentConfirmationProperties.getLocationLine());
             String base =
                     AppointmentConfirmationCardFormatter.stripFormattedConfirmationCards(
                             content == null ? "" : content.strip());
-            content = base.isBlank() ? card : base + "\n\n" + card;
-            extraOutbound = mapsFollowUpMessages(appointmentConfirmationProperties.getMapsUrl());
+            base = AppointmentConfirmationCardFormatter.stripEchoOfSchedulingCreateToolReturn(base);
+            if (appointmentConfirmationProperties.isWhatsappSuppressInChatWhenNotifying()) {
+                content =
+                        base.isBlank()
+                                ? "Agendamento confirmado. O cliente recebeu a confirmação automática no WhatsApp."
+                                : base;
+                extraOutbound = mapsFollowUpMessages(appointmentConfirmationProperties.getMapsUrl());
+                whatsappTextOverride = Optional.of("");
+            } else {
+                String card =
+                        AppointmentConfirmationCardFormatter.formatConfirmationCard(
+                                d.appointmentDatabaseId(),
+                                d.serviceName(),
+                                d.clientDisplayName(),
+                                d.date(),
+                                d.timeHhMm(),
+                                appointmentConfirmationProperties.getLocationLine());
+                content = base.isBlank() ? card : base + "\n\n" + card;
+                extraOutbound = mapsFollowUpMessages(appointmentConfirmationProperties.getMapsUrl());
+            }
         }
         if (content.isBlank()) {
             throw new IllegalStateException("Resposta vazia após create_appointment directo");
@@ -839,7 +1125,7 @@ public class GeminiChatEngineAdapter {
         content = ensureCancelOptionMapOnAssistantText(content);
         Optional<WhatsAppInteractiveReply> interactive =
                 SchedulingSlotCapture.takeWhatsAppInteractive(content, calendarZone);
-        return Optional.of(new AICompletionResponse(content, interactive, extraOutbound));
+        return Optional.of(new AICompletionResponse(content, interactive, extraOutbound, whatsappTextOverride));
     }
 
     /**
@@ -887,11 +1173,21 @@ public class GeminiChatEngineAdapter {
     }
 
     private static boolean shortConfirmAfterAssistantListOrCancelPrompt(AICompletionRequest request) {
+        if (lastAssistantIndicatesNoActiveAppointments(request)) {
+            return false;
+        }
         String um = request.userMessage();
         if (um == null || um.isBlank()) {
             return false;
         }
         String stripped = um.strip();
+        if (BARE_CANCEL_OPTION_INDEX.matcher(stripped).matches()
+                || BARE_CANCEL_OPCAO.matcher(stripped).matches()) {
+            if (SchedulingUserReplyNormalizer.lastAssistantSuggestedAppointmentCancellation(
+                    request.conversationHistory())) {
+                return true;
+            }
+        }
         if (stripped.length() > 24 || !SHORT_SCHEDULING_CONFIRM.matcher(stripped).matches()) {
             return false;
         }
@@ -907,6 +1203,9 @@ public class GeminiChatEngineAdapter {
             String raw = m.content();
             if (raw != null && raw.contains(SchedulingUserReplyNormalizer.SCHEDULING_DRAFT_APPENDIX_TOKEN)) {
                 return false;
+            }
+            if (raw == null) {
+                continue;
             }
             String c = raw.toLowerCase(Locale.ROOT);
             if (c.contains("posso confirmar") && c.contains("agendamento")) {

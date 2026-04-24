@@ -21,7 +21,7 @@ public final class SchedulingSlotCapture {
 
     /** Rodapé da lista “premium” (WhatsApp / reforço ao modelo). */
     public static final String SLOT_LIST_FOOTER_PT =
-            "Por favor, digite o número da opção desejada na lista acima.";
+            "Responda com o número da opção desejada (ex.: 3).";
 
     /**
      * Quando não há vagas ou a lista normalizada fica vazia antes do envio.
@@ -117,28 +117,21 @@ public final class SchedulingSlotCapture {
                 sb.append("\n…");
                 break;
             }
-            sb.append(i + 1).append(") ").append(times.get(i)).append('\n');
+            sb.append('*')
+                    .append(i + 1)
+                    .append(") ")
+                    .append(times.get(i))
+                    .append("*\n");
         }
         return sb.toString().strip();
     }
 
-    /**
-     * Cabeçalho visual (ex.: {@code 📅 Disponibilidade para amanhã (13/04):}).
-     */
+    /** Título e data (WhatsApp: negrito com {@code *…*}). */
     public static String formatPremiumAvailabilityHeader(LocalDate date, ZoneId calendarZone) {
-        ZoneId z = calendarZone != null ? calendarZone : ZoneId.systemDefault();
-        DateTimeFormatter dm = DateTimeFormatter.ofPattern("dd/MM", Locale.forLanguageTag("pt-BR"));
         if (date == null) {
-            return "📅 Disponibilidade:";
+            return "*Agenda Disponível*\n\n*Data:* —";
         }
-        LocalDate today = LocalDate.now(z);
-        if (date.equals(today.plusDays(1))) {
-            return "📅 Disponibilidade para amanhã (" + date.format(dm) + "):";
-        }
-        if (date.equals(today)) {
-            return "📅 Disponibilidade para hoje (" + date.format(dm) + "):";
-        }
-        return "📅 Disponibilidade para " + date.format(PT_BR_DATE) + ":";
+        return "*Agenda Disponível*\n\n*Data:* " + date.format(PT_BR_DATE);
     }
 
     /**
@@ -319,14 +312,14 @@ public final class SchedulingSlotCapture {
         }
         String service = extractServiceSnippet(contextForServiceHint);
         if (service != null && !service.isBlank()) {
-            return "Selecione o melhor horário para "
+            return "Selecione uma opção de horário para "
                     + service
                     + " "
                     + dateHuman
                     + dateParen
                     + ":";
         }
-        return "Selecione o melhor horário para " + dateHuman + dateParen + ":";
+        return "Selecione uma opção de horário para " + dateHuman + dateParen + ":";
     }
 
     private static String extractServiceSnippet(String blob) {

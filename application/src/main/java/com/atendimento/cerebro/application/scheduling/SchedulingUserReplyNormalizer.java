@@ -6,6 +6,8 @@ import com.atendimento.cerebro.domain.conversation.MessageRole;
 import com.atendimento.cerebro.domain.conversation.SenderType;
 import java.text.Normalizer;
 import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -129,7 +131,8 @@ public final class SchedulingUserReplyNormalizer {
         s = s.replaceAll("(?s)\\[slot_options:[^\\]]+\\]", "");
         s = s.replaceAll("(?s)\\[slot_date:[^\\]]+\\]", "");
         s = s.replaceAll("(?s)\\[scheduling_draft:[^\\]]+\\]", "");
-        s = s.replaceAll("(?s)\\*{1,2}\\s*\\n*\\s*\\*{1,2}", "");
+        // Não usar \\s* entre * — remove *\\n* e cola blocos WhatsApp na mesma linha.
+        s = s.replaceAll("\\*{1,2}[ \\t]*\\*{1,2}", "");
         s = s.replaceAll("(?s)\\n{3,}", "\n\n");
         return s.strip();
     }
@@ -166,6 +169,9 @@ public final class SchedulingUserReplyNormalizer {
      */
     public static SlotChoiceExpansion expandNumericSlotChoice(String userMessage, List<Message> history) {
         if (userMessage == null || history == null) {
+            return SlotChoiceExpansion.unchanged(userMessage);
+        }
+        if (looksLikeRescheduleOrTimeChangeIntent(userMessage)) {
             return SlotChoiceExpansion.unchanged(userMessage);
         }
         String normalized =
@@ -291,6 +297,9 @@ public final class SchedulingUserReplyNormalizer {
             if (content == null || !content.contains(SCHEDULING_DRAFT_APPENDIX_TOKEN)) {
                 continue;
             }
+            if (isStaleSlotStateSupersededByCompletedBooking(history, i)) {
+                return Optional.empty();
+            }
             return extractDraftFromMessage(content);
         }
         return Optional.empty();
@@ -332,17 +341,51 @@ public final class SchedulingUserReplyNormalizer {
     }
 
     static List<String> parseLastSlotOptionsFromHistory(List<Message> history) {
+        int slotListIdx = indexOfLastBotAssistantWithSlotOptions(history);
+        if (slotListIdx < 0) {
+            return List.of();
+        }
+        if (isStaleSlotStateSupersededByCompletedBooking(history, slotListIdx)) {
+            return List.of();
+        }
+        Optional<String> raw = extractLastAppendixPayload(history.get(slotListIdx).content());
+        return raw.map(SchedulingUserReplyNormalizer::splitOptions).orElseGet(List::of);
+    }
+
+    private static int indexOfLastBotAssistantWithSlotOptions(List<Message> history) {
         for (int i = history.size() - 1; i >= 0; i--) {
             Message m = history.get(i);
             if (m.role() != MessageRole.ASSISTANT || m.senderType() != SenderType.BOT) {
                 continue;
             }
-            Optional<String> raw = extractLastAppendixPayload(m.content());
-            if (raw.isPresent()) {
-                return splitOptions(raw.get());
+            if (extractLastAppendixPayload(m.content()).isPresent()) {
+                return i;
             }
         }
-        return List.of();
+        return -1;
+    }
+
+    private static int indexOfLastBotAssistantWithCompletedBooking(List<Message> history) {
+        for (int i = history.size() - 1; i >= 0; i--) {
+            Message m = history.get(i);
+            if (m.role() != MessageRole.ASSISTANT || m.senderType() != SenderType.BOT) {
+                continue;
+            }
+            if (assistantMessageIndicatesCompletedScheduling(m.content())) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static boolean isStaleSlotStateSupersededByCompletedBooking(List<Message> history, int slotListIdx) {
+        int completedIdx = indexOfLastBotAssistantWithCompletedBooking(history);
+        return completedIdx > slotListIdx;
+    }
+
+    /** Indica se a mensagem do assistente já reflecte um agendamento criado (card, texto de sucesso da ferramenta). */
+    public static boolean assistantMessageIndicatesCompletedScheduling(String content) {
+        return SchedulingCreateAppointmentResult.historyTextIndicatesSuccessfulBooking(content);
     }
 
     /** Última data {@code [slot_date:yyyy-MM-DD]} nas mensagens do assistente (do mais recente ao mais antigo). */
@@ -354,6 +397,9 @@ public final class SchedulingUserReplyNormalizer {
             }
             Optional<LocalDate> d = extractLastSlotDate(m.content());
             if (d.isPresent()) {
+                if (isStaleSlotStateSupersededByCompletedBooking(history, i)) {
+                    return Optional.empty();
+                }
                 return d;
             }
         }
@@ -624,7 +670,7 @@ public final class SchedulingUserReplyNormalizer {
             return false;
         }
         String n = Normalizer.normalize(userMessage.strip(), Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
-        if (Pattern.compile("\\b(reagendar|remarcar)\\b").matcher(n).find()) {
+        if (Pattern.compile("\\b(reagendar|reagendamento|remarcar)\\b").matcher(n).find()) {
             return true;
         }
         boolean changeVerb = Pattern.compile("\\b(trocar|alterar|mudar)\\b").matcher(n).find();
@@ -641,14 +687,177 @@ public final class SchedulingUserReplyNormalizer {
     }
 
     /**
-     * Anexado à mensagem do utilizador só no pedido ao modelo (não é enviado ao cliente como texto de canal).
+     * Cliente pede ver/listar agendamentos ou compromissos já existentes (distinto de marcar novo horário ou pedir
+     * disponibilidade genérica). Usado para forçar {@code get_active_appointments} quando o modelo não devolve texto.
      */
+    public static boolean looksLikeListActiveAppointmentsIntent(String userMessage) {
+        if (userMessage == null || userMessage.isBlank()) {
+            return false;
+        }
+        if (looksLikeRescheduleOrTimeChangeIntent(userMessage)) {
+            return false;
+        }
+        String n = Normalizer.normalize(userMessage.strip(), Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
+        if (n.length() > 200) {
+            return false;
+        }
+        if (n.contains("meus agend")
+                || n.contains("minhas consultas")
+                || n.contains("minhas marca")
+                || n.contains("todos os agend")
+                || n.contains("todas as consultas")) {
+            return true;
+        }
+        boolean subject =
+                n.contains("agendamento")
+                        || n.contains("agendamentos")
+                        || n.contains("compromisso")
+                        || n.contains("compromissos")
+                        || n.contains("marcação")
+                        || n.contains("marcações")
+                        || n.contains("marcacao")
+                        || n.contains("marcacoes");
+        if (!subject) {
+            return false;
+        }
+        if (n.contains("quais ") && (n.contains("tenho") || n.contains("são") || n.contains("sao "))) {
+            return true;
+        }
+        boolean listVerb =
+                n.contains("listar")
+                        || n.contains("lista de")
+                        || (n.contains("lista ") && !n.contains("lista de servi"))
+                        || n.contains("mostrar")
+                        || n.contains("mostre")
+                        || n.contains("exibir")
+                        || (n.contains("ver ")
+                                && (n.contains("meu")
+                                        || n.contains("os ")
+                                        || n.contains("a lista")
+                                        || n.contains("minha")
+                                        || n.contains("minhas")))
+                        || (n.contains("consultar") && n.contains("agend"));
+        return listVerb;
+    }
+
+    /**
+     * @deprecated Preferir {@link #RESCHEDULE_SYSTEM_BLOCK} no system prompt (não prefixar a mensagem do utilizador).
+     */
+    @Deprecated
     public static final String RESCHEDULE_FLOW_HINT =
             "[Instrução interna — reagendar] O cliente quer trocar/mudar um horário já marcado. Fluxo obrigatório: "
                     + "(1) get_active_appointments para identificar o compromisso; (2) cancel_appointment com o ID "
                     + "correcto e confirmar sucesso; (3) só depois check_availability para a nova data; "
                     + "(4) create_appointment após confirmação. Não mostre só horários livres sem tratar o agendamento "
                     + "anterior quando o pedido for trocar/remarcar/reagendar.";
+
+    /**
+     * Instrução para o system prompt em intenção de reagendar (não ecoa no WhatsApp).
+     */
+    public static final String RESCHEDULE_SYSTEM_BLOCK =
+            "Reagendar/remarcar: primeiro valide a disponibilidade do horário pretendido (check_availability). "
+                    + "Se o horário desejado estiver disponível, cancele o agendamento anterior correcto com "
+                    + "cancel_appointment e só então conclua com create_appointment. Se não estiver disponível, informe "
+                    + "que o horário actual foi mantido e peça para escolher uma opção da lista disponível.";
+
+    private static final DateTimeFormatter BR_SLASH_DATE = DateTimeFormatter.ofPattern("d/M/yyyy", Locale.ROOT);
+
+    /** "24/04/2026 11:00 para as 15:00" ou "dia 24/04/2026, 11:00 para 15:00" */
+    private static final Pattern REAG_DATA_HORA_PARA_HORA =
+            Pattern.compile(
+                    "(\\d{1,2}/\\d{1,2}/\\d{4})[\\s,]+(\\d{1,2}:\\d{2})\\D{0,8}para(?:\\s+as?)?\\s*(\\d{1,2}:\\d{2})",
+                    Pattern.CASE_INSENSITIVE);
+    /** "amanhã às 11:00 para as 15:00", "hoje 09:00 para 10:30" */
+    private static final Pattern REAG_RELATIVE_DIA_HORA_PARA_HORA =
+            Pattern.compile(
+                    "(hoje|amanh[ãa])\\D{0,12}(\\d{1,2}:\\d{2}).{0,80}?para(?:\\s+as?)?\\D{0,12}(?:hoje|amanh[ãa])?\\D{0,8}(\\d{1,2}:\\d{2})",
+                    Pattern.CASE_INSENSITIVE);
+    /** Variante livre com "amanhã/hoje ... das 11:00 para as 12:00" e texto intermédio. */
+    private static final Pattern REAG_RELATIVE_DIA_DAS_PARA =
+            Pattern.compile(
+                    "(hoje|amanh[ãa]).{0,40}?(\\d{1,2}:\\d{2}).{0,120}?para(?:\\s+as?)?.{0,20}?(\\d{1,2}:\\d{2})",
+                    Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Extrai a data e o horário de origem de um pedido de reagendamento (o slot a cancelar), quando o cliente
+     * indicou "dd/MM/aaaa HH:mm para HH:mm". Usado para pré-cancelar o compromisso correcto com vários agendamentos
+     * activos.
+     */
+    public static Optional<ReagendamentoDeParaHint> parseReagendamentoDeParaHint(String userMessage) {
+        return parseReagendamentoDeParaHint(userMessage, ZoneId.systemDefault());
+    }
+
+    public static Optional<ReagendamentoDeParaHint> parseReagendamentoDeParaHint(
+            String userMessage, ZoneId calendarZone) {
+        if (userMessage == null || userMessage.isBlank()) {
+            return Optional.empty();
+        }
+        String s = userMessage.strip();
+        Matcher m1 = REAG_DATA_HORA_PARA_HORA.matcher(s);
+        if (m1.find()) {
+            return parseHintWithDate(m1.group(1), m1.group(2), m1.group(3));
+        }
+        Matcher m2 = REAG_RELATIVE_DIA_HORA_PARA_HORA.matcher(s);
+        if (m2.find()) {
+            String token = m2.group(1);
+            ZoneId z = calendarZone != null ? calendarZone : ZoneId.systemDefault();
+            LocalDate base = LocalDate.now(z);
+            LocalDate day = token != null && token.toLowerCase(Locale.ROOT).startsWith("amanh")
+                    ? base.plusDays(1)
+                    : base;
+            return parseHintWithLocalDate(day, m2.group(2), m2.group(3));
+        }
+        Matcher m3 = REAG_RELATIVE_DIA_DAS_PARA.matcher(s);
+        if (m3.find()) {
+            String token = m3.group(1);
+            ZoneId z = calendarZone != null ? calendarZone : ZoneId.systemDefault();
+            LocalDate base = LocalDate.now(z);
+            LocalDate day = token != null && token.toLowerCase(Locale.ROOT).startsWith("amanh")
+                    ? base.plusDays(1)
+                    : base;
+            return parseHintWithLocalDate(day, m3.group(2), m3.group(3));
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<ReagendamentoDeParaHint> parseHintWithDate(
+            String dateStr, String fromTimeStr, String toTimeStr) {
+        if (dateStr == null || fromTimeStr == null || toTimeStr == null) {
+            return Optional.empty();
+        }
+        try {
+            LocalDate day = LocalDate.parse(dateStr, BR_SLASH_DATE);
+            return parseHintWithLocalDate(day, fromTimeStr, toTimeStr);
+        } catch (DateTimeParseException e) {
+            return Optional.empty();
+        }
+    }
+
+    private static Optional<ReagendamentoDeParaHint> parseHintWithLocalDate(
+            LocalDate day, String fromTimeStr, String toTimeStr) {
+        if (day == null || fromTimeStr == null || toTimeStr == null) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(
+                    new ReagendamentoDeParaHint(
+                            day, parseBrLocalTime(fromTimeStr.strip()), parseBrLocalTime(toTimeStr.strip())));
+        } catch (DateTimeParseException e) {
+            return Optional.empty();
+        }
+    }
+
+    private static LocalTime parseBrLocalTime(String t) {
+        if (t == null || t.isBlank()) {
+            return LocalTime.MIDNIGHT;
+        }
+        String x = t.strip();
+        try {
+            return LocalTime.parse(x, DateTimeFormatter.ofPattern("H:mm", Locale.ROOT));
+        } catch (DateTimeParseException e1) {
+            return LocalTime.parse(x, DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT));
+        }
+    }
 
     /**
      * {@code true} se o texto (mensagem única ou bloco com histórico) contiver intenção de cancelar, excluir ou
@@ -677,8 +886,24 @@ public final class SchedulingUserReplyNormalizer {
                 continue;
             }
             String c = m.content();
-            return c.contains(CancelOptionMap.APPENDIX_PREFIX)
-                    || c.contains("Agendamentos AGENDADO");
+            if (c == null || c.isBlank()) {
+                return false;
+            }
+            if (c.contains(CancelOptionMap.APPENDIX_PREFIX)) {
+                return true;
+            }
+            String lower = c.toLowerCase(Locale.ROOT);
+            return lower.contains("agendamentos agendado")
+                    || lower.contains("agendamentos ativos")
+                    || lower.contains("agendamentos activos")
+                    || lower.contains("*agendamentos*")
+                    || lower.contains("quais dos atendimentos abaixo")
+                    || lower.contains("segue o seu agendamento ativo")
+                    || lower.contains("opções entre os serviços agendados")
+                    || lower.contains("opcoes entre os servicos agendados")
+                    || lower.contains("pergunte qual deseja cancelar")
+                    || lower.contains("serviços agendados")
+                    || lower.contains("servicos agendados");
         }
         return false;
     }

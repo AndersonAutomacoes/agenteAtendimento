@@ -29,6 +29,7 @@ import com.atendimento.cerebro.application.dto.AICompletionResponse;
 import com.atendimento.cerebro.application.dto.ChatCommand;
 
 import com.atendimento.cerebro.application.dto.CrmCustomerRecord;
+import com.atendimento.cerebro.application.dto.TenantAppointmentListItem;
 
 import com.atendimento.cerebro.application.port.out.AIEnginePort;
 
@@ -212,7 +213,8 @@ class ChatServiceTest {
 
                 appointmentService,
 
-                "America/Sao_Paulo");
+                "America/Sao_Paulo",
+                false);
 
         when(crmCustomerQuery.findByTenantAndConversationId(any(), any())).thenReturn(Optional.empty());
 
@@ -553,5 +555,97 @@ class ChatServiceTest {
         assertThat(result.assistantMessage()).contains("Agendamento confirmado");
     }
 
+    @Test
+    void chat_rescheduleIntent_doesNotUseExplicitTimeShortcutHardcodedPath() {
+        ConversationContext existing =
+                ConversationContext.builder()
+                        .tenantId(tenantId)
+                        .conversationId(conversationId)
+                        .messages(List.of(Message.assistantMessage("Sem contexto prévio de opções")))
+                        .build();
+        when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.empty());
+        when(conversationContextStore.load(tenantId, conversationId)).thenReturn(Optional.of(existing));
+        when(knowledgeBase.findTopThreeRelevantFragments(
+                        tenantId, "Gostaria de reagendar o atendimento amanhã das 11:00 para as 12:00"))
+                .thenReturn(List.of());
+        when(aiEngine.complete(any(AICompletionRequest.class))).thenReturn(new AICompletionResponse("ok"));
+
+        var result =
+                chatService.chat(
+                        new ChatCommand(
+                                tenantId,
+                                conversationId,
+                                "Gostaria de reagendar o atendimento amanhã das 11:00 para as 12:00",
+                                null,
+                                AiChatProvider.GEMINI));
+
+        verify(aiEngine).complete(any(AICompletionRequest.class));
+        assertThat(result.assistantMessage()).isEqualTo("ok");
+    }
+
+    @Test
+    void chat_schedulingBypass_simAfterRescheduleOption_cancelsPreviousBeforeCreate() {
+        TenantAppointmentListItem active =
+                new TenantAppointmentListItem(
+                        42L,
+                        tenantId.value(),
+                        conversationId.value(),
+                        "Anderson Nunes",
+                        "Revisão",
+                        Instant.parse("2026-04-24T13:30:00Z"),
+                        Instant.parse("2026-04-24T14:00:00Z"),
+                        "evt-42",
+                        Instant.parse("2026-04-23T12:00:00Z"),
+                        TenantAppointmentListItem.AppointmentStatus.UPCOMING,
+                        TenantAppointmentListItem.BookingStatus.AGENDADO);
+        ConversationContext existing =
+                ConversationContext.builder()
+                        .tenantId(tenantId)
+                        .conversationId(conversationId)
+                        .messages(
+                                List.of(
+                                        Message.userMessage(
+                                                "Gostaria de solicitar um reagendamento do atendimento de amanhã às 10:30 para as 13:30"),
+                                        Message.assistantMessage(
+                                                "Disponibilidade para amanhã:\n\n[slot_options:09:00,09:30,10:00,10:30,11:00,11:30,12:00,13:00]\n[slot_date:2026-04-24]"),
+                                        Message.userMessage("8"),
+                                        Message.assistantMessage(
+                                                "Entendido! Posso confirmar?\n\n[scheduling_draft:2026-04-24|13:00]")))
+                        .build();
+        when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.empty());
+        when(conversationContextStore.load(tenantId, conversationId)).thenReturn(Optional.of(existing));
+        when(knowledgeBase.findTopThreeRelevantFragments(tenantId, "sim")).thenReturn(List.of());
+        when(tenantAppointmentQuery.listAgendadoByConversationOrderedAscending(
+                        eq(tenantId), eq(conversationId.value()), any()))
+                .thenReturn(List.of(active));
+        when(tenantAppointmentQuery.findByIdForTenantAndConversation(
+                        eq(tenantId), eq(42L), eq(conversationId.value()), any()))
+                .thenReturn(Optional.of(active));
+        when(appointmentScheduling.deleteCalendarEvent(eq(tenantId), eq("evt-42"))).thenReturn(true);
+        when(tenantAppointmentStore.markCancelled(eq(42L), any(Instant.class))).thenReturn(true);
+        when(appointmentScheduling.createAppointment(
+                        eq(tenantId),
+                        eq("2026-04-24"),
+                        eq("13:00"),
+                        eq("Cliente"),
+                        eq("Serviço"),
+                        eq(conversationId.value())))
+                .thenReturn(
+                        CreateAppointmentResult.success(
+                                "Agendamento confirmado para 24/04/2026 às 13:00. O horário foi registado na agenda da oficina.",
+                                99L));
+
+        var result =
+                chatService.chat(new ChatCommand(tenantId, conversationId, "sim", null, AiChatProvider.GEMINI));
+
+        verify(aiEngine, never()).complete(any());
+        var order = inOrder(appointmentScheduling);
+        order.verify(appointmentScheduling).deleteCalendarEvent(tenantId, "evt-42");
+        order.verify(appointmentScheduling)
+                .createAppointment(tenantId, "2026-04-24", "13:00", "Cliente", "Serviço", conversationId.value());
+        assertThat(result.assistantMessage()).contains("Agendamento confirmado");
+    }
+
 }
+
 

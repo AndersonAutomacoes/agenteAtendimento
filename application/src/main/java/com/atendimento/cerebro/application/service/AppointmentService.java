@@ -1,17 +1,24 @@
 package com.atendimento.cerebro.application.service;
 
 import com.atendimento.cerebro.application.crm.CrmConversationSupport;
+import com.atendimento.cerebro.application.logging.AppointmentAuditLog;
 import com.atendimento.cerebro.application.dto.CrmCustomerRecord;
 import com.atendimento.cerebro.application.dto.TenantAppointmentListItem;
+import com.atendimento.cerebro.application.event.AppointmentCancelledEvent;
 import com.atendimento.cerebro.application.event.AppointmentConfirmedEvent;
 import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
 import com.atendimento.cerebro.application.port.out.CrmCustomerQueryPort;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentQueryPort;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentStorePort;
 import com.atendimento.cerebro.application.scheduling.CancelOptionMap;
+import com.atendimento.cerebro.application.scheduling.CreateAppointmentResult;
+import com.atendimento.cerebro.application.scheduling.ReagendamentoDeParaHint;
+import com.atendimento.cerebro.application.scheduling.SchedulingUserReplyNormalizer;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -41,6 +48,30 @@ public class AppointmentService {
     /** Quando o registo já estava CANCELADO na base (não reexecuta delete no Google). Não implica remoção acabada de ocorrer. */
     public static final String CANCELLATION_ALREADY_CANCELLED_MESSAGE_PREFIX =
             "Este agendamento já constava como cancelado no sistema.";
+    public static final String NO_ACTIVE_APPOINTMENTS_FRIENDLY_MESSAGE =
+            "Sem agendamentos ativos no momento. Posso verificar horários para um novo agendamento "
+                    + "ou ajudar com outra dúvida?";
+    public static final String LIST_INVALID_SESSION_FRIENDLY_MESSAGE =
+            "Tive um problema ao identificar esta conversa agora. Pode enviar novamente a sua mensagem? "
+                    + "Se preferir, já posso ajudar com um novo agendamento.";
+    public static final String CANCEL_INVALID_SESSION_FRIENDLY_MESSAGE =
+            "Não consegui confirmar esta conversa para cancelar o agendamento agora. Pode tentar novamente "
+                    + "nesta mesma conversa?";
+    public static final String CANCEL_TECHNICAL_ISSUE_FRIENDLY_MESSAGE =
+            "Tive um problema técnico para concluir o cancelamento agora. O agendamento anterior pode ainda "
+                    + "estar ativo. Pode tentar novamente em instantes?";
+    public static final String CANCEL_CALENDAR_REMOVE_FAILED_FRIENDLY_MESSAGE =
+            "Tive um problema técnico na agenda e não consegui remover o agendamento agora. O horário anterior "
+                    + "ainda pode estar ativo. Pode tentar novamente em instantes?";
+    public static final String CANCEL_PERSISTENCE_FAILED_FRIENDLY_MESSAGE =
+            "Consegui iniciar o cancelamento, mas houve falha ao atualizar o sistema. Para sua segurança, "
+                    + "considere que o horário anterior pode ainda estar ativo e tente novamente em instantes.";
+    public static final String CANCEL_LIST_UNAVAILABLE_FRIENDLY_MESSAGE =
+            "Tive um problema técnico para listar os agendamentos agora. Pode tentar novamente em instantes?";
+
+    /** Texto final do card de listagem em {@link #getActiveAppointments} (WhatsApp). */
+    public static final String LIST_APPOINTMENTS_CANCEL_HINT_FOOTER_PT =
+            "Para cancelar um agendamento, basta digitar o código (número à esquerda, antes do serviço).";
 
     private static final DateTimeFormatter SLOT_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
     private static final DateTimeFormatter DAY_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
@@ -68,22 +99,34 @@ public class AppointmentService {
      * Cria agendamento no calendário e na base via {@link AppointmentSchedulingPort}; após sucesso tenta notificar o
      * cliente por WhatsApp (falha de notificação não reverte o agendamento).
      */
-    public String createAppointment(
+    /**
+     * Cria o agendamento; devolve mensagem e id na base (quando existir), após o fluxo de evento/auditoria.
+     */
+    public CreateAppointmentResult createAppointmentWithResult(
             TenantId tenantId,
             String isoDate,
             String localTime,
             String clientName,
             String serviceName,
-            String conversationId) {
+            String conversationId,
+            ZoneId calendarZone) {
         var result =
                 scheduling.createAppointment(
                         tenantId, isoDate, localTime, clientName, serviceName, conversationId);
         if (result.isSuccess() && result.appointmentDatabaseId() != null) {
             try {
+                appointmentStore.markConfirmationNotificationPending(result.appointmentDatabaseId());
+                ZoneId z = calendarZone != null ? calendarZone : ZoneId.systemDefault();
                 LocalDate day = LocalDate.parse(isoDate.strip(), DateTimeFormatter.ISO_LOCAL_DATE);
+                LocalTime time = parseAppointmentLocalTime(localTime);
+                Instant startsAt = LocalDateTime.of(day, time).atZone(z).toInstant();
                 String phone =
                         CrmConversationSupport.phoneDigitsOnlyFromConversationId(conversationId)
                                 .orElse("");
+                String slotForAudit =
+                        SLOT_FMT.format(java.time.ZonedDateTime.of(day, time, z));
+                AppointmentAuditLog.appConfirmed(
+                        String.valueOf(result.appointmentDatabaseId()), phone, slotForAudit);
                 eventPublisher.publishEvent(
                         new AppointmentConfirmedEvent(
                                 tenantId,
@@ -91,23 +134,56 @@ public class AppointmentService {
                                 phone,
                                 clientName != null ? clientName.strip() : "",
                                 serviceName != null ? serviceName.strip() : "",
-                                day,
-                                localTime != null ? localTime.strip() : ""));
+                                startsAt,
+                                z.getId()));
             } catch (DateTimeParseException e) {
                 LOG.error(
                         "createAppointment: evento omitido — isoDate inválido após sucesso do scheduling tenant={} isoDate={}",
                         tenantId.value(),
                         isoDate,
                         e);
+                AppointmentAuditLog.appError(
+                        "Validation", "Invalid isoDate after scheduling success: " + e.getMessage());
             } catch (RuntimeException e) {
                 LOG.error(
                         "createAppointment: falha ao publicar AppointmentConfirmedEvent tenant={} conversationId={}",
                         tenantId.value(),
                         conversationId,
                         e);
+                AppointmentAuditLog.appError(
+                        "EventPublish", "AppointmentConfirmedEvent: " + e.getMessage());
             }
         }
-        return result.message();
+        return result;
+    }
+
+    public String createAppointment(
+            TenantId tenantId,
+            String isoDate,
+            String localTime,
+            String clientName,
+            String serviceName,
+            String conversationId,
+            ZoneId calendarZone) {
+        return createAppointmentWithResult(
+                        tenantId, isoDate, localTime, clientName, serviceName, conversationId, calendarZone)
+                .message();
+    }
+
+    private static LocalTime parseAppointmentLocalTime(String localTimeRaw) {
+        if (localTimeRaw == null || localTimeRaw.isBlank()) {
+            return LocalTime.MIDNIGHT;
+        }
+        String s = localTimeRaw.strip();
+        try {
+            return LocalTime.parse(s, DateTimeFormatter.ofPattern("H:mm"));
+        } catch (DateTimeParseException e1) {
+            try {
+                return LocalTime.parse(s, DateTimeFormatter.ofPattern("HH:mm"));
+            } catch (DateTimeParseException e2) {
+                return LocalTime.MIDNIGHT;
+            }
+        }
     }
 
     /**
@@ -119,6 +195,10 @@ public class AppointmentService {
             return false;
         }
         String s = message.strip();
+        // Sucesso após gravação: a confirmação ao cliente segue no WhatsApp (async); o chat não repete a frase técnica.
+        if (s.isEmpty()) {
+            return true;
+        }
         return s.startsWith(CANCELLATION_SUCCESS_MESSAGE_PREFIX)
                 || s.startsWith(CANCELLATION_ALREADY_CANCELLED_MESSAGE_PREFIX);
     }
@@ -132,7 +212,7 @@ public class AppointmentService {
      */
     public String getActiveAppointments(TenantId tenantId, String conversationId, ZoneId calendarZone) {
         if (conversationId == null || conversationId.isBlank()) {
-            return "Não foi possível listar agendamentos: sessão de conversa inválida.";
+            return LIST_INVALID_SESSION_FRIENDLY_MESSAGE;
         }
         String conv = conversationId.strip();
         String zoneId = calendarZone != null ? calendarZone.getId() : ZoneId.systemDefault().getId();
@@ -140,27 +220,108 @@ public class AppointmentService {
         List<TenantAppointmentListItem> rows =
                 appointmentQuery.listAgendadoByConversationOrderedAscending(tenantId, conv, zoneId);
         if (rows.isEmpty()) {
-            return "Não há agendamentos com estado AGENDADO para o número desta conversa.";
+            return NO_ACTIVE_APPOINTMENTS_FRIENDLY_MESSAGE;
         }
         Map<Integer, Long> optionToAppointmentId = new LinkedHashMap<>();
         StringBuilder sb = new StringBuilder();
+        sb.append("*Agendamentos*").append("\n\n");
         if (rows.size() > 1) {
-            sb.append("Existem vários agendamentos activos. Pergunte qual deseja cancelar.\n\n");
+            sb.append("Quais dos atendimentos abaixo gostaria de cancelar?").append("\n\n");
+        } else {
+            sb.append("Segue o seu agendamento ativo:").append("\n\n");
         }
-        sb.append("Agendamentos AGENDADO:\n");
         for (TenantAppointmentListItem r : rows) {
             String when = SLOT_FMT.format(r.startsAt().atZone(z));
             int shownId = Math.toIntExact(r.id());
             optionToAppointmentId.put(shownId, r.id());
+            String svc = r.serviceName() != null ? r.serviceName().strip() : "";
             sb.append(shownId)
-                    .append(") ")
-                    .append(r.serviceName() != null ? r.serviceName().strip() : "")
-                    .append(" — ")
+                    .append(") *")
+                    .append(escapeAsterisksForWhatsAppBold(svc))
+                    .append("* — ")
                     .append(when)
                     .append("\n");
         }
+        sb.append("\n").append(LIST_APPOINTMENTS_CANCEL_HINT_FOOTER_PT).append("\n");
         sb.append(CancelOptionMap.buildAppendix(optionToAppointmentId));
         return sb.toString();
+    }
+
+    /**
+     * Existe exactamente um agendamento AGENDADO — adequado a cancelar automaticamente no início de um reagendamento.
+     */
+    public Optional<Long> getSingleActiveAppointmentId(
+            TenantId tenantId, String conversationId, ZoneId calendarZone) {
+        if (conversationId == null || conversationId.isBlank()) {
+            return Optional.empty();
+        }
+        String zoneId = calendarZone != null ? calendarZone.getId() : ZoneId.systemDefault().getId();
+        List<TenantAppointmentListItem> rows =
+                appointmentQuery.listAgendadoByConversationOrderedAscending(
+                        tenantId, conversationId.strip(), zoneId);
+        if (rows.size() != 1) {
+            return Optional.empty();
+        }
+        return Optional.of(rows.get(0).id());
+    }
+
+    /**
+     * Escolhe o agendamento AGENDADO a cancelar no início de um reagendamento: o único activo, ou o que coincide com
+     * data/horário de origem na mensagem (ex.: reagendar de 11:00 para 15:00 no mesmo dia).
+     */
+    public Optional<Long> resolveActiveAppointmentIdForReschedule(
+            TenantId tenantId, String conversationId, ZoneId calendarZone, String userMessage) {
+        Optional<Long> only = getSingleActiveAppointmentId(tenantId, conversationId, calendarZone);
+        if (only.isPresent()) {
+            return only;
+        }
+        if (userMessage == null || userMessage.isBlank()) {
+            return Optional.empty();
+        }
+        Optional<ReagendamentoDeParaHint> hint =
+                SchedulingUserReplyNormalizer.parseReagendamentoDeParaHint(userMessage.strip(), calendarZone);
+        if (hint.isEmpty()) {
+            return Optional.empty();
+        }
+        ReagendamentoDeParaHint h = hint.get();
+        String zoneId = calendarZone != null ? calendarZone.getId() : ZoneId.systemDefault().getId();
+        ZoneId z = calendarZone != null ? calendarZone : ZoneId.systemDefault();
+        List<TenantAppointmentListItem> rows =
+                appointmentQuery.listAgendadoByConversationOrderedAscending(
+                        tenantId, conversationId.strip(), zoneId);
+        for (TenantAppointmentListItem r : rows) {
+            LocalDate d = r.startsAt().atZone(z).toLocalDate();
+            LocalTime t = r.startsAt().atZone(z).toLocalTime();
+            if (d.equals(h.day())
+                    && t.getHour() == h.fromTime().getHour()
+                    && t.getMinute() == h.fromTime().getMinute()) {
+                return Optional.of(r.id());
+            }
+        }
+        Optional<TenantAppointmentListItem> byDay =
+                appointmentQuery.findActiveByConversationAndLocalDate(
+                        tenantId, conversationId.strip(), h.day(), zoneId);
+        if (byDay.isPresent()) {
+            TenantAppointmentListItem r = byDay.get();
+            LocalTime t = r.startsAt().atZone(z).toLocalTime();
+            if (t.getHour() == h.fromTime().getHour() && t.getMinute() == h.fromTime().getMinute()) {
+                return Optional.of(r.id());
+            }
+            long sameDayCount =
+                    rows.stream().filter(x -> x.startsAt().atZone(z).toLocalDate().equals(h.day())).count();
+            if (sameDayCount == 1) {
+                LOG.warn(
+                        "resolveActiveAppointmentIdForReschedule: fallback por único agendamento no dia "
+                                + "(tenant={} conversationId={} day={} from={} escolhidoId={})",
+                        tenantId.value(),
+                        conversationId,
+                        h.day(),
+                        h.fromTime(),
+                        r.id());
+                return Optional.of(r.id());
+            }
+        }
+        return Optional.empty();
     }
 
     /**
@@ -175,7 +336,7 @@ public class AppointmentService {
     public String cancelAppointment(
             TenantId tenantId, String conversationId, String contact, String appointmentIdRaw, ZoneId calendarZone) {
         if (conversationId == null || conversationId.isBlank()) {
-            return "Não foi possível cancelar: sessão de conversa inválida. Peça ao cliente para tentar de novo pelo mesmo canal.";
+            return CANCEL_INVALID_SESSION_FRIENDLY_MESSAGE;
         }
         String conv = conversationId.strip();
         if (appointmentIdRaw == null || appointmentIdRaw.isBlank()) {
@@ -208,7 +369,7 @@ public class AppointmentService {
         }
         TenantAppointmentListItem row = any.get();
         if (row.bookingStatus() == TenantAppointmentListItem.BookingStatus.CANCELADO) {
-            logCancellationTransaction(row.id(), "JA_CANCELADO_NA_BASE", "GOOGLE_DELETE_NAO_REEXECUTADO");
+            AppointmentAuditLog.appCancelled(row.id(), "not_applicable", "already");
             return alreadyCancelledConfirmation(row, z);
         }
 
@@ -222,8 +383,7 @@ public class AppointmentService {
                     row.id(),
                     tenantId.value(),
                     conv);
-            return "Não foi possível concluir o cancelamento neste momento por um problema técnico na agenda. "
-                    + "Não confirme ao cliente que já foi cancelado; peça ao suporte ou tente mais tarde.";
+            return CANCEL_TECHNICAL_ISSUE_FRIENDLY_MESSAGE;
         }
         String gid = googleEventId.strip();
 
@@ -243,8 +403,7 @@ public class AppointmentService {
                     tenantId.value(),
                     gid,
                     e);
-            return "Não foi possível remover o evento do calendário neste momento. Não confirme sucesso ao cliente; "
-                    + "peça para tentar de novo ou contacte o suporte.";
+            return CANCEL_CALENDAR_REMOVE_FAILED_FRIENDLY_MESSAGE;
         }
         if (!removedFromCalendar) {
             LOG.error(
@@ -253,8 +412,7 @@ public class AppointmentService {
                     row.id(),
                     tenantId.value(),
                     gid);
-            return "Não foi possível remover o evento no Google Calendar (calendário indisponível ou não configurado). "
-                    + "O cancelamento não foi concluído — não diga ao cliente que o horário já foi libertado.";
+            return CANCEL_CALENDAR_REMOVE_FAILED_FRIENDLY_MESSAGE;
         }
         LOG.info(
                 "cancelAppointment: deleteCalendarEvent concluído com sucesso — a prosseguir para gravar CANCELADO na base "
@@ -268,34 +426,37 @@ public class AppointmentService {
                     "cancelAppointment: markCancelled não actualizou nenhuma linha AGENDADO (appointmentId={} tenant={})",
                     row.id(),
                     tenantId.value());
-            return "Não foi possível gravar o cancelamento na base de dados (o estado pode ter mudado). Não confirme "
-                    + "sucesso ao cliente; peça para tentar de novo.";
+            return CANCEL_PERSISTENCE_FAILED_FRIENDLY_MESSAGE;
         }
-        logCancellationTransaction(row.id(), "CANCELADO_GRAVADO", "GOOGLE_EVENTO_REMOVIDO");
-        return slotReleasedConfirmation(row, z);
+        try {
+            String phone = CrmConversationSupport.phoneDigitsOnlyFromConversationId(conv).orElse("");
+            eventPublisher.publishEvent(
+                    new AppointmentCancelledEvent(
+                            tenantId,
+                            row.id(),
+                            phone,
+                            row.clientName() != null ? row.clientName().strip() : "",
+                            row.serviceName() != null ? row.serviceName().strip() : "",
+                            row.startsAt(),
+                            z.getId()));
+        } catch (RuntimeException e) {
+            LOG.error(
+                    "cancelAppointment: falha ao publicar AppointmentCancelledEvent (appointmentId={} tenant={})",
+                    row.id(),
+                    tenantId.value(),
+                    e);
+        }
+        AppointmentAuditLog.appCancelled(row.id(), "deleted", "updated");
+        // A confirmação ao utilizador final segue de forma assíncrona no WhatsApp
+        // (AppointmentNotificationListener). Não enviar a frase técnica de sucesso no chat.
+        return "";
     }
 
-    /**
-     * Log único por conclusão bem-sucedida do fluxo de cancelamento (suporte a operações e disputas de cliente).
-     */
-    private static void logCancellationTransaction(long appointmentId, String statusBanco, String statusGoogleCalendar) {
-        LOG.info(
-                "[cancel-transaction] appointmentId={} | STATUS_BANCO={} | STATUS_GOOGLE_CALENDAR={}",
-                appointmentId,
-                statusBanco,
-                statusGoogleCalendar);
-    }
-
-    private static String slotReleasedConfirmation(TenantAppointmentListItem row, ZoneId z) {
-        LocalDate day = row.startsAt().atZone(z).toLocalDate();
-        String dateStr = DAY_FMT.format(day);
-        String svc = row.serviceName() != null ? row.serviceName().strip() : "";
-        return CANCELLATION_SUCCESS_MESSAGE_PREFIX
-                + " Serviço: "
-                + svc
-                + ". Data: "
-                + dateStr
-                + ". A vaga já está disponível para outros clientes.";
+    private static String escapeAsterisksForWhatsAppBold(String s) {
+        if (s == null || s.isEmpty()) {
+            return "";
+        }
+        return s.replace("*", "·");
     }
 
     private static String alreadyCancelledConfirmation(TenantAppointmentListItem row, ZoneId z) {

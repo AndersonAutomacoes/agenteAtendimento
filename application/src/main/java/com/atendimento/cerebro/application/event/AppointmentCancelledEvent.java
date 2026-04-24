@@ -4,12 +4,11 @@ import com.atendimento.cerebro.domain.tenant.TenantId;
 import java.time.Instant;
 
 /**
- * Disparado após agendamento confirmado no calendário externo e persistência na base.
+ * Disparado após cancelamento persistido na base e remoção do evento no calendário externo.
  *
- * @param phoneNumber apenas dígitos da sessão (normalizar para Evolution antes do envio)
- * @param calendarZoneId ex.: {@code America/Bahia} — usado para formatar data/hora no template
+ * @param phoneNumber apenas dígitos (normalizar para Evolution antes do envio)
  */
-public record AppointmentConfirmedEvent(
+public record AppointmentCancelledEvent(
         TenantId tenantId,
         Long appointmentId,
         String phoneNumber,

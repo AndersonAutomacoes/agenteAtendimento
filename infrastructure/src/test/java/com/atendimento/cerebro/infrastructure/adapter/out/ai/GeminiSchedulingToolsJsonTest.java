@@ -30,13 +30,13 @@ class GeminiSchedulingToolsJsonTest {
 
                 GeminiSchedulingTools.buildEvolutionAvailabilityJson(
 
-                        "Selecione o melhor horário para amanhã (13/04):", List.of("09:00", "10:30", "14:00"));
+                        "Selecione uma opção de horário para amanhã (13/04):", List.of("09:00", "10:30", "14:00"));
 
         JsonNode root = M.readTree(json);
 
         assertThat(root.path("main_text").asText())
 
-                .isEqualTo("Selecione o melhor horário para amanhã (13/04):");
+                .isEqualTo("Selecione uma opção de horário para amanhã (13/04):");
 
         assertThat(root.path("buttons")).hasSize(3);
 

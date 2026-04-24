@@ -22,4 +22,11 @@ public interface WhatsAppOutboundPort {
      * Reenvia texto já associado a uma linha ASSISTANT existente ({@code chat_message.id}), sem novo INSERT.
      */
     void sendMessage(TenantId tenantId, String to, String text, long existingAssistantMessageId);
+
+    /**
+     * Envio via {@code direct:processWhatsAppResponse} (Meta, Evolution ou simulado). Para Evolution em {@code sendText},
+     * interpreta o JSON de resposta e devolve o {@code messageId} quando presente; caso contrário {@link Optional#empty()}
+     * após sucesso. Erros de transporte ou HTTP lançam excepção.
+     */
+    Optional<String> sendMessageCapturingEvolutionMessageId(TenantId tenantId, String to, String text);
 }

@@ -50,7 +50,7 @@ class SchedulingSlotCaptureTest {
     @Test
     void formatNumberedSlotLines_usesPlainNumbersForReadability() {
         String lines = SchedulingSlotCapture.formatNumberedSlotLines(List.of("09:00", "10:30"));
-        assertThat(lines).contains("1) 09:00").contains("2) 10:30").doesNotContain("1️⃣");
+        assertThat(lines).contains("*1) 09:00*").contains("*2) 10:30*").doesNotContain("1️⃣");
     }
 
     @Test
@@ -67,7 +67,11 @@ class SchedulingSlotCaptureTest {
         LocalDate d = LocalDate.of(2026, 4, 13);
         String text =
                 SchedulingSlotCapture.buildPremiumFormattedSlotList(d, z, List.of("09:00", "10:30"));
-        assertThat(text).contains("📅").contains("09:00").contains(SchedulingSlotCapture.SLOT_LIST_FOOTER_PT);
+        assertThat(text)
+                .contains("*Agenda Disponível*")
+                .contains("*Data:* 13/04/2026")
+                .contains("*1) 09:00*")
+                .contains(SchedulingSlotCapture.SLOT_LIST_FOOTER_PT);
     }
 
     @Test

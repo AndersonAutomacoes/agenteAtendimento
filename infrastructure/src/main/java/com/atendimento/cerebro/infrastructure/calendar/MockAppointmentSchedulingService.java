@@ -4,9 +4,6 @@ import com.atendimento.cerebro.application.dto.TenantAppointmentRecord;
 import com.atendimento.cerebro.application.scheduling.AppointmentCalendarValidationResult;
 import com.atendimento.cerebro.application.scheduling.CreateAppointmentResult;
 import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
-import com.atendimento.cerebro.application.port.out.CrmCustomerStorePort;
-import com.atendimento.cerebro.application.port.out.TenantAppointmentQueryPort;
-import com.atendimento.cerebro.application.port.out.TenantAppointmentStorePort;
 import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort;
 import com.atendimento.cerebro.application.service.AppointmentValidationService;
 import com.atendimento.cerebro.domain.tenant.TenantId;
@@ -26,6 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Simula agendamento sem Google: usa {@code google_calendar_id} só como identificador lógico e grava em
@@ -41,25 +39,19 @@ public class MockAppointmentSchedulingService implements AppointmentSchedulingPo
     private static final DateTimeFormatter PT_BR_DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.forLanguageTag("pt-BR"));
 
     private final TenantConfigurationStorePort tenantConfigurationStore;
-    private final TenantAppointmentStorePort appointmentStore;
-    private final CrmCustomerStorePort crmCustomerStore;
     private final CerebroGoogleCalendarProperties props;
     private final AppointmentValidationService appointmentValidationService;
-    private final TenantAppointmentQueryPort tenantAppointmentQuery;
+    private final SchedulingAppointmentTransactionHelper appointmentTx;
 
     public MockAppointmentSchedulingService(
             TenantConfigurationStorePort tenantConfigurationStore,
-            TenantAppointmentStorePort appointmentStore,
-            CrmCustomerStorePort crmCustomerStore,
             CerebroGoogleCalendarProperties props,
             AppointmentValidationService appointmentValidationService,
-            TenantAppointmentQueryPort tenantAppointmentQuery) {
+            SchedulingAppointmentTransactionHelper appointmentTx) {
         this.tenantConfigurationStore = tenantConfigurationStore;
-        this.appointmentStore = appointmentStore;
-        this.crmCustomerStore = crmCustomerStore;
         this.props = props;
         this.appointmentValidationService = appointmentValidationService;
-        this.tenantAppointmentQuery = tenantAppointmentQuery;
+        this.appointmentTx = appointmentTx;
         LOG.warn(
                 "MockAppointmentSchedulingService ATIVO (cerebro.google.calendar.mock=true): agendamentos são gravados só na "
                         + "base local — nenhum evento é criado no Google Calendar. Para a API real: "
@@ -70,21 +62,19 @@ public class MockAppointmentSchedulingService implements AppointmentSchedulingPo
     public String checkAvailability(TenantId tenantId, String isoDate) {
         Optional<String> calId = resolveCalendarId(tenantId);
         if (calId.isEmpty()) {
-            return "O calendário ainda não está ligado a este espaço. Peça ao cliente para tentar mais tarde ou contactar o "
-                    + "estabelecimento, sem mencionar códigos técnicos.";
+            return "O calendário ainda não está ligado a este espaço. Pode voltar a tentar daqui a pouco ou falar com a "
+                    + "oficina por outro canal.";
         }
         LocalDate day;
         try {
             day = LocalDate.parse(isoDate.strip(), ISO_DATE);
         } catch (DateTimeParseException e) {
-            return "A data indicada não pôde ser interpretada. Peça ao cliente uma data clara (dia, mês e ano), sem "
-                    + "mencionar formatos técnicos.";
+            return "Não consegui entender a data. Pode dizer o dia, o mês e o ano (ou escolher na lista)?";
         }
         ZoneId zone = ZoneId.of(props.getZone());
         LocalDate today = LocalDate.now(zone);
         if (day.isBefore(today)) {
-            return "Não é possível consultar disponibilidade para dias que já passaram neste fuso. Peça ao cliente uma data "
-                    + "a partir de hoje, com tom cordial.";
+            return "Esse dia já passou. Pode dizer outra data a partir de hoje?";
         }
         List<WorkingDaySlotPlanner.BusyInterval> busy = List.of();
         var free = WorkingDaySlotPlanner.freeSlotStarts(
@@ -105,6 +95,7 @@ public class MockAppointmentSchedulingService implements AppointmentSchedulingPo
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public CreateAppointmentResult createAppointment(
             TenantId tenantId,
             String isoDate,
@@ -115,8 +106,8 @@ public class MockAppointmentSchedulingService implements AppointmentSchedulingPo
         Optional<String> calId = resolveCalendarId(tenantId);
         if (calId.isEmpty()) {
             return CreateAppointmentResult.failure(
-                    "O calendário ainda não está ligado a este espaço. Informe o cliente com cordialidade que não é "
-                            + "possível concluir o agendamento agora.");
+                    "Desculpe, não consigo concluir o agendamento agora — o calendário ainda não está ligado a este espaço. "
+                            + "Pode tentar mais tarde ou falar com a oficina por outro canal.");
         }
         ZoneId zone = ZoneId.of(props.getZone());
         AppointmentCalendarValidationResult validated =
@@ -129,13 +120,6 @@ public class MockAppointmentSchedulingService implements AppointmentSchedulingPo
         ZonedDateTime startZoned = ZonedDateTime.of(day, time, zone);
         Instant start = startZoned.toInstant();
         Instant end = start.plusSeconds(props.getSlotMinutes() * 60L);
-        if (tenantAppointmentQuery.existsOverlapping(tenantId, start, end)) {
-            LOG.warn(
-                    "createAppointment (mock) bloqueado: intervalo já ocupado em tenant_appointments tenant={}",
-                    tenantId.value());
-            return CreateAppointmentResult.failure(
-                    appointmentValidationService.duplicateSlotConflictMessageForGemini());
-        }
         LocalDate dataGravadaGoogle = start.atZone(zone).toLocalDate();
         LOG.info(
                 "confirmação agendamento (mock): DATA_SOLICITADA={} DATA_GRAVADA_GOOGLE={} (fuso {}) startZoned={} eventId=mock tenant={}",
@@ -153,15 +137,18 @@ public class MockAppointmentSchedulingService implements AppointmentSchedulingPo
         }
         String eventId = "mock-" + UUID.randomUUID();
         String conv = conversationId == null || conversationId.isBlank() ? null : conversationId.strip();
-        long appointmentRowId =
-                appointmentStore.insert(
-                        new TenantAppointmentRecord(
-                                tenantId, conv, clientName.strip(), serviceName.strip(), start, end, eventId));
-        try {
-            crmCustomerStore.recordSuccessfulAppointment(tenantId, conv != null ? conv : "", clientName.strip());
-        } catch (RuntimeException e) {
-            LOG.warn("CRM após agendamento mock ignorado: {}", e.toString());
+        TenantAppointmentRecord record =
+                new TenantAppointmentRecord(
+                        tenantId, conv, clientName.strip(), serviceName.strip(), start, end, eventId);
+        Optional<Long> rowIdOpt = appointmentTx.insertIfNoDbOverlap(tenantId, start, end, record);
+        if (rowIdOpt.isEmpty()) {
+            LOG.warn(
+                    "createAppointment (mock) bloqueado: intervalo já ocupado em tenant_appointments tenant={}",
+                    tenantId.value());
+            return CreateAppointmentResult.failure(
+                    appointmentValidationService.duplicateSlotConflictMessageForGemini());
         }
+        long appointmentRowId = rowIdOpt.get();
         LOG.info(
                 "Agendamento mock gravado tenant={} conversationId={} startsAt={} eventId={}",
                 tenantId.value(),

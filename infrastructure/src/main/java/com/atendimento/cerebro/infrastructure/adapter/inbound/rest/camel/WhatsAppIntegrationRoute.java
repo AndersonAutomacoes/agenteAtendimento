@@ -32,6 +32,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
@@ -50,6 +51,7 @@ import org.slf4j.LoggerFactory;
 public class WhatsAppIntegrationRoute extends RouteBuilder {
 
     private static final Logger LOG = LoggerFactory.getLogger(WhatsAppIntegrationRoute.class);
+    private static final String INTERNAL_CONFIRMATION_SENT_MARKER = "cliente recebeu a confirmação automática no whatsapp";
 
     private static final String PROP_DECISION = "whatsappDecision";
     private static final String DECISION_CHAT = "CHAT";
@@ -526,8 +528,10 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
             return;
         }
         try {
-            whatsAppOutboundPort.sendMessage(
-                    new TenantId(tenantIdStr), phone, result.assistantMessage(), result.whatsAppInteractive());
+            if (!result.assistantMessage().isBlank() && !isInternalTechnicalAssistantMessage(result.assistantMessage())) {
+                whatsAppOutboundPort.sendMessage(
+                        new TenantId(tenantIdStr), phone, result.assistantMessage(), result.whatsAppInteractive());
+            }
             for (String extra : result.additionalOutboundMessages()) {
                 whatsAppOutboundPort.sendMessage(new TenantId(tenantIdStr), phone, extra);
             }
@@ -538,6 +542,14 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
                     phone,
                     e);
         }
+    }
+
+    private static boolean isInternalTechnicalAssistantMessage(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        String lower = text.toLowerCase(Locale.ROOT);
+        return lower.contains(INTERNAL_CONFIRMATION_SENT_MARKER);
     }
 
     private static boolean isLikelyTimeout(Throwable t) {

@@ -14,6 +14,7 @@ import com.google.auth.oauth2.GoogleCredentials;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.atendimento.cerebro.infrastructure.config.CerebroGoogleCalendarProperties;
+import io.github.resilience4j.retry.annotation.Retry;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -31,6 +32,8 @@ import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
@@ -52,9 +55,21 @@ public class GoogleCalendarService {
 
     private final CerebroGoogleCalendarProperties props;
 
+    private static GoogleCalendarService springSelf(GoogleCalendarService service) {
+        return service.self != null ? service.self : service;
+    }
+
     private volatile Calendar calendarClient;
 
     private volatile String cachedServiceAccountEmail;
+
+    /**
+     * Auto-referência para o proxy Spring (Resilience4j) — evita auto-invocar {@code createEvent}/listas sem AOP.
+     */
+    @Lazy
+    @Autowired
+    @SuppressWarnings("checkstyle:VisibilityModifier")
+    private GoogleCalendarService self;
 
     public GoogleCalendarService(CerebroGoogleCalendarProperties props) {
         this.props = props;
@@ -135,8 +150,9 @@ public class GoogleCalendarService {
         if (calendarId == null || calendarId.isBlank()) {
             throw new IllegalArgumentException("calendarId is required");
         }
-        return createEvent(
-                calendarId.strip(), title != null ? title : "", startDateTime, description, DEFAULT_EVENT_DURATION_MINUTES);
+        return springSelf(this)
+                .createEvent(
+                        title, startDateTime, description, calendarId.strip(), DEFAULT_EVENT_DURATION_MINUTES);
     }
 
     /**
@@ -153,13 +169,16 @@ public class GoogleCalendarService {
             throw new IllegalArgumentException("calendarId is required");
         }
         int mins = durationMinutes > 0 ? durationMinutes : DEFAULT_EVENT_DURATION_MINUTES;
-        return createEvent(calendarId.strip(), title != null ? title : "", startDateTime, description, mins);
+        return springSelf(this)
+                .createEventCore(
+                        calendarId.strip(), title != null ? title : "", startDateTime, description, mins);
     }
 
     /**
      * Cria um evento de duração {@code durationMinutes}; {@code start} é interpretado em {@link #CALENDAR_ZONE}.
      */
-    public GoogleCalendarCreatedEvent createEvent(
+    @Retry(name = "googleCalendarApi")
+    public GoogleCalendarCreatedEvent createEventCore(
             String calendarId, String summary, LocalDateTime start, String description, int durationMinutes)
             throws IOException {
         if (calendarId == null || calendarId.isBlank()) {
@@ -218,6 +237,7 @@ public class GoogleCalendarService {
         return new GoogleCalendarCreatedEvent(id, link, startInstant, endInstant);
     }
 
+    @Retry(name = "googleCalendarApi")
     public Events listEvents(String calendarId, DateTime timeMin, DateTime timeMax) throws Exception {
         LOG.info(
                 "Google Calendar API: events.list a invocar execute() calendarId={} timeMin={} timeMax={}",
@@ -248,6 +268,7 @@ public class GoogleCalendarService {
      * <p>404 no {@code delete} trata-se como idempotência (já inexistente neste calendário); ainda assim verifica-se com
      * {@code get}.
      */
+    @Retry(name = "googleCalendarApi")
     public void deleteEvent(String calendarId, String eventId) throws IOException {
         if (calendarId == null || calendarId.isBlank() || eventId == null || eventId.isBlank()) {
             throw new IllegalArgumentException("calendarId and eventId are required");
@@ -316,7 +337,7 @@ public class GoogleCalendarService {
         String cal = calendarId.strip();
         DateTime tMin = new DateTime(startInclusive.toEpochMilli());
         DateTime tMax = new DateTime(endExclusive.toEpochMilli());
-        Events batch = listEvents(cal, tMin, tMax);
+        Events batch = springSelf(this).listEvents(cal, tMin, tMax);
         List<Event> out = new ArrayList<>();
         if (batch.getItems() == null) {
             return List.of();

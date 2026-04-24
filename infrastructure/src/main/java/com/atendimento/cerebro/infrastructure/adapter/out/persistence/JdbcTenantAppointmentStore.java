@@ -60,4 +60,51 @@ public class JdbcTenantAppointmentStore implements TenantAppointmentStorePort {
                         .update();
         return n > 0;
     }
+
+    @Override
+    @Transactional
+    public void markConfirmationNotificationPending(long appointmentId) {
+        jdbcClient
+                .sql(
+                        """
+                        UPDATE tenant_appointments
+                        SET notified_confirmation = false, confirmation_message_id = NULL
+                        WHERE id = ?
+                        """)
+                .param(appointmentId)
+                .update();
+    }
+
+    @Override
+    @Transactional
+    public boolean markAsNotified(long appointmentId, String messageId) {
+        int n =
+                jdbcClient
+                        .sql(
+                                """
+                                UPDATE tenant_appointments
+                                SET notified_confirmation = true, confirmation_message_id = ?
+                                WHERE id = ?
+                                """)
+                        .param(messageId)
+                        .param(appointmentId)
+                        .update();
+        return n > 0;
+    }
+
+    @Override
+    @Transactional
+    public boolean markReminderSent(long appointmentId) {
+        int n =
+                jdbcClient
+                        .sql(
+                                """
+                                UPDATE tenant_appointments
+                                SET reminder_sent = true
+                                WHERE id = ? AND booking_status = 'AGENDADO' AND reminder_sent = false
+                                """)
+                        .param(appointmentId)
+                        .update();
+        return n > 0;
+    }
 }

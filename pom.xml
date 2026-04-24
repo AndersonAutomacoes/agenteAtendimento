@@ -29,6 +29,7 @@
         <java.version>21</java.version>
         <camel.version>4.10.5</camel.version>
         <tika.version>3.0.0</tika.version>
+        <resilience4j.version>2.2.0</resilience4j.version>
     </properties>
 
     <dependencyManagement>
@@ -61,6 +62,13 @@
                 <groupId>com.atendimento</groupId>
                 <artifactId>infrastructure</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.resilience4j</groupId>
+                <artifactId>resilience4j-bom</artifactId>
+                <version>${resilience4j.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.tika</groupId>

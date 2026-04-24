@@ -32,6 +32,25 @@ class GeminiChatEngineAdapterSchedulingIntentTest {
     }
 
     @Test
+    void shouldRetrySchedulingToolPass_falseForOkWithoutSchedulingContext() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist = List.of(Message.assistantMessage("Tudo bem Anderson. Se precisar é só chamar."));
+        AICompletionRequest req = new AICompletionRequest(tenant, hist, List.of(), "ok", "", AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.shouldRetrySchedulingToolPass(req)).isFalse();
+    }
+
+    @Test
+    void shouldRetrySchedulingToolPass_trueForOkWithSchedulingContext() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage(
+                                "Disponibilidade para amanhã:\n1) 09:00\n2) 09:30\n[slot_options:09:00,09:30]\n[slot_date:2026-04-24]"));
+        AICompletionRequest req = new AICompletionRequest(tenant, hist, List.of(), "ok", "", AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.shouldRetrySchedulingToolPass(req)).isTrue();
+    }
+
+    @Test
     void likelyIntent_falseForGenericGreeting() {
         assertThat(GeminiChatEngineAdapter.likelySchedulingOrConfirmationTurn("oi, tudo bem?")).isFalse();
     }
@@ -122,6 +141,43 @@ class GeminiChatEngineAdapterSchedulingIntentTest {
         AICompletionRequest req =
                 new AICompletionRequest(tenant, hist, List.of(), "tem horário amanhã?", "", AiChatProvider.GEMINI);
         assertThat(GeminiChatEngineAdapter.transcriptSuggestsCancellation(req)).isFalse();
+    }
+
+    @Test
+    void transcriptSuggestsCancellation_falseForRescheduleEvenIfHistoryMentionedCancel() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist = List.of(Message.userMessage("Quero cancelar o de amanhã"));
+        AICompletionRequest req =
+                new AICompletionRequest(
+                        tenant,
+                        hist,
+                        List.of(),
+                        "Na verdade reagendar o de 24/04/2026 11:00 para 15:00",
+                        "",
+                        AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.transcriptSuggestsCancellation(req)).isFalse();
+    }
+
+    @Test
+    void cancelContext_falseAfterAssistantSaysNoActiveAppointmentsAndUserConfirms() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage(AppointmentService.NO_ACTIVE_APPOINTMENTS_FRIENDLY_MESSAGE));
+        AICompletionRequest req = new AICompletionRequest(tenant, hist, List.of(), "sim", "", AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.transcriptSuggestsCancellation(req)).isFalse();
+        assertThat(GeminiChatEngineAdapter.schedulingCancellationOrListManagementContext(req)).isFalse();
+    }
+
+    @Test
+    void cancelContext_falseAfterAssistantSaysNoActiveAppointmentsAndUserAsksNewBooking() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist = List.of(Message.assistantMessage(AppointmentService.NO_ACTIVE_APPOINTMENTS_FRIENDLY_MESSAGE));
+        AICompletionRequest req =
+                new AICompletionRequest(
+                        tenant, hist, List.of(), "Gostaria de fazer um novo agendamento", "", AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.transcriptSuggestsCancellation(req)).isFalse();
+        assertThat(GeminiChatEngineAdapter.schedulingCancellationOrListManagementContext(req)).isFalse();
     }
 
     @Test
@@ -277,5 +333,21 @@ class GeminiChatEngineAdapterSchedulingIntentTest {
         List<Message> hist = List.of(Message.assistantMessage("Seguem os horários: 09:00, 10:00"));
         AICompletionRequest req = new AICompletionRequest(tenant, hist, List.of(), "1", "", AiChatProvider.GEMINI);
         assertThat(GeminiChatEngineAdapter.shouldForceProgrammaticCancelAppointment(req)).isFalse();
+    }
+
+    @Test
+    void isShortPostBookingAckAfterCompletedBooking_trueWhenOkAndPriorConfirmation() {
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage(
+                                "Agendamento confirmado para 24/04/2026 às 11:00. O horário foi registado na agenda da oficina."));
+        assertThat(GeminiChatEngineAdapter.isShortPostBookingAckAfterCompletedBooking("ok", hist)).isTrue();
+        assertThat(GeminiChatEngineAdapter.isShortPostBookingAckAfterCompletedBooking("obrigado", hist)).isFalse();
+    }
+
+    @Test
+    void isShortPostBookingAckAfterCompletedBooking_falseWithoutPriorBooking() {
+        List<Message> hist = List.of(Message.assistantMessage("Seguem os horários: 09:00, 10:00"));
+        assertThat(GeminiChatEngineAdapter.isShortPostBookingAckAfterCompletedBooking("ok", hist)).isFalse();
     }
 }
