@@ -7,7 +7,10 @@ import com.atendimento.cerebro.application.event.AppointmentCancelledEvent;
 import com.atendimento.cerebro.application.event.AppointmentConfirmedEvent;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentStorePort;
 import com.atendimento.cerebro.application.port.out.WhatsAppTextOutboundPort;
+import com.atendimento.cerebro.application.scheduling.AppointmentConfirmationCardFormatter;
 import com.atendimento.cerebro.domain.tenant.TenantId;
+import com.atendimento.cerebro.infrastructure.config.CerebroAppointmentConfirmationProperties;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -33,11 +36,15 @@ public class AppointmentNotificationListener {
 
     private final WhatsAppTextOutboundPort whatsAppTextOutboundPort;
     private final TenantAppointmentStorePort appointmentStore;
+    private final CerebroAppointmentConfirmationProperties appointmentConfirmationProperties;
 
     public AppointmentNotificationListener(
-            WhatsAppTextOutboundPort whatsAppTextOutboundPort, TenantAppointmentStorePort appointmentStore) {
+            WhatsAppTextOutboundPort whatsAppTextOutboundPort,
+            TenantAppointmentStorePort appointmentStore,
+            CerebroAppointmentConfirmationProperties appointmentConfirmationProperties) {
         this.whatsAppTextOutboundPort = whatsAppTextOutboundPort;
         this.appointmentStore = appointmentStore;
+        this.appointmentConfirmationProperties = appointmentConfirmationProperties;
     }
 
     @Async
@@ -57,24 +64,19 @@ public class AppointmentNotificationListener {
 
         ZoneId zone = calendarZone(event.calendarZoneId());
         LocalDateTime ldt = LocalDateTime.ofInstant(event.startsAt(), zone);
-        String dateBr = ldt.format(DATE_BR);
+        LocalDate day = ldt.toLocalDate();
         String timeBr = ldt.format(TIME_BR);
         String service = sanitizeServiceNameForCustomer(event.serviceName());
 
         String text =
-                """
-                        *Agendamento confirmado*
-
-                        Olá, *%s*!
-
-                        🛠️ *Serviço:* %s
-                        📅 *Data:* %s
-                        ⏰ *Horário:* %s
-
-                        Se precisar alterar ou cancelar, é só responder por aqui.
-                        """
-                        .stripIndent()
-                        .formatted(nullSafe(event.clientName()), service, dateBr, timeBr);
+                AppointmentConfirmationCardFormatter.formatConfirmationCard(
+                        event.appointmentId(),
+                        service,
+                        nullSafe(event.clientName()),
+                        day,
+                        timeBr,
+                        appointmentConfirmationProperties.getLocationLine(),
+                        appointmentConfirmationProperties.getMapsUrl());
 
         var payload = new WhatsAppTextPayload(tenantId, number, text);
 

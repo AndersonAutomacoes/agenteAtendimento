@@ -238,8 +238,7 @@ public class GeminiSchedulingTools {
 
         if (SchedulingUserReplyNormalizer.shouldRefuseAvailabilityBecauseCancelIntent(
                 transcriptForServiceHint, latestUserMessage)) {
-            return "Não chame check_availability quando o cliente quer cancelar ou desmarcar. Use get_active_appointments; "
-                    + "não liste horários livres.";
+            return "Entendi que você quer cancelar um agendamento. Vou listar seus agendamentos ativos para escolher o código.";
         }
 
         LOG.info("Ferramenta check_availability tenant={} date={}", tenantId.value(), date);
@@ -416,15 +415,12 @@ public class GeminiSchedulingTools {
                         : transcriptForServiceHint + "\n" + latestUserMessage;
         if (!enforcedChoiceFromBackend.isPresent()
                 && SchedulingUserReplyNormalizer.looksLikeCancellationIntent(cancelCreateBlob)) {
-            return "Não chame create_appointment: a conversa indica cancelamento. Use get_active_appointments e, se aplicável, "
-                    + "cancel_appointment.";
+            return "Percebi que sua mensagem é sobre cancelamento. Vou seguir com a listagem dos agendamentos ativos.";
         }
 
         if (blockCreateAppointment) {
 
-            return "Não chame create_appointment neste turno: o cliente escolheu um número da lista mas ainda não confirmou. "
-
-                    + "Pergunte «Posso confirmar?» e só depois da confirmação (sim) poderá criar.";
+            return "Recebi a opção escolhida. Só falta sua confirmação para concluir o agendamento.";
 
         }
 
@@ -438,7 +434,7 @@ public class GeminiSchedulingTools {
 
             return "Não é possível criar agendamento: o utilizador apenas pediu horários ou disponibilidade. "
 
-                    + "Não chame create_appointment; use só check_availability até o cliente escolher um horário concreto.";
+                    + "Primeiro vou mostrar os horários disponíveis para você escolher um horário concreto.";
 
         }
 
@@ -462,7 +458,6 @@ public class GeminiSchedulingTools {
             return prep.messageForGemini();
         }
         if (enforcedChoiceFromBackend.isPresent()) {
-            SchedulingEnforcedChoice r = enforcedChoiceFromBackend.get();
             LOG.info(
                     "create_appointment: parâmetros fixados pelo backend (lista + slot_date) tenant={} date={} time={}",
                     tenantId.value(),

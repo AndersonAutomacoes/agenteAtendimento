@@ -1,5 +1,6 @@
 package com.atendimento.cerebro.infrastructure.adapter.out.ai;
 
+import java.text.Normalizer;
 import com.atendimento.cerebro.application.dto.AICompletionRequest;
 import com.atendimento.cerebro.application.dto.AICompletionResponse;
 import com.atendimento.cerebro.application.dto.WhatsAppInteractiveReply;
@@ -104,6 +105,10 @@ public class GeminiChatEngineAdapter {
 
     private static final Pattern SHORT_SCHEDULING_CONFIRM =
             Pattern.compile("^(sim|sí|ok|confirmado|confirmo|pode|isso|perfeito|fechado)[.!\\s]*$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern GREETING_HEAD =
+            Pattern.compile(
+                    "^(oi|ola|bom dia|boa tarde|boa noite|hi|hello)([\\s!,.…?]|$)",
+                    Pattern.CASE_INSENSITIVE);
 
     /**
      * Resposta típica a «quer que eu verifique os horários?» — deve disparar {@code check_availability} (reforço e
@@ -314,9 +319,10 @@ public class GeminiChatEngineAdapter {
                                         d.clientDisplayName(),
                                         d.date(),
                                         d.timeHhMm(),
-                                        appointmentConfirmationProperties.getLocationLine());
+                                        appointmentConfirmationProperties.getLocationLine(),
+                                        appointmentConfirmationProperties.getMapsUrl());
                         content = base.isBlank() ? card : base + "\n\n" + card;
-                        extraOutbound = mapsFollowUpMessages(appointmentConfirmationProperties.getMapsUrl());
+                        extraOutbound = List.of();
                     }
                 }
                 if (content.isBlank()) {
@@ -958,6 +964,9 @@ public class GeminiChatEngineAdapter {
         if (request.schedulingEnforcedChoice().isPresent()) {
             return false;
         }
+        if (looksLikeGreetingMessage(request.userMessage())) {
+            return false;
+        }
         if (lastAssistantIndicatesNoActiveAppointments(request)
                 && (request.userMessage() == null
                         || !SchedulingUserReplyNormalizer.looksLikeCancellationIntent(request.userMessage()))) {
@@ -976,6 +985,15 @@ public class GeminiChatEngineAdapter {
         }
         return SchedulingUserReplyNormalizer.looksLikeCancellationInBlob(
                 mergeConversationTranscriptForCancellationScoring(request));
+    }
+
+    private static boolean looksLikeGreetingMessage(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return false;
+        }
+        String normalized =
+                Normalizer.normalize(raw.strip(), Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
+        return GREETING_HEAD.matcher(normalized).find();
     }
 
     private static boolean lastAssistantIndicatesNoActiveAppointments(AICompletionRequest request) {
@@ -1114,9 +1132,10 @@ public class GeminiChatEngineAdapter {
                                 d.clientDisplayName(),
                                 d.date(),
                                 d.timeHhMm(),
-                                appointmentConfirmationProperties.getLocationLine());
+                                appointmentConfirmationProperties.getLocationLine(),
+                                appointmentConfirmationProperties.getMapsUrl());
                 content = base.isBlank() ? card : base + "\n\n" + card;
-                extraOutbound = mapsFollowUpMessages(appointmentConfirmationProperties.getMapsUrl());
+                extraOutbound = List.of();
             }
         }
         if (content.isBlank()) {

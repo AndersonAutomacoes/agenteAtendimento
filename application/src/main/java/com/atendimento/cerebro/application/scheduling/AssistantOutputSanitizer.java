@@ -49,6 +49,11 @@ public final class AssistantOutputSanitizer {
             Pattern.compile(
                     "(?im)^\\s*Conflito\\s+de\\s+hor[áa]rio:.+?(sem\\s+mencionar|Explique|cordialidade\\s+ao\\s+cliente).*$");
 
+    /** Guard-rails internos de ferramenta que por vezes vazam para o cliente. */
+    private static final Pattern LINE_TOOL_GUARD_RAIL =
+            Pattern.compile(
+                    "(?im)^\\s*N[aã]o\\s+chame\\s+(?:check_availability|create_appointment|get_active_appointments|cancel_appointment)\\b.*$");
+
     private AssistantOutputSanitizer() {}
 
     /**
@@ -86,6 +91,7 @@ public final class AssistantOutputSanitizer {
         s = LINE_START_CHAME_TOOL.matcher(s).replaceAll("");
         s = BRACKETED_INTERNAL_PREFIX.matcher(s).replaceAll("");
         s = LINE_AGENT_META_CONFLICT.matcher(s).replaceAll("");
+        s = LINE_TOOL_GUARD_RAIL.matcher(s).replaceAll("");
         s = s.replaceAll("(?im)^\\s*Pe[çc]a\\s+ao\\s+cliente\\b.*$", "");
         s = s.replaceAll("(?im)^\\s*Diga\\s+ao\\s+cliente\\b.*$", "");
         s = s.replaceAll("(?im)^\\s*Explique\\s+com\\s+cordialidade\\b.*$", "");

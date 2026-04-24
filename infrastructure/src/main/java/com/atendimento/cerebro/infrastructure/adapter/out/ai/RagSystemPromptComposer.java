@@ -30,6 +30,11 @@ public final class RagSystemPromptComposer {
                     + "mensagens marcadas como atendente humano no histórico recente e siga as orientações ou "
                     + "acordos feitos por ele (como preços, descontos ou agendamentos).";
 
+    private static final String PERSONA_ENFORCEMENT =
+            "Regra prioritária: cumpra rigorosamente a Instrução de Personalidade deste tenant em tom, estilo e "
+                    + "forma de responder. Só viole essa instrução quando houver conflito explícito com política de "
+                    + "segurança, regras de ferramentas ou factos do contexto.";
+
     private static final String SCHEDULING_POLICY =
             "Agendamento: você tem permissão para agendar serviços. Separação estrita de ferramentas: "
                     + "Intenção CANCELAR (cancelar, desmarcar, anular agendamento): está PROIBIDO chamar check_availability "
@@ -175,6 +180,7 @@ public final class RagSystemPromptComposer {
                 && !schedulingTemporalAttentionBanner.isBlank()) {
             sb.append(schedulingTemporalAttentionBanner.strip()).append("\n\n");
         }
+        sb.append(PERSONA_ENFORCEMENT).append("\n\n");
         sb.append("Instrução de Personalidade: ")
                 .append(personality)
                 .append(".\n\n");

@@ -18,7 +18,9 @@ class RagSystemPromptComposerTest {
                 false);
 
         assertThat(text)
-                .startsWith("Instrução de Personalidade: Seja cordial.\n\nContexto de Conhecimento:")
+                .contains("Regra prioritária: cumpra rigorosamente a Instrução de Personalidade")
+                .contains("Instrução de Personalidade: Seja cordial.")
+                .contains("Contexto de Conhecimento:")
                 .contains("[1] Trecho único sobre política.")
                 .endsWith(
                         "Instrução Adicional: Use apenas o contexto fornecido para responder. Se não souber, diga que não possui essa informação.");
@@ -92,7 +94,9 @@ class RagSystemPromptComposerTest {
         String anchor = RagSystemPromptComposer.schedulingTemporalAnchor(ZoneId.of("UTC"));
         String text = RagSystemPromptComposer.compose("x", List.of(), false, false, true, banner, anchor, null);
         assertThat(text)
-                .startsWith("Atenção: Hoje é 01/01/2026 (teste).\n\nInstrução de Personalidade:")
+                .startsWith(
+                        "Atenção: Hoje é 01/01/2026 (teste).\n\nRegra prioritária: cumpra rigorosamente a Instrução de Personalidade")
+                .contains("Instrução de Personalidade:")
                 .contains("Referência temporal");
     }
 

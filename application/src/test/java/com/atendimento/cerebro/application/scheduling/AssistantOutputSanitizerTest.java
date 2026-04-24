@@ -73,6 +73,14 @@ class AssistantOutputSanitizerTest {
     }
 
     @Test
+    void stripInternalAgentDirectivesForCustomer_removesToolGuardRailLeakLine() {
+        String s =
+                "Não chame create_appointment: a conversa indica cancelamento. Use get_active_appointments e, se aplicável, "
+                        + "cancel_appointment.";
+        assertThat(AssistantOutputSanitizer.stripInternalAgentDirectivesForCustomer(s).strip()).isEmpty();
+    }
+
+    @Test
     void stripGoogleCalendarUrlsFromCustomerMessage_removesEventLinks() {
         String raw =
                 "Agendamento criado. Link: https://www.google.com/calendar/event?eid=abc "

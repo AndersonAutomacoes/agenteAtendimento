@@ -16,7 +16,8 @@ class AppointmentConfirmationCardFormatterTest {
                         "Sr. Anderson",
                         LocalDate.of(2026, 4, 14),
                         "15:30",
-                        "Oficina InteliZap - Salvador, BA");
+                        "Oficina InteliZap - Salvador, BA",
+                        "https://maps.app.goo.gl/oficina");
         assertThat(card)
                 .contains("*Agendamento confirmado* *#42*")
                 .contains("Olá, *Sr. Anderson*!")
@@ -25,6 +26,7 @@ class AppointmentConfirmationCardFormatterTest {
                 .contains("14/04/2026")
                 .contains("15:30")
                 .contains("Oficina InteliZap")
+                .contains("*Como chegar:* https://maps.app.goo.gl/oficina")
                 .contains("alterar ou cancelar");
     }
 
@@ -49,7 +51,8 @@ class AppointmentConfirmationCardFormatterTest {
                         "Anderson",
                         LocalDate.of(2026, 4, 16),
                         "17:00",
-                        "Oficina X");
+                        "Oficina X",
+                        "");
         String doubleCard = card + "\n\n" + card;
         assertThat(AppointmentConfirmationCardFormatter.stripFormattedConfirmationCards(doubleCard)).isEmpty();
     }
@@ -72,7 +75,8 @@ class AppointmentConfirmationCardFormatterTest {
                         "Cliente",
                         LocalDate.of(2026, 4, 16),
                         "10:00",
-                        "Local");
+                        "Local",
+                        "");
         String combined = "OK. Agendamento criado.\n\n" + card;
         assertThat(AppointmentConfirmationCardFormatter.stripFormattedConfirmationCards(combined))
                 .isEqualTo("OK. Agendamento criado.");

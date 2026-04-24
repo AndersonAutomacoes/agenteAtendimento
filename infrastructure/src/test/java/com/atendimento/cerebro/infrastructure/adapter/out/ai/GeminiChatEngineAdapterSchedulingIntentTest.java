@@ -144,6 +144,21 @@ class GeminiChatEngineAdapterSchedulingIntentTest {
     }
 
     @Test
+    void cancelContext_falseForGreetingAfterConfirmationCardMentionsCancelar() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage(
+                                "*Agendamento confirmado* *#24*\n\n"
+                                        + "📍 *Local:* Oficina X\n\n"
+                                        + "_Se precisar alterar ou cancelar, responda esta mensagem._"));
+        AICompletionRequest req =
+                new AICompletionRequest(tenant, hist, List.of(), "olá", "", AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.transcriptSuggestsCancellation(req)).isFalse();
+        assertThat(GeminiChatEngineAdapter.schedulingCancellationOrListManagementContext(req)).isFalse();
+    }
+
+    @Test
     void transcriptSuggestsCancellation_falseForRescheduleEvenIfHistoryMentionedCancel() {
         TenantId tenant = new TenantId("tenant-1");
         List<Message> hist = List.of(Message.userMessage("Quero cancelar o de amanhã"));

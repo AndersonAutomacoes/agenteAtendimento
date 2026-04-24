@@ -101,13 +101,16 @@ public final class AppointmentConfirmationCardFormatter {
             String clientDisplayName,
             LocalDate date,
             String timeHhMm,
-            String locationLine) {
+            String locationLine,
+            String mapsUrl) {
         String service = blankToDash(serviceName);
         String client = blankToDash(clientDisplayName);
         String loc = blankToDash(locationLine);
         String weekday = capitalizeFirst(date.getDayOfWeek().getDisplayName(TextStyle.FULL, PT_BR));
         String dayStr = date.format(PT_DAY);
         String time = timeHhMm == null || timeHhMm.isBlank() ? "--:--" : timeHhMm.strip();
+        String maps = mapsUrl == null ? "" : mapsUrl.strip();
+        String mapsLine = maps.isEmpty() ? "" : "\n📍 *Como chegar:* " + maps;
         String headline =
                 appointmentDatabaseId != null
                         ? CONFIRMATION_CARD_HEADLINE + " *#" + appointmentDatabaseId + "*"
@@ -133,6 +136,7 @@ public final class AppointmentConfirmationCardFormatter {
                 + "\n"
                 + "📍 *Local:* "
                 + loc
+                + mapsLine
                 + "\n\n"
                 + DIVIDER
                 + "\n\n"
