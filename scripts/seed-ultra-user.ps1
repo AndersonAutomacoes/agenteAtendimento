@@ -20,7 +20,7 @@ param(
     [string] $WhatsAppProvider = "EVOLUTION",
     [string] $GoogleCalendarId = "",
     # UID Firebase do operador do portal (deve existir no projeto Firebase ou altere depois na tabela).
-    [string] $FirebaseUid     = "seed-ultra-local-dev",
+    [string] $FirebaseUid     = "bXd6YxUoVQcDwIGNjggF00N60663",
     # Código em claro do convite; o hash SHA-256 é gravado em tenant_invite.code_hash.
     [string] $InvitePlainCode = "SEED-ULTRA-DEV",
     # Linha CRM de demonstração (conversation_id fixo; não conflita com wa-<telefone>).
@@ -119,7 +119,7 @@ BEGIN
     GET DIAGNOSTICS n = ROW_COUNT;
     RAISE NOTICE 'portal_user (limpeza por firebase_uid): % linhas removidas', n;
 
-    -- ========== 2. UPSERT TENANT_CONFIGURATION (ULTRA) ==========
+    -- ========== 2. UPSERT TENANT_CONFIGURATION (COMERCIAL) ==========
     INSERT INTO tenant_configuration (
         tenant_id,
         system_prompt,
@@ -130,20 +130,20 @@ BEGIN
         v_tenant,
         v_prompt,
         v_wa_prov,
-        'ULTRA',
+        'COMERCIAL',
         NULLIF(v_gcal, '')
     )
     ON CONFLICT (tenant_id) DO UPDATE SET
         system_prompt          = EXCLUDED.system_prompt,
         whatsapp_provider_type = EXCLUDED.whatsapp_provider_type,
-        profile_level          = 'ULTRA',
+        profile_level          = 'COMERCIAL',
         google_calendar_id     = NULLIF(v_gcal, '');
-    RAISE NOTICE 'tenant_configuration: upsert OK (profile=ULTRA)';
+    RAISE NOTICE 'tenant_configuration: upsert OK (profile=COMERCIAL)';
 
     -- ========== 3. PORTAL_USER (acesso ao portal com o mesmo tenant) ==========
     INSERT INTO portal_user (id, firebase_uid, tenant_id, profile_level)
-    VALUES (gen_random_uuid(), v_fb_uid, v_tenant, 'ULTRA');
-    RAISE NOTICE 'portal_user: criado firebase_uid=% profile=ULTRA', v_fb_uid;
+    VALUES (gen_random_uuid(), v_fb_uid, v_tenant, 'COMERCIAL');
+    RAISE NOTICE 'portal_user: criado firebase_uid=% profile=COMERCIAL', v_fb_uid;
 
     -- ========== 4. TENANT_INVITE (registo de novos utilizadores com este codigo em claro) ==========
     INSERT INTO tenant_invite (id, tenant_id, code_hash, expires_at, max_uses, uses_count)
@@ -178,7 +178,7 @@ BEGIN
     RAISE NOTICE 'crm_customer: linha demo conversation_id=seed-demo';
 
     RAISE NOTICE '---------------------------------------------';
-    RAISE NOTICE 'Tenant "%"  profile=ULTRA  pronto.', v_tenant;
+    RAISE NOTICE 'Tenant "%"  profile=COMERCIAL  pronto.', v_tenant;
     RAISE NOTICE 'Todos os dados de conversacao foram zerados.';
     RAISE NOTICE 'Telefone mapeado: %  (conversation_id=%)', v_phone, v_conv;
 END $seed$;
@@ -210,7 +210,7 @@ if ($UseDocker) {
 }
 
 Write-Host ""
-Write-Host "OK. Tenant=$TenantId profile=ULTRA phone=$digits"
-Write-Host "Portal: firebase_uid=$FirebaseUid (ULTRA) - use o mesmo UID no Firebase Auth para entrar."
+Write-Host "OK. Tenant=$TenantId profile=COMERCIAL phone=$digits"
+Write-Host "Portal: firebase_uid=$FirebaseUid (COMERCIAL) - use o mesmo UID no Firebase Auth para entrar."
 Write-Host "Convite (codigo em claro): $InvitePlainCode  (hash gravado na base)"
 Write-Host ('CRM: linha demo conversation_id=seed-demo nome: ' + $CrmDemoName)

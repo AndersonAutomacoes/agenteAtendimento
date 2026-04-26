@@ -9,7 +9,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class CerebroAppointmentConfirmationProperties {
 
     /** Linha exibida em "Local" no card. */
-    private String locationLine = "Oficina InteliZap - Salvador, BA";
+    private String locationLine = "Oficina AxeZap - Salvador, BA";
 
     /**
      * Se não vazio, envia-se uma segunda mensagem só com o link (facilita abrir no Maps no telefone).

@@ -138,6 +138,7 @@ public class AppointmentNotificationListener {
                         ⏰ *Horário:* %s
 
                         Se precisar de um novo horário, é só avisar por aqui.
+                        Gestão de atendimento por AxeZap AI
                         """
                         .stripIndent()
                         .formatted(nullSafe(event.clientName()), cancelledService, dateBr, timeBr);

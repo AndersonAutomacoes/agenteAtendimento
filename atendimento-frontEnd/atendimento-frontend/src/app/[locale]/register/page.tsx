@@ -17,6 +17,7 @@ import { getFirebaseAuth, isFirebaseConfigured } from "@/lib/firebase";
 import { mapProfileLevelToPlanTier } from "@/lib/plan-tier";
 import {
   CEREBRO_AUTH_TOKEN_KEY,
+  getPortalSession,
   postPortalRegister,
   toUserFacingApiError,
 } from "@/services/apiService";
@@ -27,7 +28,7 @@ export default function RegisterPage() {
   const t = useTranslations("registerPage");
   const tApi = useTranslations("api");
   const router = useRouter();
-  const { setTier } = usePlan();
+  const { setTier, setFeatures, setProfileLevel } = usePlan();
   const translateApi = React.useCallback((key: string) => tApi(key), [tApi]);
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -74,6 +75,14 @@ export default function RegisterPage() {
         /* ignore */
       }
       setTier(mapProfileLevelToPlanTier(res.profileLevel));
+      setProfileLevel(res.profileLevel);
+      try {
+        const session = await getPortalSession();
+        setProfileLevel(session.profileLevel);
+        setFeatures(session.features ?? {});
+      } catch {
+        setFeatures({});
+      }
       toast.success(t("success"));
       router.push("/");
     } catch (err) {

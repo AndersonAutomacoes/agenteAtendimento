@@ -16,6 +16,7 @@ RUN mvn -pl bootstrap -am clean package -DskipTests -B \
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
+RUN apk add --no-cache ffmpeg
 RUN addgroup -S spring && adduser -S spring -G spring
 
 COPY --from=build /app/app.jar app.jar

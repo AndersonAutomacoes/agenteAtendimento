@@ -18,13 +18,17 @@ type AppNavEntryProps = {
 };
 
 export function AppNavEntry({ item, onNavigate, touchPadding }: AppNavEntryProps) {
-  const { tier } = usePlan();
+  const { tier, features, profileLevel } = usePlan();
   const pathname = usePathname();
   const t = useTranslations("nav");
   const tPlan = useTranslations("plan");
 
   const minPlan: PlanTier = item.minPlan ?? "starter";
-  const locked = !planMeetsRequirement(tier, minPlan);
+  const byPlan = planMeetsRequirement(tier, minPlan);
+  const byFeature = item.featureKey == null ? null : features[item.featureKey];
+  const byProfile = item.requiredProfile == null || profileLevel === item.requiredProfile;
+  // If feature key exists, lock only when backend explicitly disables it.
+  const locked = !byProfile || (item.featureKey == null ? !byPlan : byFeature === false);
 
   const label = t(item.labelKey);
   const sub = item.subKey ? t(item.subKey) : undefined;

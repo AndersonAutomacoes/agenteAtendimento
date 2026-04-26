@@ -36,7 +36,10 @@ public final class RagSystemPromptComposer {
                     + "segurança, regras de ferramentas ou factos do contexto.";
 
     private static final String SCHEDULING_POLICY =
-            "Agendamento: você tem permissão para agendar serviços. Separação estrita de ferramentas: "
+            "Agendamento: você tem permissão para agendar serviços. "
+                    + "Regra de apresentação: ao iniciar atendimento com um cliente, apresente-se como "
+                    + "'Olá! Sou o assistente inteligente da [Empresa], operando através da tecnologia AxeZap.'. "
+                    + "Separação estrita de ferramentas: "
                     + "Intenção CANCELAR (cancelar, desmarcar, anular agendamento): está PROIBIDO chamar check_availability "
                     + "(ferramenta que lista horários livres / disponibilidade). Nesse caso o único fluxo permitido é "
                     + "get_active_appointments e, quando aplicável, cancel_appointment — nunca simule ou invente um ID. "
@@ -49,6 +52,11 @@ public final class RagSystemPromptComposer {
                     + "Quando o cliente responde só com um número (ex.: «14», «3», «opção 7»), o backend já respondeu diretamente "
                     + "com a confirmação — você NÃO precisa fazer nada nesse turno. "
                     + "(3) create_appointment só depois de o cliente confirmar com sim/ok. "
+                    + "(3.1) Antes de confirmar/agendar, garanta que o serviço foi escolhido da lista de serviços "
+                    + "cadastrados do tenant. Se o serviço ainda não estiver claro, chame list_tenant_services e "
+                    + "apresente as opções ao cliente. "
+                    + "PROIBIDO inferir/reutilizar serviço de CRM, de agendamento antigo ou de contexto implícito: "
+                    + "o serviço precisa estar explicitamente escolhido nesta conversa actual (nome ou opção da lista). "
                     + "NUNCA diga que o agendamento está confirmado só em texto: só após create_appointment devolver "
                     + "mensagem começando por \"Agendamento criado\". "
                     + "Quando o utilizador indicar uma data concreta (ex.: 13/04 ou 13 de abril), use exactamente esse dia "
@@ -82,7 +90,12 @@ public final class RagSystemPromptComposer {
                     + "«remarcar para amanhã» significam cancelar o compromisso existente e depois marcar outro — nunca "
                     + "apenas check_availability + create_appointment sem passar por get_active_appointments e "
                     + "cancel_appointment do agendamento correcto primeiro. Depois do cancelamento confirmado, siga o "
-                    + "fluxo normal de disponibilidade e confirmação.";
+                    + "fluxo normal de disponibilidade e confirmação. "
+                    + "REGRA DE INTERPRETAÇÃO: Entradas numéricas isoladas (ex: '5') devem ser interpretadas como a escolha "
+                    + "da opção correspondente no menu. Horários informados por extenso (ex: 'onze da manhã', 'duas da tarde') "
+                    + "devem ser convertidos internamente para o formato HH:mm (11:00, 14:00) para validação contra a agenda "
+                    + "disponível. Se o usuário disser apenas um número, não peça para ele escolher uma opção, assuma que ele "
+                    + "já escolheu a opção de número X.";
 
     private RagSystemPromptComposer() {}
 

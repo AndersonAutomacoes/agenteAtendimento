@@ -23,6 +23,7 @@ public interface AppointmentSchedulingPort {
             String isoDate,
             String localTime,
             String clientName,
+            Long serviceId,
             String serviceName,
             String conversationId);
 

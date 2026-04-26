@@ -8,13 +8,19 @@ import com.atendimento.cerebro.application.event.AppointmentCancelledEvent;
 import com.atendimento.cerebro.application.event.AppointmentConfirmedEvent;
 import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
 import com.atendimento.cerebro.application.port.out.CrmCustomerQueryPort;
+import com.atendimento.cerebro.application.port.out.PlanLimitPolicyPort;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentQueryPort;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentStorePort;
+import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort;
+import com.atendimento.cerebro.application.port.out.TenantServiceCatalogPort;
+import com.atendimento.cerebro.application.scheduling.SchedulingExplicitTimeShortcut;
 import com.atendimento.cerebro.application.scheduling.CancelOptionMap;
 import com.atendimento.cerebro.application.scheduling.CreateAppointmentResult;
 import com.atendimento.cerebro.application.scheduling.ReagendamentoDeParaHint;
 import com.atendimento.cerebro.application.scheduling.SchedulingUserReplyNormalizer;
+import com.atendimento.cerebro.domain.tenant.ProfileLevel;
 import com.atendimento.cerebro.domain.tenant.TenantId;
+import java.text.Normalizer;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -71,28 +77,59 @@ public class AppointmentService {
 
     /** Texto final do card de listagem em {@link #getActiveAppointments} (WhatsApp). */
     public static final String LIST_APPOINTMENTS_CANCEL_HINT_FOOTER_PT =
-            "Para cancelar um agendamento, basta digitar o código (número à esquerda, antes do serviço).";
+            "Para *Cancelar*, diga apenas o código do agendamento.";
+    public static final String LIST_APPOINTMENTS_RESCHEDULE_HINT_FOOTER_PT =
+            "Para *Reagendar*, diga o código do agendamento (número à esquerda) e depois informe a nova data e horário."
+                    + "\nPara *Cancelar*, diga apenas o código do agendamento.";
 
     private static final DateTimeFormatter SLOT_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
     private static final DateTimeFormatter DAY_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    private static final int MAX_SERVICES_IN_REPLY = 10;
 
     private final TenantAppointmentQueryPort appointmentQuery;
     private final TenantAppointmentStorePort appointmentStore;
     private final AppointmentSchedulingPort scheduling;
+    private final TenantServiceCatalogPort tenantServiceCatalog;
     private final CrmCustomerQueryPort crmCustomerQuery;
     private final ApplicationEventPublisher eventPublisher;
+    private final TenantConfigurationStorePort tenantConfigurationStore;
+    private final PlanLimitPolicyPort planLimitPolicy;
 
     public AppointmentService(
             TenantAppointmentQueryPort appointmentQuery,
             TenantAppointmentStorePort appointmentStore,
             AppointmentSchedulingPort scheduling,
+            TenantServiceCatalogPort tenantServiceCatalog,
             CrmCustomerQueryPort crmCustomerQuery,
             ApplicationEventPublisher eventPublisher) {
+        this(
+                appointmentQuery,
+                appointmentStore,
+                scheduling,
+                tenantServiceCatalog,
+                crmCustomerQuery,
+                eventPublisher,
+                null,
+                null);
+    }
+
+    public AppointmentService(
+            TenantAppointmentQueryPort appointmentQuery,
+            TenantAppointmentStorePort appointmentStore,
+            AppointmentSchedulingPort scheduling,
+            TenantServiceCatalogPort tenantServiceCatalog,
+            CrmCustomerQueryPort crmCustomerQuery,
+            ApplicationEventPublisher eventPublisher,
+            TenantConfigurationStorePort tenantConfigurationStore,
+            PlanLimitPolicyPort planLimitPolicy) {
         this.appointmentQuery = appointmentQuery;
         this.appointmentStore = appointmentStore;
         this.scheduling = scheduling;
+        this.tenantServiceCatalog = tenantServiceCatalog;
         this.crmCustomerQuery = crmCustomerQuery;
         this.eventPublisher = eventPublisher;
+        this.tenantConfigurationStore = tenantConfigurationStore;
+        this.planLimitPolicy = planLimitPolicy;
     }
 
     /**
@@ -110,9 +147,22 @@ public class AppointmentService {
             String serviceName,
             String conversationId,
             ZoneId calendarZone) {
+        Optional<CreateAppointmentResult> limitFailure =
+                validateMonthlyPlanLimit(tenantId, isoDate, calendarZone);
+        if (limitFailure.isPresent()) {
+            return limitFailure.get();
+        }
         var result =
+                tenantServiceCatalog
+                        .findServiceIdByName(tenantId, serviceName)
+                        .map(
+                                serviceId ->
                 scheduling.createAppointment(
-                        tenantId, isoDate, localTime, clientName, serviceName, conversationId);
+                        tenantId, isoDate, localTime, clientName, serviceId, serviceName, conversationId))
+                        .orElseGet(
+                                () ->
+                                        CreateAppointmentResult.failure(
+                                                buildUnsupportedServiceMessage(tenantId, serviceName)));
         if (result.isSuccess() && result.appointmentDatabaseId() != null) {
             try {
                 appointmentStore.markConfirmationNotificationPending(result.appointmentDatabaseId());
@@ -157,6 +207,46 @@ public class AppointmentService {
         return result;
     }
 
+    private Optional<CreateAppointmentResult> validateMonthlyPlanLimit(
+            TenantId tenantId, String isoDate, ZoneId calendarZone) {
+        if (tenantConfigurationStore == null || planLimitPolicy == null) {
+            return Optional.empty();
+        }
+        ProfileLevel level =
+                tenantConfigurationStore
+                        .findByTenantId(tenantId)
+                        .map(c -> c.profileLevel())
+                        .orElse(ProfileLevel.BASIC);
+        Optional<Integer> maxOpt = planLimitPolicy.maxAppointmentsPerMonth(level);
+        if (maxOpt.isEmpty()) {
+            return Optional.empty();
+        }
+        int max = maxOpt.get();
+        if (max <= 0) {
+            return Optional.empty();
+        }
+        ZoneId zone = calendarZone != null ? calendarZone : ZoneId.systemDefault();
+        LocalDate day;
+        try {
+            day = LocalDate.parse(isoDate.strip(), DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (RuntimeException e) {
+            return Optional.empty();
+        }
+        LocalDate monthStart = day.withDayOfMonth(1);
+        Instant from = monthStart.atStartOfDay(zone).toInstant();
+        Instant to = monthStart.plusMonths(1).atStartOfDay(zone).toInstant();
+        long current = appointmentQuery.countStartsInRange(tenantId, from, to);
+        if (current < max) {
+            return Optional.empty();
+        }
+        return Optional.of(
+                CreateAppointmentResult.failure(
+                        "Este plano atingiu o limite mensal de agendamentos ("
+                                + max
+                                + "/mês). "
+                                + "Para continuar com novos agendamentos, faça upgrade do plano."));
+    }
+
     public String createAppointment(
             TenantId tenantId,
             String isoDate,
@@ -168,6 +258,139 @@ public class AppointmentService {
         return createAppointmentWithResult(
                         tenantId, isoDate, localTime, clientName, serviceName, conversationId, calendarZone)
                 .message();
+    }
+
+    /**
+     * Nome do serviço do agendamento activo identificado por id (reagendamentos: usar o mesmo serviço do compromisso a
+     * substituir).
+     */
+    public Optional<String> findServiceNameForActiveAppointment(
+            TenantId tenantId, long appointmentId, String conversationId, ZoneId calendarZone) {
+        if (calendarZone == null || conversationId == null || conversationId.isBlank()) {
+            return Optional.empty();
+        }
+        return appointmentQuery
+                .findByIdForTenantAndConversation(
+                        tenantId, appointmentId, conversationId, calendarZone.getId())
+                .map(TenantAppointmentListItem::serviceName)
+                .filter(s -> s != null && !s.isBlank())
+                .map(String::strip);
+    }
+
+    public String listTenantServicesForScheduling(TenantId tenantId) {
+        List<String> available = tenantServiceCatalog.listActiveServiceNames(tenantId);
+        if (available.isEmpty()) {
+            return "No momento, não há serviços cadastrados para agendamento deste atendimento.";
+        }
+        return "Serviços disponíveis para agendamento:\n" + serviceChoicesWithOptionMapBlock(available);
+    }
+
+    /**
+     * Indica se o nome corresponde a um serviço activo do tenant (match exacto alinhado a {@code tenant_services}).
+     */
+    public boolean isServiceInTenantCatalog(TenantId tenantId, String serviceName) {
+        if (serviceName == null || serviceName.isBlank()) {
+            return false;
+        }
+        return tenantServiceCatalog.findServiceIdByName(tenantId, serviceName.strip()).isPresent();
+    }
+
+    /**
+     * Tenta identificar um serviço do catálogo citado num texto livre do utilizador/modelo.
+     * Preferência por nomes mais longos para evitar colisões parciais.
+     */
+    public Optional<String> resolveCatalogServiceMentionFromText(TenantId tenantId, String freeText) {
+        if (freeText == null || freeText.isBlank()) {
+            return Optional.empty();
+        }
+        String normalizedText = normalizeForServiceMatch(freeText);
+        if (normalizedText.isBlank()) {
+            return Optional.empty();
+        }
+        List<String> services = tenantServiceCatalog.listActiveServiceNames(tenantId);
+        String best = null;
+        int bestLen = -1;
+        for (String service : services) {
+            if (service == null || service.isBlank()) {
+                continue;
+            }
+            String normalizedService = normalizeForServiceMatch(service);
+            if (normalizedService.isBlank()) {
+                continue;
+            }
+            if (containsWordSequence(normalizedText, normalizedService) && normalizedService.length() > bestLen) {
+                best = service.strip();
+                bestLen = normalizedService.length();
+            }
+        }
+        return Optional.ofNullable(best);
+    }
+
+    /**
+     * Mensagem quando o serviço pedido não existe no catálogo, listando as opções válidas.
+     */
+    public String buildUnknownServiceReplyWithOptions(TenantId tenantId, String requestedService) {
+        return buildUnsupportedServiceMessage(tenantId, requestedService);
+    }
+
+    private String buildUnsupportedServiceMessage(TenantId tenantId, String requestedService) {
+        String service = requestedService == null ? "" : requestedService.strip();
+        if (!service.isEmpty()) {
+            service = SchedulingExplicitTimeShortcut.sanitizeServiceHintAfterStrip(service);
+        }
+        List<String> available = tenantServiceCatalog.listActiveServiceNames(tenantId);
+        if (available.isEmpty()) {
+            return "O serviço mencionado não é atendido no momento. Ainda não há serviços cadastrados para este atendimento.";
+        }
+        String block = serviceChoicesWithOptionMapBlock(available);
+        if (service.isEmpty()) {
+            return "O serviço mencionado não é atendido. Estes são os serviços disponíveis:\n" + block;
+        }
+        return "O serviço \""
+                + service
+                + "\" não é atendido. Estes são os serviços disponíveis:\n"
+                + block;
+    }
+
+    /**
+     * Mesmo padrão em {@link #listTenantServicesForScheduling} e respostas de “serviço inválido”: lista numerada,
+     * instrução e {@code [service_option_map:…]} para o normalizador / backend mapear a escolha do cliente.
+     */
+    private static String serviceChoicesWithOptionMapBlock(List<String> available) {
+        return formatAvailableServicesForReply(available)
+                + "\n\n"
+                + "[service_option_map:"
+                + buildServiceOptionMapAppendix(available)
+                + "]";
+    }
+
+    private static String formatAvailableServicesForReply(List<String> available) {
+        StringBuilder optionsBuilder = new StringBuilder();
+        int max = Math.min(MAX_SERVICES_IN_REPLY, available.size());
+        for (int i = 0; i < max; i++) {
+            if (optionsBuilder.length() > 0) {
+                optionsBuilder.append('\n');
+            }
+            optionsBuilder.append(i + 1).append(") ").append(available.get(i));
+        }
+        String options = optionsBuilder.toString();
+        if (available.size() <= MAX_SERVICES_IN_REPLY) {
+            return options + "\n\nResponda com o número do serviço desejado (ex.: 1).";
+        }
+        return options + "\n- ... e outros serviços cadastrados" + "\n\nResponda com o número do serviço desejado (ex.: 1).";
+    }
+
+    private static String buildServiceOptionMapAppendix(List<String> available) {
+        StringBuilder sb = new StringBuilder();
+        int max = Math.min(MAX_SERVICES_IN_REPLY, available.size());
+        for (int i = 0; i < max; i++) {
+            if (sb.length() > 0) {
+                sb.append("|");
+            }
+            String safeName = available.get(i).replace("|", "/").replace("]", ")");
+            sb.append(i + 1).append("=").append(safeName);
+        }
+        return sb.toString();
     }
 
     private static LocalTime parseAppointmentLocalTime(String localTimeRaw) {
@@ -184,6 +407,21 @@ public class AppointmentService {
                 return LocalTime.MIDNIGHT;
             }
         }
+    }
+
+    private static String normalizeForServiceMatch(String value) {
+        String s = Normalizer.normalize(value, Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
+        s = s.toLowerCase(Locale.ROOT);
+        s = s.replaceAll("[^a-z0-9\\s]", " ");
+        s = s.replaceAll("\\s+", " ").strip();
+        return s;
+    }
+
+    private static boolean containsWordSequence(String text, String sequence) {
+        if (text.isBlank() || sequence.isBlank()) {
+            return false;
+        }
+        return (" " + text + " ").contains(" " + sequence + " ");
     }
 
     /**
@@ -211,6 +449,14 @@ public class AppointmentService {
      * @return texto para o modelo, com instrução de listar vários itens se houver mais de um
      */
     public String getActiveAppointments(TenantId tenantId, String conversationId, ZoneId calendarZone) {
+        return getActiveAppointments(tenantId, conversationId, calendarZone, false);
+    }
+
+    /**
+     * Lista agendamentos activos com rodapé contextual para cancelamento ou reagendamento.
+     */
+    public String getActiveAppointments(
+            TenantId tenantId, String conversationId, ZoneId calendarZone, boolean forReschedule) {
         if (conversationId == null || conversationId.isBlank()) {
             return LIST_INVALID_SESSION_FRIENDLY_MESSAGE;
         }
@@ -226,7 +472,11 @@ public class AppointmentService {
         StringBuilder sb = new StringBuilder();
         sb.append("*Agendamentos*").append("\n\n");
         if (rows.size() > 1) {
-            sb.append("Quais dos atendimentos abaixo gostaria de cancelar?").append("\n\n");
+            sb.append(
+                            forReschedule
+                                    ? "Qual dos atendimentos abaixo você deseja reagendar?"
+                                    : "Quais dos atendimentos abaixo gostaria de cancelar?")
+                    .append("\n\n");
         } else {
             sb.append("Segue o seu agendamento ativo:").append("\n\n");
         }
@@ -242,7 +492,12 @@ public class AppointmentService {
                     .append(when)
                     .append("\n");
         }
-        sb.append("\n").append(LIST_APPOINTMENTS_CANCEL_HINT_FOOTER_PT).append("\n");
+        sb.append("\n")
+                .append(
+                        forReschedule
+                                ? LIST_APPOINTMENTS_RESCHEDULE_HINT_FOOTER_PT
+                                : LIST_APPOINTMENTS_CANCEL_HINT_FOOTER_PT)
+                .append("\n");
         sb.append(CancelOptionMap.buildAppendix(optionToAppointmentId));
         return sb.toString();
     }

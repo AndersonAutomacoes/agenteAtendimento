@@ -41,7 +41,7 @@ class TenantSettingsServiceTest {
 
         tenantSettingsService.updateTenantSettings(
                 tenantId,
-                new TenantSettingsUpdateCommand("hello", WhatsAppProviderType.META, "k", "i", "https://evol", null));
+                TenantSettingsUpdateCommand.ofLegacy("hello", WhatsAppProviderType.META, "k", "i", "https://evol", null));
 
         ArgumentCaptor<TenantConfiguration> cap = ArgumentCaptor.forClass(TenantConfiguration.class);
         verify(tenantConfigurationStore).upsert(cap.capture());
@@ -66,11 +66,21 @@ class TenantSettingsServiceTest {
                         "http://b",
                         ProfileLevel.BASIC,
                         null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        30,
+                        true,
+                        null,
+                        null,
                         null);
         when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.of(existing));
 
         tenantSettingsService.updateTenantSettings(
-                tenantId, new TenantSettingsUpdateCommand("new persona", null, null, null, null, null));
+                tenantId, TenantSettingsUpdateCommand.ofLegacy("new persona", null, null, null, null, null));
 
         ArgumentCaptor<TenantConfiguration> cap = ArgumentCaptor.forClass(TenantConfiguration.class);
         verify(tenantConfigurationStore).upsert(cap.capture());
@@ -86,11 +96,29 @@ class TenantSettingsServiceTest {
     void string_vazia_limpa_campo_opcional() {
         TenantConfiguration existing =
                 new TenantConfiguration(
-                        tenantId, "p", WhatsAppProviderType.META, "k", "i", "u", ProfileLevel.BASIC, null, null);
+                        tenantId,
+                        "p",
+                        WhatsAppProviderType.META,
+                        "k",
+                        "i",
+                        "u",
+                        ProfileLevel.BASIC,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        30,
+                        true,
+                        null,
+                        null,
+                        null);
         when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.of(existing));
 
         tenantSettingsService.updateTenantSettings(
-                tenantId, new TenantSettingsUpdateCommand("p", null, "", "  ", "\t", null));
+                tenantId, TenantSettingsUpdateCommand.ofLegacy("p", null, "", "  ", "\t", null));
 
         ArgumentCaptor<TenantConfiguration> cap = ArgumentCaptor.forClass(TenantConfiguration.class);
         verify(tenantConfigurationStore).upsert(cap.capture());
@@ -104,11 +132,29 @@ class TenantSettingsServiceTest {
     void merge_altera_apenas_provider_quando_informado() {
         TenantConfiguration existing =
                 new TenantConfiguration(
-                        tenantId, "p", WhatsAppProviderType.SIMULATED, null, null, null, ProfileLevel.BASIC, null, null);
+                        tenantId,
+                        "p",
+                        WhatsAppProviderType.SIMULATED,
+                        null,
+                        null,
+                        null,
+                        ProfileLevel.BASIC,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        30,
+                        true,
+                        null,
+                        null,
+                        null);
         when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.of(existing));
 
         tenantSettingsService.updateTenantSettings(
-                tenantId, new TenantSettingsUpdateCommand("p", WhatsAppProviderType.META, null, null, null, null));
+                tenantId, TenantSettingsUpdateCommand.ofLegacy("p", WhatsAppProviderType.META, null, null, null, null));
 
         ArgumentCaptor<TenantConfiguration> cap = ArgumentCaptor.forClass(TenantConfiguration.class);
         verify(tenantConfigurationStore).upsert(cap.capture());
@@ -127,11 +173,21 @@ class TenantSettingsServiceTest {
                         null,
                         ProfileLevel.PRO,
                         "{bcrypt}x",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        30,
+                        true,
+                        null,
+                        null,
                         null);
         when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.of(existing));
 
         tenantSettingsService.updateTenantSettings(
-                tenantId, new TenantSettingsUpdateCommand("newp", WhatsAppProviderType.META, "k", "i", "http://x", null));
+                tenantId, TenantSettingsUpdateCommand.ofLegacy("newp", WhatsAppProviderType.META, "k", "i", "http://x", null));
 
         ArgumentCaptor<TenantConfiguration> cap = ArgumentCaptor.forClass(TenantConfiguration.class);
         verify(tenantConfigurationStore).upsert(cap.capture());

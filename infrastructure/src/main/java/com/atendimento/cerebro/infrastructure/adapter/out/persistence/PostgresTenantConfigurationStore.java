@@ -30,7 +30,10 @@ public class PostgresTenantConfigurationStore implements TenantConfigurationStor
                         """
                         SELECT system_prompt, whatsapp_provider_type, whatsapp_api_key,
                                whatsapp_instance_id, whatsapp_base_url,
-                               profile_level, portal_password_hash, google_calendar_id
+                               profile_level, portal_password_hash, google_calendar_id,
+                               establishment_name, business_address, opening_hours, business_contacts, business_facilities,
+                               default_appointment_minutes, billing_compliant,
+                               calendar_access_notes, google_spreadsheet_url, whatsapp_business_number
                         FROM tenant_configuration WHERE tenant_id = ?
                         """)
                 .param(tid)
@@ -47,6 +50,10 @@ public class PostgresTenantConfigurationStore implements TenantConfigurationStor
             throw new IllegalStateException("whatsapp_provider_type inválido na base: " + typeStr, e);
         }
         ProfileLevel profileLevel = parseProfileLevel(rs.getString("profile_level"));
+        int slotMin = rs.getInt("default_appointment_minutes");
+        if (rs.wasNull() || slotMin <= 0) {
+            slotMin = 30;
+        }
         return new TenantConfiguration(
                 tenantId,
                 rs.getString("system_prompt"),
@@ -56,7 +63,17 @@ public class PostgresTenantConfigurationStore implements TenantConfigurationStor
                 rs.getString("whatsapp_base_url"),
                 profileLevel,
                 rs.getString("portal_password_hash"),
-                rs.getString("google_calendar_id"));
+                rs.getString("google_calendar_id"),
+                rs.getString("establishment_name"),
+                rs.getString("business_address"),
+                rs.getString("opening_hours"),
+                rs.getString("business_contacts"),
+                rs.getString("business_facilities"),
+                slotMin,
+                rs.getBoolean("billing_compliant"),
+                rs.getString("calendar_access_notes"),
+                rs.getString("google_spreadsheet_url"),
+                rs.getString("whatsapp_business_number"));
     }
 
     private static ProfileLevel parseProfileLevel(String raw) {
@@ -79,8 +96,11 @@ public class PostgresTenantConfigurationStore implements TenantConfigurationStor
                         INSERT INTO tenant_configuration (
                             tenant_id, system_prompt, whatsapp_provider_type,
                             whatsapp_api_key, whatsapp_instance_id, whatsapp_base_url,
-                            profile_level, portal_password_hash, google_calendar_id)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            profile_level, portal_password_hash, google_calendar_id,
+                            establishment_name, business_address, opening_hours, business_contacts, business_facilities,
+                            default_appointment_minutes, billing_compliant,
+                            calendar_access_notes, google_spreadsheet_url, whatsapp_business_number)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT (tenant_id) DO UPDATE SET
                             system_prompt = EXCLUDED.system_prompt,
                             whatsapp_provider_type = EXCLUDED.whatsapp_provider_type,
@@ -89,7 +109,17 @@ public class PostgresTenantConfigurationStore implements TenantConfigurationStor
                             whatsapp_base_url = EXCLUDED.whatsapp_base_url,
                             profile_level = EXCLUDED.profile_level,
                             portal_password_hash = EXCLUDED.portal_password_hash,
-                            google_calendar_id = EXCLUDED.google_calendar_id
+                            google_calendar_id = EXCLUDED.google_calendar_id,
+                            establishment_name = EXCLUDED.establishment_name,
+                            business_address = EXCLUDED.business_address,
+                            opening_hours = EXCLUDED.opening_hours,
+                            business_contacts = EXCLUDED.business_contacts,
+                            business_facilities = EXCLUDED.business_facilities,
+                            default_appointment_minutes = EXCLUDED.default_appointment_minutes,
+                            billing_compliant = EXCLUDED.billing_compliant,
+                            calendar_access_notes = EXCLUDED.calendar_access_notes,
+                            google_spreadsheet_url = EXCLUDED.google_spreadsheet_url,
+                            whatsapp_business_number = EXCLUDED.whatsapp_business_number
                         """)
                 .param(configuration.tenantId().value())
                 .param(configuration.systemPrompt())
@@ -100,6 +130,16 @@ public class PostgresTenantConfigurationStore implements TenantConfigurationStor
                 .param(configuration.profileLevel().name())
                 .param(configuration.portalPasswordHash())
                 .param(configuration.googleCalendarId())
+                .param(configuration.establishmentName())
+                .param(configuration.businessAddress())
+                .param(configuration.openingHours())
+                .param(configuration.businessContacts())
+                .param(configuration.businessFacilities())
+                .param(configuration.defaultAppointmentMinutes())
+                .param(configuration.billingCompliant())
+                .param(configuration.calendarAccessNotes())
+                .param(configuration.spreadsheetUrl())
+                .param(configuration.whatsappBusinessNumber())
                 .update();
     }
 }

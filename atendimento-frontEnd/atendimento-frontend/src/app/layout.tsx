@@ -1,6 +1,11 @@
 import type { ReactNode } from "react";
+import "./globals.css";
 
-/** Raiz sem `<html>`: o segmento `[locale]` fornece documento e idioma. */
+/** Root layout must provide the document shell. */
 export default function RootLayout({ children }: { children: ReactNode }) {
-  return children;
+  return (
+    <html lang="pt-BR" suppressHydrationWarning>
+      <body>{children}</body>
+    </html>
+  );
 }

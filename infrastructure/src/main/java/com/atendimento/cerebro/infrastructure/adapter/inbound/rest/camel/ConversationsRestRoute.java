@@ -101,16 +101,11 @@ public class ConversationsRestRoute extends RouteBuilder {
     }
 
     private static String requireTenantId(Exchange exchange) {
-        String tenantId = exchange.getMessage().getHeader("tenantId", String.class);
-        if (tenantId == null || tenantId.isBlank()) {
-            tenantId = parseQueryParam(exchange.getMessage().getHeader(Exchange.HTTP_QUERY, String.class), "tenantId");
+        String requested = exchange.getMessage().getHeader("tenantId", String.class);
+        if (requested == null || requested.isBlank()) {
+            requested = parseQueryParam(exchange.getMessage().getHeader(Exchange.HTTP_QUERY, String.class), "tenantId");
         }
-        if (tenantId == null || tenantId.isBlank()) {
-            exchange.getIn().setBody(new IngestErrorResponse("tenantId é obrigatório"));
-            exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
-            return null;
-        }
-        return tenantId.strip();
+        return CamelAuthSupport.authorizedTenantOrAbort(exchange, requested);
     }
 
     private static String parseQueryParam(String query, String name) {

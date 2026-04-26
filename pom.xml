@@ -16,7 +16,7 @@
     <version>0.1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>cerebro</name>
-    <description>Cérebro multi-tenant — arquitetura hexagonal</description>
+    <description>AxeZap multi-tenant — arquitetura hexagonal</description>
 
     <modules>
         <module>domain</module>

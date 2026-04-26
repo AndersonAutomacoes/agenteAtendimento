@@ -61,6 +61,7 @@ class SchedulingAppointmentFallbackTest {
                             String isoDate,
                             String localTime,
                             String clientName,
+                            Long serviceId,
                             String serviceName,
                             String conversationId) {
                         throw new AssertionError("persistência fallback desactivada");
@@ -101,6 +102,7 @@ class SchedulingAppointmentFallbackTest {
                             String isoDate,
                             String localTime,
                             String clientName,
+                            Long serviceId,
                             String serviceName,
                             String conversationId) {
                         throw new AssertionError("should not call");

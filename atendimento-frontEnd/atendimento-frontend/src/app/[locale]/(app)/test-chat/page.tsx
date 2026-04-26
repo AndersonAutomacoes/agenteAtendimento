@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toBcp47ForDates } from "@/lib/intl-locale";
-import { cn } from "@/lib/utils";
 import { randomUuid } from "@/lib/random-uuid";
 import { postChat, toUserFacingApiError } from "@/services/apiService";
 
@@ -134,19 +133,6 @@ export default function TestChatPage() {
         <p className="text-muted-foreground">{t("subtitle")}</p>
         <p className="mt-1 font-mono text-[11px] text-muted-foreground">
           {t("sessionId")} {sessionId || "—"}
-        </p>
-      </div>
-
-      <div className="space-y-1">
-        <Label className="text-muted-foreground">{t("accountId")}</Label>
-        <p
-          className={cn(
-            "min-h-9 font-mono text-base font-semibold tracking-tight text-foreground sm:text-lg",
-            !tenantId.trim() && "font-normal text-muted-foreground",
-          )}
-          aria-label={t("accountId")}
-        >
-          {tenantId.trim() || "—"}
         </p>
       </div>
 

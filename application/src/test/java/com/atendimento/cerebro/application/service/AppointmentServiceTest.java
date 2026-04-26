@@ -12,6 +12,7 @@ import com.atendimento.cerebro.application.dto.TenantAppointmentListItem;
 import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
 import com.atendimento.cerebro.application.port.out.CrmCustomerQueryPort;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentQueryPort;
+import com.atendimento.cerebro.application.port.out.TenantServiceCatalogPort;
 import com.atendimento.cerebro.application.event.AppointmentCancelledEvent;
 import com.atendimento.cerebro.application.event.AppointmentConfirmedEvent;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentStorePort;
@@ -42,6 +43,7 @@ class AppointmentServiceTest {
     private TenantAppointmentStorePort store;
     private AppointmentSchedulingPort scheduling;
     private CrmCustomerQueryPort crm;
+    private TenantServiceCatalogPort tenantServiceCatalog;
     private ApplicationEventPublisher eventPublisher;
     private AppointmentService service;
 
@@ -51,8 +53,10 @@ class AppointmentServiceTest {
         store = Mockito.mock(TenantAppointmentStorePort.class);
         scheduling = Mockito.mock(AppointmentSchedulingPort.class);
         crm = Mockito.mock(CrmCustomerQueryPort.class);
+        tenantServiceCatalog = Mockito.mock(TenantServiceCatalogPort.class);
         eventPublisher = Mockito.mock(ApplicationEventPublisher.class);
-        service = new AppointmentService(query, store, scheduling, crm, eventPublisher);
+        service = new AppointmentService(query, store, scheduling, tenantServiceCatalog, crm, eventPublisher);
+        when(tenantServiceCatalog.findServiceIdByName(any(), any())).thenReturn(Optional.of(1L));
         when(scheduling.deleteCalendarEvent(any(), any())).thenReturn(true);
         when(store.markCancelled(any(Long.class), any(Instant.class))).thenReturn(true);
     }
@@ -219,6 +223,7 @@ class AppointmentServiceTest {
                         eq("2026-06-10"),
                         eq("14:00"),
                         eq("Nome"),
+                        eq(1L),
                         eq("Serviço"),
                         eq("wa-5511999000000")))
                 .thenReturn(
@@ -243,7 +248,7 @@ class AppointmentServiceTest {
 
     @Test
     void createAppointment_onSchedulingFailure_doesNotPublish() {
-        when(scheduling.createAppointment(any(), any(), any(), any(), any(), any()))
+        when(scheduling.createAppointment(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(CreateAppointmentResult.failure("O calendário ainda não está ligado"));
 
         String out = service.createAppointment(TID, "2026-06-10", "14:00", "N", "S", "wa-5511", ZONE);
@@ -254,8 +259,60 @@ class AppointmentServiceTest {
     }
 
     @Test
+    void createAppointment_whenServiceIsNotFromTenant_returnsUnsupportedWithAvailableOptions() {
+        when(tenantServiceCatalog.findServiceIdByName(eq(TID), eq("Funilaria")))
+                .thenReturn(Optional.empty());
+        when(tenantServiceCatalog.listActiveServiceNames(eq(TID)))
+                .thenReturn(List.of("Alinhamento", "Troca de óleo", "Balanceamento"));
+
+        String out =
+                service.createAppointment(
+                        TID, "2026-06-10", "14:00", "Nome", "Funilaria", "wa-5511999000000", ZONE);
+
+        assertThat(out)
+                .contains("não é atendido")
+                .contains("Funilaria")
+                .contains("Alinhamento")
+                .contains("Troca de óleo")
+                .contains("Balanceamento")
+                .contains("[service_option_map:1=Alinhamento|2=Troca de óleo|3=Balanceamento]");
+        verify(scheduling, never()).createAppointment(any(), any(), any(), any(), any(), any(), any());
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void listTenantServicesForScheduling_returnsCatalogOptions() {
+        when(tenantServiceCatalog.listActiveServiceNames(eq(TID)))
+                .thenReturn(List.of("Alinhamento", "Troca de óleo"));
+
+        String out = service.listTenantServicesForScheduling(TID);
+
+        assertThat(out)
+                .contains("Serviços disponíveis")
+                .contains("1) Alinhamento")
+                .contains("2) Troca de óleo")
+                .contains("Responda com o número")
+                .contains("[service_option_map:1=Alinhamento|2=Troca de óleo]");
+    }
+
+    @Test
+    void buildUnknownServiceReplyWithOptions_usesSameOptionMapAsListing() {
+        when(tenantServiceCatalog.listActiveServiceNames(eq(TID)))
+                .thenReturn(List.of("Alinhamento", "Troca de óleo"));
+
+        String out = service.buildUnknownServiceReplyWithOptions(TID, "Lavagem");
+
+        assertThat(out)
+                .contains("\"Lavagem\"")
+                .contains("não é atendido")
+                .contains("1) Alinhamento")
+                .contains("Responda com o número")
+                .contains("[service_option_map:1=Alinhamento|2=Troca de óleo]");
+    }
+
+    @Test
     void createAppointment_publishException_stillReturnsSchedulingResult() {
-        when(scheduling.createAppointment(any(), any(), any(), any(), any(), any()))
+        when(scheduling.createAppointment(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(
                         CreateAppointmentResult.success(
                                 "Agendamento confirmado para 10/06/2026 às 14:00. O horário foi registado na agenda da oficina.",
@@ -318,7 +375,7 @@ class AppointmentServiceTest {
                         eq(TID), eq("wa-5511"), eq(LocalDate.of(2026, 4, 24)), eq(ZONE_STR)))
                 .thenReturn(Optional.of(row));
 
-        String msg = "Gostaria de reagendar o atendimento amanhã das 11:00 para as 12:00";
+        String msg = "Gostaria de reagendar o serviço do dia 24/04/2026 11:00 para as 12:00";
         assertThat(service.resolveActiveAppointmentIdForReschedule(TID, "wa-5511", ZONE, msg))
                 .hasValue(77L);
     }
@@ -334,7 +391,7 @@ class AppointmentServiceTest {
                         eq(TID), eq("wa-5511"), eq(LocalDate.of(2026, 4, 24)), eq(ZONE_STR)))
                 .thenReturn(Optional.of(row));
 
-        String msg = "Gostaria de reagendar o atendimento amanhã das 11:00 para as 12:00";
+        String msg = "Gostaria de reagendar o serviço do dia 24/04/2026 11:00 para as 12:00";
         assertThat(service.resolveActiveAppointmentIdForReschedule(TID, "wa-5511", ZONE, msg))
                 .hasValue(88L);
     }

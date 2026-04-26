@@ -101,6 +101,7 @@ public class MockAppointmentSchedulingService implements AppointmentSchedulingPo
             String isoDate,
             String localTime,
             String clientName,
+            Long serviceId,
             String serviceName,
             String conversationId) {
         Optional<String> calId = resolveCalendarId(tenantId);
@@ -139,7 +140,7 @@ public class MockAppointmentSchedulingService implements AppointmentSchedulingPo
         String conv = conversationId == null || conversationId.isBlank() ? null : conversationId.strip();
         TenantAppointmentRecord record =
                 new TenantAppointmentRecord(
-                        tenantId, conv, clientName.strip(), serviceName.strip(), start, end, eventId);
+                        tenantId, conv, clientName.strip(), serviceId, serviceName.strip(), start, end, eventId);
         Optional<Long> rowIdOpt = appointmentTx.insertIfNoDbOverlap(tenantId, start, end, record);
         if (rowIdOpt.isEmpty()) {
             LOG.warn(

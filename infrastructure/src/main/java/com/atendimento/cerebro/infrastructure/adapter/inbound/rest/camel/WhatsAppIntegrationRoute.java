@@ -3,9 +3,11 @@ package com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel;
 import com.atendimento.cerebro.application.ai.AiChatProvider;
 import com.atendimento.cerebro.application.dto.ChatCommand;
 import com.atendimento.cerebro.application.dto.ChatResult;
+import com.atendimento.cerebro.application.port.out.AudioTranscriptionPort;
 import com.atendimento.cerebro.application.port.in.ChatUseCase;
 import com.atendimento.cerebro.application.port.out.ChatMessageRepository;
 import com.atendimento.cerebro.application.port.out.CrmCustomerStorePort;
+import com.atendimento.cerebro.application.port.out.ConversationContextStorePort;
 import com.atendimento.cerebro.application.port.out.ConversationBotStatePort;
 import com.atendimento.cerebro.application.port.out.InboundWhatsAppDeduperPort;
 import com.atendimento.cerebro.application.port.out.IntentDetectionPort;
@@ -80,11 +82,13 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
     private static final String WHATSAPP_WEBHOOK_SEDA = "seda:whatsappWebhookIn?concurrentConsumers=1&size=2000";
 
     private final ChatUseCase chatUseCase;
+    private final AudioTranscriptionPort audioTranscriptionPort;
     private final WhatsAppTenantLookupPort tenantLookup;
     private final WhatsAppWebhookParser webhookParser;
     private final WhatsAppOutboundPort whatsAppOutboundPort;
     private final InboundWhatsAppDeduperPort inboundWhatsAppDeduper;
     private final ChatMessageRepository chatMessageRepository;
+    private final ConversationContextStorePort conversationContextStore;
     private final CrmCustomerStorePort crmCustomerStore;
     private final ConversationBotStatePort conversationBotStatePort;
     private final IntentDetectionPort intentDetectionPort;
@@ -96,11 +100,13 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
 
     public WhatsAppIntegrationRoute(
             ChatUseCase chatUseCase,
+            AudioTranscriptionPort audioTranscriptionPort,
             WhatsAppTenantLookupPort tenantLookup,
             WhatsAppWebhookParser webhookParser,
             WhatsAppOutboundPort whatsAppOutboundPort,
             InboundWhatsAppDeduperPort inboundWhatsAppDeduper,
             ChatMessageRepository chatMessageRepository,
+            ConversationContextStorePort conversationContextStore,
             CrmCustomerStorePort crmCustomerStore,
             ConversationBotStatePort conversationBotStatePort,
             LeadScoringService leadScoringService,
@@ -110,11 +116,13 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
             ObjectMapper objectMapper,
             @Value("${chat.circuit.timeout-ms:15000}") int circuitTimeoutMs) {
         this.chatUseCase = chatUseCase;
+        this.audioTranscriptionPort = audioTranscriptionPort;
         this.tenantLookup = tenantLookup;
         this.webhookParser = webhookParser;
         this.whatsAppOutboundPort = whatsAppOutboundPort;
         this.inboundWhatsAppDeduper = inboundWhatsAppDeduper;
         this.chatMessageRepository = chatMessageRepository;
+        this.conversationContextStore = conversationContextStore;
         this.crmCustomerStore = crmCustomerStore;
         this.conversationBotStatePort = conversationBotStatePort;
         this.leadScoringService = leadScoringService;
@@ -232,6 +240,70 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
             exchange.getIn().setBody(tm);
             return;
         }
+        if (parsed instanceof WhatsAppWebhookParser.Incoming.AudioMessage am) {
+            String digits = onlyDigits(am.fromRaw());
+            if (digits.isEmpty()) {
+                exchange.setProperty(PROP_DECISION, DECISION_BAD_REQUEST);
+                exchange.getIn().setBody(new IngestErrorResponse("número do remetente inválido"));
+                exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
+                return;
+            }
+            var tenant = tenantLookup.findTenantIdByWhatsAppNumber(digits);
+            if (tenant.isEmpty()
+                    && am.evolutionLineDigits() != null
+                    && !am.evolutionLineDigits().isBlank()) {
+                tenant = tenantLookup.findTenantIdByWhatsAppNumber(am.evolutionLineDigits());
+            }
+            if (tenant.isEmpty()) {
+                exchange.setProperty(PROP_DECISION, DECISION_NOT_FOUND);
+                exchange.getIn().setBody(new IngestErrorResponse("número WhatsApp sem tenant associado"));
+                exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.NOT_FOUND.value());
+                return;
+            }
+            if (am.providerMessageId() != null && !am.providerMessageId().isBlank()) {
+                if (!inboundWhatsAppDeduper.tryClaimInboundMessage(
+                        tenant.get().value(), am.providerMessageId().strip())) {
+                    exchange.setProperty(PROP_DECISION, DECISION_IGNORE);
+                    exchange.getIn().setBody(new WhatsAppWebhookResponse("ignored"));
+                    exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.OK.value());
+                    return;
+                }
+            }
+            exchange.setProperty(PROP_PHONE_RAW, am.fromRaw());
+            exchange.setProperty(PROP_TENANT_ID, tenant.get().value());
+            if (!conversationBotStatePort.isBotEnabled(tenant.get(), am.fromRaw())) {
+                exchange.getIn().setBody(new WhatsAppWebhookResponse("human_handoff"));
+                exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.OK.value());
+                return;
+            }
+            whatsAppOutboundPort.sendMessage(tenant.get(), am.fromRaw(), "Processando seu áudio...");
+            Optional<String> transcript =
+                    audioTranscriptionPort
+                            .transcribe(tenant.get(), am.mediaUrl(), am.mimeType(), am.providerMessageId())
+                            .map(t -> t.text() != null ? t.text().strip() : "")
+                            .filter(t -> !t.isBlank());
+            if (transcript.isEmpty() || transcript.get().length() < 3) {
+                whatsAppOutboundPort.sendMessage(
+                        tenant.get(),
+                        am.fromRaw(),
+                        "Não consegui processar seu áudio, poderia digitar ou enviar novamente?");
+                exchange.setProperty(PROP_DECISION, DECISION_IGNORE);
+                exchange.getIn().setBody(new WhatsAppWebhookResponse("processed"));
+                exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.OK.value());
+                return;
+            }
+            var tm = new WhatsAppWebhookParser.Incoming.TextMessage(
+                    am.fromRaw(),
+                    transcript.get(),
+                    am.evolutionLineDigits(),
+                    am.providerMessageId(),
+                    am.contactDisplayName(),
+                    am.contactProfilePicUrl());
+            persistInboundUserMessage(tenant.get(), tm);
+            exchange.setProperty(PROP_DECISION, DECISION_CHAT);
+            exchange.getIn().setBody(tm);
+            return;
+        }
         throw new IllegalStateException("Unexpected WhatsApp parse result: " + parsed);
     }
 
@@ -301,14 +373,56 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
     }
 
     /**
-     * Lê as últimas mensagens em {@code chat_message} (limite temporal + contagem), em ordem cronológica
-     * crescente, excluindo o turno USER recém-persistido que corresponde à mensagem actual.
+     * Histórico enviado ao {@link com.atendimento.cerebro.application.service.ChatService} quando
+     * {@code conversation_message} ainda não foi carregado: usa o mesmo ficheiro que o ChatService grava, com
+     * apêndices ({@code [service_option_map:…]}) — necessário para mapear «3» após a lista de serviços. Se vazio, usa
+     * {@code chat_message} (só texto visível ao cliente, sem apêndices) como retorno.
      */
     private List<Message> loadWhatsAppHistoryPriorTurns(
             String tenantIdStr, String phoneRaw, String currentUserText) {
         if (tenantIdStr == null || tenantIdStr.isBlank() || phoneRaw == null || phoneRaw.isBlank()) {
             return List.of();
         }
+        String digits = onlyDigits(phoneRaw);
+        if (!digits.isEmpty()) {
+            try {
+                var ctx =
+                        conversationContextStore.load(
+                                new TenantId(tenantIdStr), new ConversationId("wa-" + digits));
+                if (ctx.isPresent() && !ctx.get().getMessages().isEmpty()) {
+                    List<Message> fromConv = new ArrayList<>(ctx.get().getMessages());
+                    if (!fromConv.isEmpty()) {
+                        Message last = fromConv.get(fromConv.size() - 1);
+                        if (last.role() == MessageRole.USER
+                                && last.content().strip().equals(currentUserText.strip())) {
+                            fromConv.remove(fromConv.size() - 1);
+                        }
+                    }
+                    if (fromConv.size() > WHATSAPP_HISTORY_MAX_TURNS) {
+                        fromConv =
+                                new ArrayList<>(
+                                        fromConv.subList(
+                                                fromConv.size() - WHATSAPP_HISTORY_MAX_TURNS,
+                                                fromConv.size()));
+                    }
+                    return List.copyOf(fromConv);
+                }
+            } catch (Exception e) {
+                LOG.warn(
+                        "falha ao carregar conversation_message para o modelo (histórico WhatsApp) tenant={} phone={}",
+                        tenantIdStr,
+                        phoneRaw,
+                        e);
+            }
+        }
+        return loadWhatsAppHistoryPriorTurnsFromChatMessage(tenantIdStr, phoneRaw, currentUserText);
+    }
+
+    /**
+     * Últimas mensagens em {@code chat_message} (texto de canal, sem apêndices técnicos).
+     */
+    private List<Message> loadWhatsAppHistoryPriorTurnsFromChatMessage(
+            String tenantIdStr, String phoneRaw, String currentUserText) {
         try {
             TenantId tenantId = new TenantId(tenantIdStr);
             Instant notBefore = Instant.now().minus(WHATSAPP_HISTORY_MAX_AGE);
@@ -407,7 +521,16 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
      */
     private void executarChatDepoisPrepararSucesso(Exchange exchange) {
         ChatCommand command = exchange.getIn().getBody(ChatCommand.class);
+        LOG.info(
+                "[AXEZAP-STT] Encaminhando transcrição para ChatService | tenant={} conversation={}",
+                command.tenantId().value(),
+                command.conversationId().value());
         ChatResult result = chatUseCase.chat(command);
+        LOG.info(
+                "[AXEZAP-STT] Resposta do ChatService: {} | tenant={} chars={}",
+                result.assistantMessage() != null ? abbreviateForLog(result.assistantMessage(), 220) : "",
+                command.tenantId().value(),
+                result.assistantMessage() != null ? result.assistantMessage().length() : 0);
         exchange.setProperty(PROP_CHAT_RESULT, result);
         exchange.getIn().setBody(result);
         scheduleChatAnalyticsGemini(exchange);
@@ -580,5 +703,16 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
             }
         }
         return sb.toString();
+    }
+
+    private static String abbreviateForLog(String value, int maxLen) {
+        if (value == null) {
+            return "";
+        }
+        String s = value.strip();
+        if (s.length() <= maxLen) {
+            return s;
+        }
+        return s.substring(0, maxLen) + "...";
     }
 }

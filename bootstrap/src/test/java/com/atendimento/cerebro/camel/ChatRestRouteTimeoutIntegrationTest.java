@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import com.atendimento.cerebro.application.dto.ChatResult;
 import com.atendimento.cerebro.application.port.in.ChatUseCase;
 import com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel.ChatFallbackMessages;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -60,8 +61,13 @@ class ChatRestRouteTimeoutIntegrationTest {
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        HttpEntity<String> entity =
-                new HttpEntity<>("{\"tenantId\":\"t1\",\"sessionId\":\"c1\",\"message\":\"Olá\"}", headers);
+        HttpEntity<Map<String, Object>> entity =
+                new HttpEntity<>(
+                        Map.of(
+                                "tenantId", "t1",
+                                "sessionId", "c1",
+                                "message", "Olá"),
+                        headers);
         ResponseEntity<ChatResult> response =
                 restTemplate.exchange("/api/v1/chat", HttpMethod.POST, entity, ChatResult.class);
 

@@ -21,6 +21,8 @@ public final class AppointmentConfirmationCardFormatter {
 
     private static final String CONFIRMATION_CARD_DICA_FOOTER =
             "_Se precisar alterar ou cancelar, responda esta mensagem._";
+    private static final String AXEZAP_NOTIFICATION_FOOTER =
+            "Gestão de atendimento por AxeZap AI";
 
     private AppointmentConfirmationCardFormatter() {}
 
@@ -93,7 +95,7 @@ public final class AppointmentConfirmationCardFormatter {
     /**
      * Monta o texto do card após agendamento criado com sucesso.
      *
-     * @param locationLine ex.: "Oficina InteliZap - Salvador, BA"
+     * @param locationLine ex.: "Oficina AxeZap - Salvador, BA"
      */
     public static String formatConfirmationCard(
             Long appointmentDatabaseId,
@@ -140,7 +142,9 @@ public final class AppointmentConfirmationCardFormatter {
                 + "\n\n"
                 + DIVIDER
                 + "\n\n"
-                + CONFIRMATION_CARD_DICA_FOOTER;
+                + CONFIRMATION_CARD_DICA_FOOTER
+                + "\n"
+                + AXEZAP_NOTIFICATION_FOOTER;
     }
 
     /** Mensagem curta só com o link do mapa (envio separado no WhatsApp). */

@@ -17,7 +17,7 @@ public class WhatsAppWebhookParser {
 
     private static final String EVOLUTION_MESSAGES_UPSERT = "messages.upsert";
 
-    public sealed interface Incoming permits Incoming.Ignored, Incoming.TextMessage {
+    public sealed interface Incoming permits Incoming.Ignored, Incoming.TextMessage, Incoming.AudioMessage {
         record Ignored() implements Incoming {}
 
         /**
@@ -54,6 +54,16 @@ public class WhatsAppWebhookParser {
                 this(fromRaw, text, evolutionLineDigits, providerMessageId, contactDisplayName, null);
             }
         }
+
+        record AudioMessage(
+                String fromRaw,
+                String mediaUrl,
+                String mimeType,
+                String evolutionLineDigits,
+                String providerMessageId,
+                String contactDisplayName,
+                String contactProfilePicUrl)
+                implements Incoming {}
     }
 
     public Incoming parse(JsonNode root) {
@@ -99,15 +109,27 @@ public class WhatsAppWebhookParser {
             return new Incoming.Ignored();
         }
         JsonNode message = data.path("message");
-        String text = extractEvolutionMessageText(message, data.path("messageType").asText(""));
-        if (text == null || text.isBlank()) {
-            return new Incoming.Ignored();
-        }
         String lineDigits = evolutionWebhookLineDigits(root);
         String contactName = evolutionContactDisplayName(root, data);
         String profilePic = evolutionProfilePicUrl(root, data);
-        return new Incoming.TextMessage(
-                fromDigits, text.strip(), lineDigits, evolutionKeyId(key), contactName, profilePic);
+        String text = extractEvolutionMessageText(message, data.path("messageType").asText(""));
+        if (text != null && !text.isBlank()) {
+            return new Incoming.TextMessage(
+                    fromDigits, text.strip(), lineDigits, evolutionKeyId(key), contactName, profilePic);
+        }
+        JsonNode audio = message.path("audioMessage");
+        String audioUrl = audio.path("url").asText("").strip();
+        if (!audioUrl.isEmpty()) {
+            return new Incoming.AudioMessage(
+                    fromDigits,
+                    audioUrl,
+                    audio.path("mimetype").asText("").strip(),
+                    lineDigits,
+                    evolutionKeyId(key),
+                    contactName,
+                    profilePic);
+        }
+        return new Incoming.Ignored();
     }
 
     /** URL pública da foto do perfil quando o payload Evolution a expõe. */
@@ -286,6 +308,22 @@ public class WhatsAppWebhookParser {
                 JsonNode value = change.path("value");
                 for (JsonNode message : value.withArray("messages")) {
                     if (!"text".equals(message.path("type").asText())) {
+                        if ("audio".equals(message.path("type").asText())) {
+                            String from = message.path("from").asText("").strip();
+                            String mediaId = message.path("audio").path("id").asText("").strip();
+                            String mimeType = message.path("audio").path("mime_type").asText("").strip();
+                            if (!from.isBlank() && !mediaId.isBlank()) {
+                                String mid = message.path("id").asText("").strip();
+                                return new Incoming.AudioMessage(
+                                        from,
+                                        mediaId,
+                                        mimeType,
+                                        null,
+                                        mid.isEmpty() ? null : mid,
+                                        null,
+                                        null);
+                            }
+                        }
                         continue;
                     }
                     String from = message.path("from").asText("").strip();

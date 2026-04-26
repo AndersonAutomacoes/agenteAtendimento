@@ -50,10 +50,9 @@ public class KnowledgeBaseRestRoute extends RouteBuilder {
     }
 
     private void handleList(Exchange exchange) {
-        String tenantId = resolveTenantId(exchange);
-        if (tenantId == null || tenantId.isBlank()) {
-            exchange.getIn().setBody(new IngestErrorResponse("tenantId é obrigatório"));
-            exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
+        String requestedTenantId = resolveTenantId(exchange);
+        String tenantId = CamelAuthSupport.authorizedTenantOrAbort(exchange, requestedTenantId);
+        if (tenantId == null) {
             return;
         }
         try {
@@ -72,10 +71,9 @@ public class KnowledgeBaseRestRoute extends RouteBuilder {
     }
 
     private void handleDelete(Exchange exchange) {
-        String tenantId = resolveTenantId(exchange);
-        if (tenantId == null || tenantId.isBlank()) {
-            exchange.getIn().setBody(new IngestErrorResponse("tenantId é obrigatório"));
-            exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
+        String requestedTenantId = resolveTenantId(exchange);
+        String tenantId = CamelAuthSupport.authorizedTenantOrAbort(exchange, requestedTenantId);
+        if (tenantId == null) {
             return;
         }
         String batchId = exchange.getMessage().getHeader("batchId", String.class);

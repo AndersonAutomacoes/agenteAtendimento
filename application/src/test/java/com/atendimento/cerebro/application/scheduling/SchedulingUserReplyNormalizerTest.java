@@ -104,12 +104,14 @@ class SchedulingUserReplyNormalizerTest {
     }
 
     @Test
-    void expand_keepsExplicitTime_enforcedDirectly() {
+    void expand_explicitTime_requiresConfirmationDraftBeforeCreate() {
         List<Message> hist = List.of(Message.assistantMessage("x\n\n[slot_options:09:00,10:00]\n[slot_date:2026-04-14]"));
         var e = SchedulingUserReplyNormalizer.expandNumericSlotChoice("às 10:00 por favor", hist);
-        assertThat(e.expandedUserMessage()).contains("10:00").contains("2026-04-14").contains("create_appointment");
-        assertThat(e.enforcedChoice().orElseThrow().timeHhMm()).isEqualTo("10:00");
-        assertThat(e.blockCreateAppointmentThisTurn()).isFalse();
+        assertThat(e.hardcodedAssistantReply()).isPresent();
+        assertThat(e.hardcodedAssistantReply().orElseThrow()).contains("10:00").contains("Posso confirmar");
+        assertThat(e.pendingConfirmationDraft().orElseThrow().timeHhMm()).isEqualTo("10:00");
+        assertThat(e.enforcedChoice()).isEmpty();
+        assertThat(e.blockCreateAppointmentThisTurn()).isTrue();
     }
 
     @Test
@@ -139,6 +141,46 @@ class SchedulingUserReplyNormalizerTest {
     void stripInternalSlotAppendix_removesCancelOptionMap() {
         String raw = "Lista\n[cancel_option_map:1=42,2=99]";
         assertThat(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(raw)).isEqualTo("Lista");
+    }
+
+    @Test
+    void stripInternalSlotAppendix_removesServiceMapsAndSelection() {
+        String raw = "Serviços\n[service_option_map:1=Alinhamento|2=Revisão]\n[selected_service:Alinhamento]";
+        assertThat(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(raw)).isEqualTo("Serviços");
+    }
+
+    @Test
+    void resolveSelectedServiceFromUserChoice_mapsOptionNumberFromHistory() {
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage(
+                                "Serviços disponíveis:\n1) Alinhamento\n2) Revisão\n\n[service_option_map:1=Alinhamento|2=Revisão]"));
+        assertThat(SchedulingUserReplyNormalizer.resolveSelectedServiceFromUserChoice("2", hist))
+                .hasValue("Revisão");
+    }
+
+    @Test
+    void parseLastSelectedServiceFromHistory_skipsInvalidNumericEcho() {
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage(
+                                "Perfeito [selected_service:Alinhamento e Balanceamento]"),
+                        Message.assistantMessage("eco [selected_service:1]"));
+        assertThat(SchedulingUserReplyNormalizer.parseLastSelectedServiceFromHistory(hist))
+                .contains("Alinhamento e Balanceamento");
+    }
+
+    @Test
+    void expand_numericIndex_doesNotMapToSlotWhenServiceOptionListIsNewer() {
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage(
+                                "Disponibilidade [slot_options:11:00,10:00,09:00]\n[slot_date:2026-04-25]"),
+                        Message.assistantMessage(
+                                "Escolha o serviço [service_option_map:1=Alinhamento|2=Higienização]"));
+        var e = SchedulingUserReplyNormalizer.expandNumericSlotChoice("2", hist);
+        assertThat(e.expandedUserMessage()).isEqualTo("2");
+        assertThat(e.hardcodedAssistantReply()).isEmpty();
     }
 
     @Test
@@ -421,6 +463,27 @@ class SchedulingUserReplyNormalizerTest {
         assertThat(SchedulingUserReplyNormalizer.looksLikeRescheduleOrTimeChangeIntent("Quero desmarcar"))
                 .isFalse();
         assertThat(SchedulingUserReplyNormalizer.looksLikeRescheduleOrTimeChangeIntent("Tem vaga amanhã?"))
+                .isFalse();
+    }
+
+    @Test
+    void isBareNewTimeProposalAfterRescheduleIntent_detectsTomorrowTimeAfterReagendar() {
+        List<Message> hist =
+                List.of(
+                        Message.userMessage("Gostaria de reagendar o agendamento 41"),
+                        Message.assistantMessage("ok"),
+                        Message.userMessage("Amanhã 12:00"));
+        assertThat(
+                        SchedulingUserReplyNormalizer.isBareNewTimeProposalAfterRescheduleIntent("Amanhã 12:00", hist))
+                .isTrue();
+    }
+
+    @Test
+    void isBareNewTimeProposalAfterRescheduleIntent_falseWhenExplicitCancel() {
+        List<Message> hist = List.of(Message.userMessage("reagendar o 41"), Message.assistantMessage("ok"));
+        assertThat(
+                        SchedulingUserReplyNormalizer.isBareNewTimeProposalAfterRescheduleIntent(
+                                "Pode cancelar o agendamento 41", hist))
                 .isFalse();
     }
 

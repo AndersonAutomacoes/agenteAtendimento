@@ -16,6 +16,7 @@ import com.atendimento.cerebro.application.scheduling.SchedulingCancelSessionCap
 import com.atendimento.cerebro.application.scheduling.SchedulingCreateAppointmentResult;
 import com.atendimento.cerebro.application.scheduling.SchedulingSlotCapture;
 import com.atendimento.cerebro.application.scheduling.SchedulingEnforcedChoice;
+import com.atendimento.cerebro.application.scheduling.SchedulingExplicitTimeShortcut;
 import com.atendimento.cerebro.application.scheduling.SchedulingToolContext;
 import com.atendimento.cerebro.application.scheduling.SchedulingUserReplyNormalizer;
 import com.atendimento.cerebro.domain.conversation.Message;
@@ -66,6 +67,8 @@ public class GeminiChatEngineAdapter {
                     + "yyyy-MM-DD (respeitando o dia e mês que o cliente indicou). "
                     + "NÃO invoque create_appointment neste turno. create_appointment só quando o cliente escolheu um "
                     + "horário concreto (ou confirmou um horário já listado) noutro turno. "
+                    + "Antes de confirmar/agendar, garanta que o serviço escolhido está no catálogo do tenant; se houver "
+                    + "dúvida, invoque list_tenant_services e mostre as opções ao cliente. "
                     + "Cancelar: NÃO invoque check_availability. Use get_active_appointments; se vários itens, o cliente "
                     + "deve escolher; depois cancel_appointment com o ID mostrado antes do serviço na lista (ou «opção N» "
                     + "se o mapa da sessão usar esse formato).";
@@ -126,9 +129,8 @@ public class GeminiChatEngineAdapter {
 
     private static final Pattern CRM_CLIENT_NAME =
             Pattern.compile("Nome do cliente:\\s*([^\\.\\n]+)", Pattern.CASE_INSENSITIVE);
-    /** Texto injectado por {@link ChatService#buildCrmContextForPrompt} — último serviço registado no CRM. */
-    private static final Pattern CRM_LAST_SERVICE =
-            Pattern.compile("servi[cç]o\\s*\"([^\"]+)\"", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern RESCHEDULE_WITH_ID =
+            Pattern.compile("(?i)\\b(reagend\\w*|remarc\\w*|troc\\w*|mud\\w*)\\b[^\\n\\r]{0,80}?\\b(\\d{1,19})\\b");
 
     private final GoogleGenAiChatModel chatModel;
     private final String chatModelName;
@@ -171,10 +173,20 @@ public class GeminiChatEngineAdapter {
                 if (directCancel.isPresent()) {
                     return directCancel.get();
                 }
+                Optional<AICompletionResponse> directListAfterConfirm =
+                        tryDirectListAppointmentsAfterConfirmationWithoutGemini(request, calendarZone);
+                if (directListAfterConfirm.isPresent()) {
+                    return directListAfterConfirm.get();
+                }
                 Optional<AICompletionResponse> directCreate =
                         tryDirectCreateAppointmentWithoutGemini(request, calendarZone);
                 if (directCreate.isPresent()) {
                     return directCreate.get();
+                }
+                Optional<AICompletionResponse> directRescheduleById =
+                        tryDirectRescheduleByExplicitIdWithoutGemini(request, calendarZone);
+                if (directRescheduleById.isPresent()) {
+                    return directRescheduleById.get();
                 }
                 Optional<AICompletionResponse> directReschedule =
                         tryDirectRescheduleWithoutGemini(request, calendarZone);
@@ -191,6 +203,7 @@ public class GeminiChatEngineAdapter {
                                 calendarZone,
                                 request.userMessage(),
                                 mergeRecentTranscriptForDate(request),
+                                request.conversationHistory(),
                                 request.schedulingEnforcedChoice(),
                                 request.schedulingBlockCreateAppointment(),
                                 request.schedulingSlotAnchorDate());
@@ -240,7 +253,8 @@ public class GeminiChatEngineAdapter {
                 String content = textFromChatResponse(clientResponse.chatResponse());
                 content =
                         applyProgrammaticCreateIfEnforcedChoiceIgnored(
-                                request, tools, cancelContext, content);
+                                request, tools, cancelContext, content, calendarZone);
+                content = content == null ? "" : content;
                 // Fallback se o modelo respondeu só em texto sem ferramentas (a via principal é tryDirectCancellationWithoutGemini).
                 if (shouldForceProgrammaticCancelAppointment(request)
                         && tools.schedulingToolInvocationCount() == 0) {
@@ -287,7 +301,19 @@ public class GeminiChatEngineAdapter {
                                     SchedulingSlotCapture.peekRequestedDate().orElse(null),
                                     calendarZone);
                 }
-                if (content.isBlank() && !SchedulingSlotCapture.peekSlotTimes().isEmpty()) {
+                if (SchedulingSlotCapture.peekSlotTimes().isEmpty()) {
+                    List<String> inferredSlots =
+                            SchedulingSlotCapture.parseSlotTimesFromAvailabilityLine(content == null ? "" : content);
+                    if (!inferredSlots.isEmpty()) {
+                        LocalDate inferredDate =
+                                SchedulingSlotCapture.extractDateFromAvailabilityText(content).orElse(null);
+                        String hintBlob = mergeRecentTranscriptForDate(request);
+                        String inferredMainText =
+                                SchedulingSlotCapture.buildWhatsAppMainText(inferredDate, calendarZone, hintBlob);
+                        SchedulingSlotCapture.setStructuredAvailability(inferredMainText, inferredSlots, inferredDate);
+                    }
+                }
+                if ((content == null || content.isBlank()) && !SchedulingSlotCapture.peekSlotTimes().isEmpty()) {
                     content =
                             "Segue a disponibilidade para "
                                     + SchedulingSlotCapture.peekRequestedDate()
@@ -309,7 +335,8 @@ public class GeminiChatEngineAdapter {
                                 base.isBlank()
                                         ? "Agendamento confirmado. O cliente recebeu a confirmação automática no WhatsApp."
                                         : base;
-                        extraOutbound = mapsFollowUpMessages(appointmentConfirmationProperties.getMapsUrl());
+                        // Evita duplicidade do Maps: a notificação assíncrona já inclui o link no card.
+                        extraOutbound = List.of();
                         whatsappTextOverride = Optional.of("");
                     } else {
                         String card =
@@ -325,7 +352,7 @@ public class GeminiChatEngineAdapter {
                         extraOutbound = List.of();
                     }
                 }
-                if (content.isBlank()) {
+                if (content == null || content.isBlank()) {
                     if (cancelContext) {
                         if (cancelFlowListingResult == null) {
                             LOG.warn(
@@ -335,7 +362,7 @@ public class GeminiChatEngineAdapter {
                             String listed = tools.get_active_appointments();
                             content = listed != null && !listed.isBlank() ? listed.strip() : "";
                         }
-                        if (content.isBlank()) {
+                        if (content == null || content.isBlank()) {
                             content = AppointmentService.CANCEL_LIST_UNAVAILABLE_FRIENDLY_MESSAGE;
                         }
                     } else {
@@ -345,7 +372,14 @@ public class GeminiChatEngineAdapter {
                                 content = listed.strip();
                             }
                         }
-                        if (content.isBlank()) {
+                        if ((content == null || content.isBlank())
+                                && userAskedToListServices(request.userMessage())) {
+                            String services = tools.list_tenant_services();
+                            if (services != null && !services.isBlank()) {
+                                content = services.strip();
+                            }
+                        }
+                        if (content == null || content.isBlank()) {
                             content = recoverEmptyNonCancelSchedulingContent(content, request, calendarZone);
                         }
                     }
@@ -381,20 +415,61 @@ public class GeminiChatEngineAdapter {
             String systemContent, AICompletionRequest request, GeminiSchedulingTools tools) {
         GoogleGenAiChatOptions options =
                 GoogleGenAiChatOptions.builder().model(chatModelName).internalToolExecutionEnabled(true).build();
+        try {
+            return buildSchedulingSpec(systemContent, request, tools, options, true)
+                    .user(request.userMessage())
+                    .call()
+                    .chatClientResponse();
+        } catch (RuntimeException ex) {
+            if (isGeminiJsonParsingFailure(ex) && !CollectionUtils.isEmpty(request.conversationHistory())) {
+                LOG.warn(
+                        "Gemini (agendamento): falha ao parsear JSON do histórico; a repetir sem conversationHistory (tenant={}): {}",
+                        request.tenantId().value(),
+                        ex.toString());
+                return buildSchedulingSpec(systemContent, request, tools, options, false)
+                        .user(request.userMessage())
+                        .call()
+                        .chatClientResponse();
+            }
+            throw ex;
+        }
+    }
+
+    private ChatClient.ChatClientRequestSpec buildSchedulingSpec(
+            String systemContent,
+            AICompletionRequest request,
+            GeminiSchedulingTools tools,
+            GoogleGenAiChatOptions options,
+            boolean includeHistory) {
         ChatClient.ChatClientRequestSpec spec =
                 ChatClient.create(chatModel)
                         .prompt()
                         .system(systemContent)
                         .options(options)
                         .tools(tools);
-        if (!CollectionUtils.isEmpty(request.conversationHistory())) {
+        if (includeHistory && !CollectionUtils.isEmpty(request.conversationHistory())) {
             List<org.springframework.ai.chat.messages.Message> hist = new ArrayList<>();
             for (Message m : request.conversationHistory()) {
                 hist.add(toSpringMessage(m));
             }
             spec = spec.messages(hist);
         }
-        return spec.user(request.userMessage()).call().chatClientResponse();
+        return spec;
+    }
+
+    private static boolean isGeminiJsonParsingFailure(Throwable ex) {
+        for (Throwable t = ex; t != null; t = t.getCause()) {
+            String msg = t.getMessage();
+            if (msg == null || msg.isBlank()) {
+                continue;
+            }
+            String lower = msg.toLowerCase(Locale.ROOT);
+            if ((lower.contains("failed to parse json") || lower.contains("no content to map"))
+                    && lower.contains("json")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -539,21 +614,17 @@ public class GeminiChatEngineAdapter {
         return t != null ? t.strip() : "";
     }
 
-    private static List<String> mapsFollowUpMessages(String mapsUrl) {
-        String m = AppointmentConfirmationCardFormatter.formatMapsFollowUp(mapsUrl);
-        return m.isBlank() ? List.of() : List.of(m);
-    }
-
     /**
      * Quando o backend já fixou data/hora ({@link AICompletionRequest#schedulingEnforcedChoice}) mas o modelo não
      * invocou {@code create_appointment} (resposta vazia ou só texto), cria o evento no servidor para não
      * apresentar «agendamento criado» sem persistência.
      */
-    private static String applyProgrammaticCreateIfEnforcedChoiceIgnored(
+    private String applyProgrammaticCreateIfEnforcedChoiceIgnored(
             AICompletionRequest request,
             GeminiSchedulingTools tools,
             boolean cancelContext,
-            String modelContent) {
+            String modelContent,
+            ZoneId calendarZone) {
         if (cancelContext
                 || tools.createAppointmentWasInvoked()
                 || request.schedulingBlockCreateAppointment()
@@ -564,7 +635,12 @@ public class GeminiChatEngineAdapter {
         String iso = choice.date().format(DateTimeFormatter.ISO_LOCAL_DATE);
         String time = choice.timeHhMm();
         String client = parseClientNameFromCrmContext(request.crmContext()).orElse("Cliente");
-        String service = parseServiceNameFromCrmContext(request.crmContext()).orElse("Serviço");
+        Optional<String> fromConversation = resolveServiceForDirectCreate(request, calendarZone);
+        if (fromConversation.isEmpty()) {
+            return "Confirmação anotada, mas ainda preciso do serviço. Escolha uma opção abaixo:\n\n"
+                    + appointmentService.listTenantServicesForScheduling(request.tenantId());
+        }
+        String service = fromConversation.get();
         LOG.warn(
                 "Gemini (agendamento): create_appointment no servidor — o modelo não invocou a ferramenta apesar de "
                         + "data/hora fixadas pelo backend (tenant={} date={} time={})",
@@ -583,18 +659,6 @@ public class GeminiChatEngineAdapter {
             return Optional.empty();
         }
         Matcher m = CRM_CLIENT_NAME.matcher(crm);
-        if (m.find()) {
-            String s = m.group(1).strip();
-            return s.isEmpty() ? Optional.empty() : Optional.of(s);
-        }
-        return Optional.empty();
-    }
-
-    private static Optional<String> parseServiceNameFromCrmContext(String crm) {
-        if (crm == null || crm.isBlank()) {
-            return Optional.empty();
-        }
-        Matcher m = CRM_LAST_SERVICE.matcher(crm);
         if (m.find()) {
             String s = m.group(1).strip();
             return s.isEmpty() ? Optional.empty() : Optional.of(s);
@@ -755,7 +819,11 @@ public class GeminiChatEngineAdapter {
             return Optional.of(new AICompletionResponse(cancelResult != null ? cancelResult.strip() : ""));
         }
         String client = parseClientNameFromCrmContext(request.crmContext()).orElse("Cliente");
-        String service = parseServiceNameFromCrmContext(request.crmContext()).orElse("Serviço");
+        String service =
+                appointmentService
+                        .findServiceNameForActiveAppointment(
+                                request.tenantId(), toCancel.get(), request.conversationId(), calendarZone)
+                        .orElse("Serviço");
         String createResult =
                 appointmentService.createAppointment(
                         request.tenantId(),
@@ -781,8 +849,120 @@ public class GeminiChatEngineAdapter {
         return Optional.of(new AICompletionResponse(result));
     }
 
+    /**
+     * Guard rail extra: quando houver ID explícito do agendamento + novo dia/hora claros, executa reagendamento direto
+     * no servidor sem depender do modelo. Mantém o mesmo serviço do agendamento atual, salvo mudança explícita noutro
+     * fluxo.
+     */
+    private Optional<AICompletionResponse> tryDirectRescheduleByExplicitIdWithoutGemini(
+            AICompletionRequest request, ZoneId calendarZone) {
+        if (request == null || request.conversationId() == null || request.conversationId().isBlank()) {
+            return Optional.empty();
+        }
+        Optional<Long> appointmentId = extractRescheduleExplicitAppointmentId(request);
+        if (appointmentId.isEmpty()) {
+            return Optional.empty();
+        }
+        String userMsg = request.userMessage() != null ? request.userMessage().strip() : "";
+        Optional<SchedulingEnforcedChoice> choice =
+                SchedulingExplicitTimeShortcut.tryParseExplicitDateAndTimeInUserText(userMsg, calendarZone)
+                        .or(() -> parseTodayTimeFallback(userMsg, calendarZone));
+        if (choice.isEmpty()) {
+            return Optional.empty();
+        }
+        String service =
+                appointmentService
+                        .findServiceNameForActiveAppointment(
+                                request.tenantId(),
+                                appointmentId.get(),
+                                request.conversationId(),
+                                calendarZone)
+                        .orElse("");
+        if (service.isBlank()) {
+            return Optional.empty();
+        }
+        LOG.info(
+                "Gemini (agendamento): reagendamento direto por ID explícito sem modelo (tenant={} appointmentId={} date={} time={})",
+                request.tenantId().value(),
+                appointmentId.get(),
+                choice.get().date(),
+                choice.get().timeHhMm());
+        String cancelResult =
+                appointmentService.cancelAppointment(
+                        request.tenantId(),
+                        request.conversationId(),
+                        "",
+                        String.valueOf(appointmentId.get()),
+                        calendarZone);
+        if (!AppointmentService.isSuccessfulCancellationReply(cancelResult)) {
+            return Optional.of(new AICompletionResponse(cancelResult != null ? cancelResult.strip() : ""));
+        }
+        String client = parseClientNameFromCrmContext(request.crmContext()).orElse("Cliente");
+        String createResult =
+                appointmentService.createAppointment(
+                        request.tenantId(),
+                        choice.get().date().format(DateTimeFormatter.ISO_LOCAL_DATE),
+                        choice.get().timeHhMm(),
+                        client,
+                        service,
+                        request.conversationId(),
+                        calendarZone);
+        return Optional.of(new AICompletionResponse(createResult != null ? createResult.strip() : ""));
+    }
+
     private static String hm(LocalTime t) {
         return String.format(Locale.ROOT, "%02d:%02d", t.getHour(), t.getMinute());
+    }
+
+    private static Optional<Long> extractRescheduleExplicitAppointmentId(AICompletionRequest request) {
+        if (request == null) {
+            return Optional.empty();
+        }
+        String current = request.userMessage() != null ? request.userMessage().strip() : "";
+        Matcher m = RESCHEDULE_WITH_ID.matcher(current);
+        if (m.find()) {
+            try {
+                return Optional.of(Long.parseLong(m.group(2)));
+            } catch (NumberFormatException ignored) {
+                // ignore malformed id
+            }
+        }
+        List<Message> h = request.conversationHistory();
+        if (h == null || h.isEmpty()) {
+            return Optional.empty();
+        }
+        int lowerBound = Math.max(0, h.size() - 10);
+        for (int i = h.size() - 1; i >= lowerBound; i--) {
+            Message msg = h.get(i);
+            if (msg.role() != MessageRole.USER || msg.content() == null || msg.content().isBlank()) {
+                continue;
+            }
+            Matcher hm = RESCHEDULE_WITH_ID.matcher(msg.content().strip());
+            if (hm.find()) {
+                try {
+                    return Optional.of(Long.parseLong(hm.group(2)));
+                } catch (NumberFormatException ignored) {
+                    // ignore malformed id
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<SchedulingEnforcedChoice> parseTodayTimeFallback(String userText, ZoneId calendarZone) {
+        if (userText == null || userText.isBlank()) {
+            return Optional.empty();
+        }
+        String lower = userText.toLowerCase(Locale.ROOT);
+        if (!lower.contains("hoje")) {
+            return Optional.empty();
+        }
+        Optional<String> hhMmOpt = SchedulingExplicitTimeShortcut.parseTimeHhMmFromUserText(userText);
+        if (hhMmOpt.isEmpty()) {
+            return Optional.empty();
+        }
+        ZoneId zone = calendarZone != null ? calendarZone : ZoneId.systemDefault();
+        return Optional.of(new SchedulingEnforcedChoice(LocalDate.now(zone), hhMmOpt.get()));
     }
 
     /**
@@ -826,13 +1006,17 @@ public class GeminiChatEngineAdapter {
     }
 
     private static org.springframework.ai.chat.messages.Message toSpringMessage(Message m) {
+        String c = m.content() == null ? "" : m.content();
+        if (c.isBlank()) {
+            c = " ";
+        }
         if (m.senderType() == SenderType.HUMAN_ADMIN) {
-            return new AssistantMessage("[Atendente humano] " + m.content());
+            return new AssistantMessage("[Atendente humano] " + c);
         }
         return switch (m.role()) {
-            case USER -> new UserMessage(m.content());
-            case ASSISTANT -> new AssistantMessage(m.content());
-            case SYSTEM -> new SystemMessage(m.content());
+            case USER -> new UserMessage(c);
+            case ASSISTANT -> new AssistantMessage(c);
+            case SYSTEM -> new SystemMessage(c);
         };
     }
 
@@ -1035,7 +1219,32 @@ public class GeminiChatEngineAdapter {
         if (!BARE_CANCEL_OPTION_INDEX.matcher(um).matches() && !BARE_CANCEL_OPCAO.matcher(um).matches()) {
             return false;
         }
+        if (lastAssistantRequestedRescheduleCode(request)) {
+            // Em fluxo de reagendamento, o código sozinho não deve cancelar imediatamente:
+            // primeiro o cliente precisa informar o novo dia/horário.
+            return false;
+        }
         return SchedulingUserReplyNormalizer.lastAssistantSuggestedAppointmentCancellation(request.conversationHistory());
+    }
+
+    private static boolean lastAssistantRequestedRescheduleCode(AICompletionRequest request) {
+        List<Message> h = request.conversationHistory();
+        if (h == null || h.isEmpty()) {
+            return false;
+        }
+        for (int i = h.size() - 1; i >= 0; i--) {
+            Message m = h.get(i);
+            if (m.role() != MessageRole.ASSISTANT || m.content() == null || m.content().isBlank()) {
+                continue;
+            }
+            String c = m.content().toLowerCase(Locale.ROOT).replace("*", "");
+            return c.contains("para reagendar")
+                    && (c.contains("código do agendamento")
+                            || c.contains("codigo do agendamento")
+                            || c.contains("número à esquerda")
+                            || c.contains("numero a esquerda"));
+        }
+        return false;
     }
 
     /**
@@ -1074,6 +1283,30 @@ public class GeminiChatEngineAdapter {
     }
 
     /**
+     * Confirmação curta ("sim"/"ok") depois de o assistente perguntar sobre listar agendamentos para cancelar/reagendar:
+     * lista directamente os agendamentos activos no servidor para evitar respostas equivocadas do modelo.
+     */
+    private Optional<AICompletionResponse> tryDirectListAppointmentsAfterConfirmationWithoutGemini(
+            AICompletionRequest request, ZoneId calendarZone) {
+        if (request == null || request.conversationId() == null || request.conversationId().isBlank()) {
+            return Optional.empty();
+        }
+        String um = request.userMessage() != null ? request.userMessage().strip() : "";
+        if (um.length() > 24 || !SHORT_SCHEDULING_CONFIRM.matcher(um).matches()) {
+            return Optional.empty();
+        }
+        if (!shortConfirmAfterAssistantListOrCancelPrompt(request)) {
+            return Optional.empty();
+        }
+        LOG.info(
+                "Gemini (agendamento): confirmação curta após pedido de lista — get_active_appointments directo (tenant={})",
+                request.tenantId().value());
+        String listed = appointmentService.getActiveAppointments(request.tenantId(), request.conversationId(), calendarZone);
+        String content = listed != null ? listed.strip() : "";
+        return Optional.of(new AICompletionResponse(content));
+    }
+
+    /**
      * Quando o {@link ChatService} já expandiu «sim» para a instrução de confirmação com data/hora fixadas, cria o
      * compromisso sem chamar o Gemini — evita respostas só em texto, confusão com cancelamento e falta de persistência.
      */
@@ -1088,6 +1321,13 @@ public class GeminiChatEngineAdapter {
         LOG.info(
                 "Gemini (agendamento): confirmação com data/hora fixadas — create_appointment directo sem modelo (tenant={})",
                 request.tenantId().value());
+        Optional<String> serviceFromConversation = resolveServiceForDirectCreate(request, calendarZone);
+        if (serviceFromConversation.isEmpty()) {
+            String msg =
+                    "Para concluir o agendamento, preciso do serviço. Escolha uma opção abaixo:\n\n"
+                            + appointmentService.listTenantServicesForScheduling(request.tenantId());
+            return Optional.of(new AICompletionResponse(msg));
+        }
         GeminiSchedulingTools tools =
                 new GeminiSchedulingTools(
                         request.tenantId(),
@@ -1098,6 +1338,7 @@ public class GeminiChatEngineAdapter {
                         calendarZone,
                         request.userMessage(),
                         mergeRecentTranscriptForDate(request),
+                        request.conversationHistory(),
                         request.schedulingEnforcedChoice(),
                         request.schedulingBlockCreateAppointment(),
                         request.schedulingSlotAnchorDate());
@@ -1105,7 +1346,7 @@ public class GeminiChatEngineAdapter {
         String iso = choice.date().format(DateTimeFormatter.ISO_LOCAL_DATE);
         String time = choice.timeHhMm();
         String client = parseClientNameFromCrmContext(request.crmContext()).orElse("Cliente");
-        String service = parseServiceNameFromCrmContext(request.crmContext()).orElse("Serviço");
+        String service = serviceFromConversation.get();
         String result = tools.create_appointment(iso, time, client, service);
         String content = result != null ? result.strip() : "";
         List<String> extraOutbound = List.of();
@@ -1122,7 +1363,8 @@ public class GeminiChatEngineAdapter {
                         base.isBlank()
                                 ? "Agendamento confirmado. O cliente recebeu a confirmação automática no WhatsApp."
                                 : base;
-                extraOutbound = mapsFollowUpMessages(appointmentConfirmationProperties.getMapsUrl());
+                // Evita duplicidade do Maps: a notificação assíncrona já inclui o link no card.
+                extraOutbound = List.of();
                 whatsappTextOverride = Optional.of("");
             } else {
                 String card =
@@ -1145,6 +1387,42 @@ public class GeminiChatEngineAdapter {
         Optional<WhatsAppInteractiveReply> interactive =
                 SchedulingSlotCapture.takeWhatsAppInteractive(content, calendarZone);
         return Optional.of(new AICompletionResponse(content, interactive, extraOutbound, whatsappTextOverride));
+    }
+
+    /**
+     * Em confirmações de reagendamento, reaproveita o serviço do agendamento activo escolhido para troca quando o
+     * histórico não contém [selected_service].
+     */
+    private Optional<String> resolveServiceForDirectCreate(
+            AICompletionRequest request, ZoneId calendarZone) {
+        Optional<String> fromConversation =
+                SchedulingExplicitTimeShortcut.parseServiceNameForCreateFromHistory(
+                        request.conversationHistory());
+        if (fromConversation.isPresent()) {
+            return fromConversation.map(String::strip).filter(s -> !s.isBlank());
+        }
+        if (request.conversationId() == null
+                || request.conversationId().isBlank()
+                || request.conversationHistory() == null
+                || request.conversationHistory().isEmpty()) {
+            return Optional.empty();
+        }
+        boolean recentRescheduleIntent =
+                SchedulingUserReplyNormalizer.hasRecentRescheduleUserIntentInHistory(
+                        request.conversationHistory(), 12)
+                        || SchedulingUserReplyNormalizer.looksLikeRescheduleOrTimeChangeIntent(
+                                request.userMessage());
+        if (!recentRescheduleIntent) {
+            return Optional.empty();
+        }
+        Optional<Long> activeId =
+                appointmentService.getSingleActiveAppointmentId(
+                        request.tenantId(), request.conversationId(), calendarZone);
+        if (activeId.isEmpty()) {
+            return Optional.empty();
+        }
+        return appointmentService.findServiceNameForActiveAppointment(
+                request.tenantId(), activeId.get(), request.conversationId(), calendarZone);
     }
 
     /**
@@ -1191,6 +1469,22 @@ public class GeminiChatEngineAdapter {
         return true;
     }
 
+    private static boolean userAskedToListServices(String userMessage) {
+        if (userMessage == null || userMessage.isBlank()) {
+            return false;
+        }
+        String lower = userMessage.toLowerCase(Locale.ROOT);
+        return (lower.contains("serviço")
+                        || lower.contains("servico")
+                        || lower.contains("serviços")
+                        || lower.contains("servicos"))
+                && (lower.contains("listar")
+                        || lower.contains("liste")
+                        || lower.contains("quais")
+                        || lower.contains("mostrar")
+                        || lower.contains("mostre"));
+    }
+
     private static boolean shortConfirmAfterAssistantListOrCancelPrompt(AICompletionRequest request) {
         if (lastAssistantIndicatesNoActiveAppointments(request)) {
             return false;
@@ -1200,6 +1494,9 @@ public class GeminiChatEngineAdapter {
             return false;
         }
         String stripped = um.strip();
+        if (hasRecentUserNewSchedulingIntent(request.conversationHistory(), 4)) {
+            return false;
+        }
         if (BARE_CANCEL_OPTION_INDEX.matcher(stripped).matches()
                 || BARE_CANCEL_OPCAO.matcher(stripped).matches()) {
             if (SchedulingUserReplyNormalizer.lastAssistantSuggestedAppointmentCancellation(
@@ -1241,6 +1538,27 @@ public class GeminiChatEngineAdapter {
                     || (c.contains("listar") && (c.contains("agendamento") || c.contains("compromisso")))
                     || c.contains("qual deseja cancelar")
                     || c.contains("quer cancelar");
+        }
+        return false;
+    }
+
+    private static boolean hasRecentUserNewSchedulingIntent(List<Message> history, int maxUserMessages) {
+        if (history == null || history.isEmpty() || maxUserMessages <= 0) {
+            return false;
+        }
+        int seen = 0;
+        for (int i = history.size() - 1; i >= 0; i--) {
+            Message m = history.get(i);
+            if (m.role() != MessageRole.USER || m.content() == null || m.content().isBlank()) {
+                continue;
+            }
+            seen++;
+            if (SchedulingUserReplyNormalizer.looksLikeSchedulingRestartIntent(m.content())) {
+                return true;
+            }
+            if (seen >= maxUserMessages) {
+                break;
+            }
         }
         return false;
     }

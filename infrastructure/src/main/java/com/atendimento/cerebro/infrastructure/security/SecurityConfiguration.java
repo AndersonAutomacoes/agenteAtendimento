@@ -24,6 +24,7 @@ public class SecurityConfiguration {
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             FirebasePortalAuthenticationFilter firebasePortalAuthenticationFilter,
+            TenantContextFilter tenantContextFilter,
             ProfileTierAuthorizationManager profileTierAuthorizationManager)
             throws Exception {
         http.csrf(AbstractHttpConfigurer::disable)
@@ -40,8 +41,17 @@ public class SecurityConfiguration {
                                 .requestMatchers(
                                                 "/api/v1/dashboard/**",
                                                 "/api/v1/analytics/**",
-                                                "/api/v1/appointments/**")
+                                                "/api/v1/appointments/**",
+                                                "/api/v1/messages/**",
+                                                "/api/v1/conversations/**",
+                                                "/api/v1/knowledge-base/**",
+                                                "/api/v1/tenant/**",
+                                                "/api/v1/internal/**")
                                 .access(profileTierAuthorizationManager)
+                                .requestMatchers(HttpMethod.POST, "/v1/ingest")
+                                .authenticated()
+                                .requestMatchers(HttpMethod.PUT, "/v1/bot-settings")
+                                .authenticated()
                                 .anyRequest()
                                 .permitAll())
                 .httpBasic(AbstractHttpConfigurer::disable)
@@ -66,7 +76,8 @@ public class SecurityConfiguration {
                                                             : "{\"error\":\"perfil insuficiente\"}";
                                             response.getWriter().write(body);
                                         }))
-                .addFilterBefore(firebasePortalAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(firebasePortalAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(tenantContextFilter, FirebasePortalAuthenticationFilter.class);
         return http.build();
     }
 }

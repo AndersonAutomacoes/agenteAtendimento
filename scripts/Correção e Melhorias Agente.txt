@@ -1,0 +1,59 @@
+ 
+Implementações e Melhorias:
+  Criar reconhecimento msg de audio
+    - A aplicação deve transcrever o audio para mensagem e enviar para o agente para que ele possa interagir com o cliente    
+	-Sugestão de Melhoria: * Custo e Performance: Use o modelo Whisper (OpenAI) via API ou uma biblioteca local se o servidor permitir.
+	-Feedback ao Usuário: Como a transcrição leva alguns segundos, instrua o Agente a enviar uma reação ou uma pequena mensagem ("Processando seu áudio...") para evitar que o usuário ache que o bot travou.
+
+Validação: Se a transcrição for muito curta ou inconclusiva (ruído de oficina), o bot deve pedir gentilmente para repetir ou digitar.
+  Agendar apenas Serviços oferecidos pelo cliente
+   - Deverá existir na aplicação web uma aba para cadastro e gerenciamento de Serviços que podem ser agendados pelo Cliente, esses serviços ficarão em uma tabela tenant_services
+   - Esses serviços deverão ser mostrados ao cliente pelo Agente durante a interação antes de confirmar o agendamento 
+   - Para o agendamento ser confirmado deverá antes um desses serviços devem serem escolhidos
+   - O agente deverá informar na mensagem de confirmação de Agendamento ou de Cancelamento desse agendamento os serviços disponibilizados pelo cliente 
+   - Sugestão de Melhoria: * ID vs Nome: No banco tenant_appointments, armazene o service_id (FK para tenant_services) e não apenas o nome string. Isso facilita relatórios futuros (ex: "Qual serviço é mais lucrativo?").
+   - Preço e Tempo: Adicione colunas de duracao_estimada e preco_base na tabela de serviços. Assim, o Agente pode dizer: "Este serviço leva cerca de 2h e custa a partir de R$ X". 
+   
+   
+  Na aba de Configuração 
+	- Deverá ter um formulário para cadastro e gerenciamento  de clientes
+	- Esse formulário deverá conter informações do cliente tenant, informações sobre o negócio(Nome do Estabelecimento,Endereço,Horário de Funcionamento,Contatos,Facilidades,Serviços Oferecidos(Lista de Serviços))
+    - Deverá conter o plano escolhido para esse cliente 
+	- Criar o código convite e enviar para o email do cliente após o cadastro 
+	- Cadastro de outros usuários desse Tenant  que terão acesso ao sistema
+	- Status de Adimplencia que dirá se o cliente está adimplente ou não com o seu plano 
+	- Endereço Planilha Google Calendar e dados de acesso 
+	- Numero do Whatsapp
+	- Permitir configurar tempo por atendimento(30 min, 1 hora)
+	- Regra -> Apenas administrador terá acesso a essa aba 
+	
+  Criar Tela Tenants
+    - Regra -> Apenas administrador terá acesso a essa aba 
+	- Deverá conter uma grid com os dados principais do Tenant
+  
+  Criar Tela de Gerenciamento de Planos:
+    - Regra -> Apenas administrador terá acesso a essa aba 
+	- Permitir Selecionar as funcionalidades que cada plano deverá acessar 
+	 Exemplo: Plano Ultra terá acesso ao Dashboard completo, Base de Conhecimento Completo, Monitoramento Completo. Plano PRO terá acesso restrito  a essas funcionalidades, Plano Basic não terá acesso a todas as funcionalidades
+	- Revisão acessos para os Planos: ULTRA. PRO ,BASIC
+    - As funcionalidades que cada plano deverão aparecer com checks para que possam ser selecionadas para cada Plano ou não
+	-Sugestão de Melhoria: Feature Flags: Em vez de vários if (plano == 'BASIC') no código, use o padrão de Feature Toggles. O sistema verifica se a funcionalidade DASHBOARD_COMPLETO está ativa para aquele Tenant.
+	-Limites Quantitativos: Defina limites nos planos (ex: Plano Basic pode ter até 50 agendamentos/mês; Plano Ultra é ilimitado). Isso ajuda na sua margem de lucro.
+	
+  Retirar o label Id da Conta das telas
+   - Telas: Agendamentos,Monitoramento,Chat de Teste,Base de Conhecimento, Tela de Dashboard(add uma quebra de linha)
+  Revisar nomenclatura dos serviços nos agendamentos
+   - Os nomes dos serviços a serem agendados devem ser os mesmos que estão cadastrados para o Tenant 
+  Padronizar msg criada no Google Calendar
+   - A mensagem que aparece no Google Calendar deverá seguir um padrão "SERVIÇO - HORARIO - CLIENTE" em capslook 
+   -Sugestão de Melhoria: Links Úteis: Na descrição do evento no Google Calendar, adicione o link direto para o WhatsApp do cliente. Assim, o dono da oficina clica no calendário e já fala com o cliente se precisar atrasar 10 min.
+   
+  Criar formulário com perguntas padrão para criar arquivo RAG
+   - Criar uma aba para criação do arquivo RAG de acordo com algumas perguntas feitas ao Tenant 
+     -- O Tenant deverá receber um link para uma pagina com um form onde ele deverá responder algumas perguntas e ao submeter esse formulário a aplicação irá criar um arquivo PDF que será add como RAG para o Agente do Tentant
+	 --Sugestão de Melhoria: Markdown vs PDF: Para a IA, arquivos .txt ou .md são processados de forma mais limpa e barata que .pdf. Sugiro que o formulário gere um arquivo de texto estruturado.
+	 --Perguntas Chave: Inclua no formulário: "Quais marcas vocês atendem?", "Trabalham com peças próprias ou o cliente pode levar?", "Existe taxa de diagnóstico?". Isso enriquece muito a base de conhecimento.
+  
+  
+    
+ 

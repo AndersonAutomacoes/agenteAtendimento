@@ -54,17 +54,14 @@ public class TenantSettingsRestRoute extends RouteBuilder {
     }
 
     private void handleGet(Exchange exchange) {
-        // Servlet Camel: query params costumam aparecer também como headers com o mesmo nome.
-        String tenantId = exchange.getMessage().getHeader("tenantId", String.class);
-        if (tenantId == null || tenantId.isBlank()) {
-            tenantId = parseQueryParam(exchange.getMessage().getHeader(Exchange.HTTP_QUERY, String.class), "tenantId");
+        String requestedTenantId = exchange.getMessage().getHeader("tenantId", String.class);
+        if (requestedTenantId == null || requestedTenantId.isBlank()) {
+            requestedTenantId = parseQueryParam(exchange.getMessage().getHeader(Exchange.HTTP_QUERY, String.class), "tenantId");
         }
-        if (tenantId == null || tenantId.isBlank()) {
-            exchange.getIn().setBody(new IngestErrorResponse("tenantId é obrigatório"));
-            exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
+        String tenantId = CamelAuthSupport.authorizedTenantOrAbort(exchange, requestedTenantId);
+        if (tenantId == null) {
             return;
         }
-        tenantId = tenantId.strip();
         TenantId tid = new TenantId(tenantId);
         TenantConfiguration c =
                 tenantConfigurationStore.findByTenantId(tid).orElseGet(() -> TenantConfiguration.defaults(tid));
@@ -76,7 +73,17 @@ public class TenantSettingsRestRoute extends RouteBuilder {
                 c.whatsappApiKey(),
                 c.whatsappInstanceId(),
                 c.whatsappBaseUrl(),
-                c.googleCalendarId());
+                c.googleCalendarId(),
+                c.establishmentName(),
+                c.businessAddress(),
+                c.openingHours(),
+                c.businessContacts(),
+                c.businessFacilities(),
+                c.defaultAppointmentMinutes(),
+                c.billingCompliant(),
+                c.calendarAccessNotes(),
+                c.spreadsheetUrl(),
+                c.whatsappBusinessNumber());
         exchange.getMessage().setBody(body);
         exchange.getMessage().setHeader(Exchange.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
         exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.OK.value());
@@ -102,9 +109,9 @@ public class TenantSettingsRestRoute extends RouteBuilder {
 
     private void handlePut(Exchange exchange) {
         TenantSettingsHttpRequest body = exchange.getIn().getBody(TenantSettingsHttpRequest.class);
-        if (body == null || body.tenantId() == null || body.tenantId().isBlank()) {
-            exchange.getIn().setBody(new IngestErrorResponse("tenantId é obrigatório"));
-            exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
+        String requestedTenantId = body != null ? body.tenantId() : null;
+        String tenantId = CamelAuthSupport.authorizedTenantOrAbort(exchange, requestedTenantId);
+        if (tenantId == null) {
             return;
         }
         if (body.systemPrompt() == null) {
@@ -129,8 +136,18 @@ public class TenantSettingsRestRoute extends RouteBuilder {
                     body.whatsappApiKey(),
                     body.whatsappInstanceId(),
                     body.whatsappBaseUrl(),
-                    body.googleCalendarId());
-            updateTenantSettings.updateTenantSettings(new TenantId(body.tenantId().strip()), command);
+                    body.googleCalendarId(),
+                    body.establishmentName(),
+                    body.businessAddress(),
+                    body.openingHours(),
+                    body.businessContacts(),
+                    body.businessFacilities(),
+                    body.defaultAppointmentMinutes(),
+                    body.billingCompliant(),
+                    body.calendarAccessNotes(),
+                    body.spreadsheetUrl(),
+                    body.whatsappBusinessNumber());
+            updateTenantSettings.updateTenantSettings(new TenantId(tenantId), command);
             exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.NO_CONTENT.value());
             exchange.getIn().setBody(null);
         } catch (IllegalArgumentException e) {

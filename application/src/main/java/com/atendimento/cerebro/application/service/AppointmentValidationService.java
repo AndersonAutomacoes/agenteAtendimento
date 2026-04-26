@@ -7,6 +7,7 @@ import com.atendimento.cerebro.application.scheduling.SchedulingSlotCapture;
 import com.atendimento.cerebro.application.scheduling.SchedulingUserReplyNormalizer;
 import com.atendimento.cerebro.application.scheduling.ToolCreateAppointmentPreparation;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -65,6 +66,13 @@ public final class AppointmentValidationService {
         } catch (DateTimeParseException e) {
             return AppointmentCalendarValidationResult.invalid(
                     "Não consegui interpretar o horário. Pode dizer o horário claramente (por exemplo 14:30)?");
+        }
+        ZoneId z = zone != null ? zone : ZoneId.systemDefault();
+        LocalDateTime now = LocalDateTime.now(z);
+        LocalDateTime candidate = LocalDateTime.of(day, time);
+        if (day.equals(now.toLocalDate()) && candidate.isBefore(now)) {
+            return AppointmentCalendarValidationResult.invalid(
+                    "Esse horário já passou para hoje. Pode escolher um horário a partir de agora?");
         }
         return AppointmentCalendarValidationResult.ok(day, time);
     }

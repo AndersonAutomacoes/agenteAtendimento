@@ -2,6 +2,7 @@ package com.atendimento.cerebro.application.scheduling;
 
 import java.text.Normalizer;
 import java.time.LocalDate;
+import java.time.DayOfWeek;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
@@ -21,6 +22,9 @@ public final class SchedulingCalendarUserIntent {
     /** dd/MM ou dd/MM/yyyy */
     private static final Pattern BR_DATE =
             Pattern.compile("(?<!\\d)(\\d{1,2})\\s*/\\s*(\\d{1,2})(?:\\s*/\\s*(\\d{2,4}))?(?!\\d)");
+    private static final Pattern PT_WEEKDAY =
+            Pattern.compile(
+                    "(?iu)\\b(seg(?:unda)?(?:-feira)?|ter(?:ca|ça)?(?:-feira)?|qua(?:rta)?(?:-feira)?|qui(?:nta)?(?:-feira)?|sex(?:ta)?(?:-feira)?|s[áa]b(?:ado)?|dom(?:ingo)?)\\b");
 
     private SchedulingCalendarUserIntent() {}
 
@@ -72,6 +76,54 @@ public final class SchedulingCalendarUserIntent {
             }
         }
         return Optional.ofNullable(last);
+    }
+
+    /** Próxima ocorrência (incluindo hoje) de dia da semana em pt-BR (ex.: «quinta-feira», «terça», «sabado»). */
+    public static Optional<LocalDate> nextWeekdayMentionedInText(String text, ZoneId zone) {
+        if (text == null || text.isBlank() || zone == null) {
+            return Optional.empty();
+        }
+        Matcher m = PT_WEEKDAY.matcher(text);
+        DayOfWeek target = null;
+        while (m.find()) {
+            target = mapPortugueseWeekday(m.group(1));
+        }
+        if (target == null) {
+            return Optional.empty();
+        }
+        LocalDate now = LocalDate.now(zone);
+        int delta = (target.getValue() - now.getDayOfWeek().getValue() + 7) % 7;
+        return Optional.of(now.plusDays(delta));
+    }
+
+    private static DayOfWeek mapPortugueseWeekday(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String n = Normalizer.normalize(raw.strip(), Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
+        n = n.replace("-feira", "");
+        if (n.startsWith("seg")) {
+            return DayOfWeek.MONDAY;
+        }
+        if (n.startsWith("ter")) {
+            return DayOfWeek.TUESDAY;
+        }
+        if (n.startsWith("qua")) {
+            return DayOfWeek.WEDNESDAY;
+        }
+        if (n.startsWith("qui")) {
+            return DayOfWeek.THURSDAY;
+        }
+        if (n.startsWith("sex")) {
+            return DayOfWeek.FRIDAY;
+        }
+        if (n.startsWith("sab") || n.startsWith("sáb")) {
+            return DayOfWeek.SATURDAY;
+        }
+        if (n.startsWith("dom")) {
+            return DayOfWeek.SUNDAY;
+        }
+        return null;
     }
 
     private static int normalizeYear(String y) {

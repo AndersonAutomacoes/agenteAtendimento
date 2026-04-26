@@ -47,6 +47,8 @@ public class AppointmentReminderNotificationService {
                         ⏰ Horário: %s
 
                         Caso precise ajustar algo, me avise agora! Se estiver tudo certo, te esperamos aqui. 🛠️🚗
+
+                        Gestão de atendimento por AxeZap AI
                         """
                         .stripIndent()
                         .formatted(clientName, date, time);

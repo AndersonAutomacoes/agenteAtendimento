@@ -4,6 +4,7 @@ import com.atendimento.cerebro.application.dto.TenantSettingsUpdateCommand;
 import com.atendimento.cerebro.application.port.in.UpdateTenantSettingsUseCase;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel.IngestErrorResponse;
+import com.atendimento.cerebro.infrastructure.security.TenantContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -34,19 +35,24 @@ public class BotSettingsController {
 
     @PutMapping(value = "/bot-settings", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> putBotSettings(
-            @RequestParam("tenantId") String tenantId, @RequestBody BotSettingsPutRequest body) {
-        if (tenantId == null || tenantId.isBlank()) {
-            return ResponseEntity.badRequest().body(new IngestErrorResponse("tenantId é obrigatório"));
+            @RequestParam(value = "tenantId", required = false) String tenantId, @RequestBody BotSettingsPutRequest body) {
+        String effectiveTenantId = TenantContext.getTenantIdOrSecurityContext().orElse(null);
+        if (effectiveTenantId == null || effectiveTenantId.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new IngestErrorResponse("não autenticado"));
+        }
+        if (tenantId != null && !tenantId.isBlank() && !effectiveTenantId.equals(tenantId.strip())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(new IngestErrorResponse("tenantId não coincide com a sessão"));
         }
         if (body == null || body.botPersonality() == null) {
             return ResponseEntity.badRequest().body(new IngestErrorResponse("botPersonality é obrigatório"));
         }
         try {
             String personality = body.botPersonality();
-            LOG.info("bot-settings (Spring MVC) tenantId={} personalityChars={}", tenantId.strip(), personality.length());
+            LOG.info("bot-settings (Spring MVC) tenantId={} personalityChars={}", effectiveTenantId, personality.length());
             updateTenantSettings.updateTenantSettings(
-                    new TenantId(tenantId.strip()),
-                    new TenantSettingsUpdateCommand(personality, null, null, null, null, null));
+                    new TenantId(effectiveTenantId),
+                    TenantSettingsUpdateCommand.ofLegacy(personality, null, null, null, null, null));
             return ResponseEntity.noContent().build();
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(new IngestErrorResponse(e.getMessage()));

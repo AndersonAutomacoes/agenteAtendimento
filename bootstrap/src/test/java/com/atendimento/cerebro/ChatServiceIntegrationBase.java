@@ -65,8 +65,9 @@ public abstract class ChatServiceIntegrationBase {
 
     @BeforeEach
     void setUp() {
-        float[] vec = new float[1536];
-        Arrays.fill(vec, 1.0f / 1536.0f);
+        // Keep integration embeddings aligned with pgvector table dimension (768).
+        float[] vec = new float[768];
+        Arrays.fill(vec, 1.0f / 768.0f);
 
         // PgVectorStore.add usa embed(List<Document>, …), não call(EmbeddingRequest).
         when(embeddingModel.embed(anyList(), any(EmbeddingOptions.class), any(BatchingStrategy.class)))
@@ -97,7 +98,7 @@ public abstract class ChatServiceIntegrationBase {
                     }
                     return new EmbeddingResponse(embeddings);
                 });
-        when(embeddingModel.dimensions()).thenReturn(1536);
+        when(embeddingModel.dimensions()).thenReturn(768);
 
         when(aiEnginePort.complete(any())).thenAnswer(invocation -> {
             AICompletionRequest req = invocation.getArgument(0);

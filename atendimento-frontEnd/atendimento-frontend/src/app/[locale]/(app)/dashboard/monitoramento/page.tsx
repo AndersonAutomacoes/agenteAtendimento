@@ -9,9 +9,9 @@ import { toast } from "sonner";
 
 import { ChatBubble } from "@/components/chat/chat-bubble";
 import { CustomerRecordDialog } from "@/components/crm/customer-record-dialog";
+import { FeatureGuard } from "@/components/plan/feature-guard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { toBcp47ForDates } from "@/lib/intl-locale";
 import { cn } from "@/lib/utils";
 import {
@@ -503,7 +503,8 @@ function MonitoramentoConversasPageContent() {
   }, [selectedPhone]);
 
   return (
-    <div className="flex h-[calc(100dvh-3.5rem-2rem)] min-h-[420px] flex-col gap-4">
+    <FeatureGuard requiredPlan="pro" requiredFeature="MONITORING">
+      <div className="flex h-[calc(100dvh-3.5rem-2rem)] min-h-[420px] flex-col gap-4">
       <CustomerRecordDialog
         open={fichaOpen}
         onOpenChange={setFichaOpen}
@@ -517,16 +518,6 @@ function MonitoramentoConversasPageContent() {
           {t("subtitle", { seconds: POLL_MS / 1000 })}
         </p>
         <div className="mt-3 max-w-md space-y-1">
-          <Label className="text-muted-foreground">{t("accountId")}</Label>
-          <p
-            className={cn(
-              "min-h-9 font-mono text-base font-semibold tracking-tight text-foreground sm:text-lg",
-              !tenantId.trim() && "font-normal text-muted-foreground",
-            )}
-            aria-label={t("accountId")}
-          >
-            {tenantId.trim() || "—"}
-          </p>
           {!tenantId.trim() ? (
             <p className="pt-1 text-xs text-amber-600 dark:text-amber-400/90">
               {t("needAccountWarning")}
@@ -883,7 +874,8 @@ function MonitoramentoConversasPageContent() {
           </form>
         </section>
       </div>
-    </div>
+      </div>
+    </FeatureGuard>
   );
 }
 

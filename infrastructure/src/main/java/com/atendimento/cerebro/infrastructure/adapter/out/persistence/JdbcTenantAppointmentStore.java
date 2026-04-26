@@ -28,14 +28,15 @@ public class JdbcTenantAppointmentStore implements TenantAppointmentStorePort {
                 .sql(
                         """
                         INSERT INTO tenant_appointments (
-                            tenant_id, conversation_id, client_name, service_name,
+                            tenant_id, conversation_id, client_name, service_id, service_name,
                             starts_at, ends_at, google_event_id, booking_status)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, 'AGENDADO')
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'AGENDADO')
                         RETURNING id
                         """)
                 .param(record.tenantId().value())
                 .param(record.conversationId())
                 .param(record.clientName())
+                .param(record.serviceId())
                 .param(record.serviceName())
                 .param(Timestamp.from(record.startsAt()))
                 .param(Timestamp.from(record.endsAt()))

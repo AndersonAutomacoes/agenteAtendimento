@@ -2,7 +2,9 @@ package com.atendimento.cerebro.infrastructure.adapter.out.persistence;
 
 import com.atendimento.cerebro.application.port.out.TenantInviteStorePort;
 import com.atendimento.cerebro.domain.tenant.TenantId;
+import java.time.Instant;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,5 +35,22 @@ public class PostgresTenantInviteStore implements TenantInviteStorePort {
                 .query(String.class)
                 .optional()
                 .map(TenantId::new);
+    }
+
+    @Override
+    @Transactional
+    public void insertNewInvite(UUID id, TenantId tenantId, String codeHash, int maxUses, Instant expiresAt) {
+        jdbcClient
+                .sql(
+                        """
+                        INSERT INTO tenant_invite (id, tenant_id, code_hash, expires_at, max_uses, uses_count)
+                        VALUES (?, ?, ?, ?, ?, 0)
+                        """)
+                .param(id)
+                .param(tenantId.value())
+                .param(codeHash)
+                .param(expiresAt)
+                .param(maxUses)
+                .update();
     }
 }

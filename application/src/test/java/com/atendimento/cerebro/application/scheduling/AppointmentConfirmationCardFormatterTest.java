@@ -16,7 +16,7 @@ class AppointmentConfirmationCardFormatterTest {
                         "Sr. Anderson",
                         LocalDate.of(2026, 4, 14),
                         "15:30",
-                        "Oficina InteliZap - Salvador, BA",
+                        "Oficina AxeZap - Salvador, BA",
                         "https://maps.app.goo.gl/oficina");
         assertThat(card)
                 .contains("*Agendamento confirmado* *#42*")
@@ -25,7 +25,7 @@ class AppointmentConfirmationCardFormatterTest {
                 .contains("Terça-feira")
                 .contains("14/04/2026")
                 .contains("15:30")
-                .contains("Oficina InteliZap")
+                .contains("Oficina AxeZap")
                 .contains("*Como chegar:* https://maps.app.goo.gl/oficina")
                 .contains("alterar ou cancelar");
     }

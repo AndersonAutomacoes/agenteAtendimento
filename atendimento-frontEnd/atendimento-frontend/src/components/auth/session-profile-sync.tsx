@@ -15,7 +15,7 @@ import {
  * Mantém o ID token Firebase em localStorage e alinha o plano da UI ao perfil do utilizador (GET /v1/auth/me).
  */
 export function SessionProfileSync() {
-  const { setTier } = usePlan();
+  const { setTier, setFeatures, setProfileLevel } = usePlan();
 
   React.useEffect(() => {
     if (typeof window === "undefined" || !isFirebaseConfigured()) {
@@ -29,6 +29,9 @@ export function SessionProfileSync() {
         } catch {
           /* ignore */
         }
+        setProfileLevel("BASIC");
+        setTier(mapProfileLevelToPlanTier("BASIC"));
+        setFeatures({});
         return;
       }
       try {
@@ -44,7 +47,9 @@ export function SessionProfileSync() {
       }
       try {
         const s = await getPortalSession();
+        setProfileLevel(s.profileLevel);
         setTier(mapProfileLevelToPlanTier(s.profileLevel));
+        setFeatures(s.features ?? {});
       } catch {
         try {
           localStorage.removeItem(CEREBRO_AUTH_TOKEN_KEY);
@@ -53,7 +58,7 @@ export function SessionProfileSync() {
         }
       }
     });
-  }, [setTier]);
+  }, [setTier, setFeatures, setProfileLevel]);
 
   return null;
 }

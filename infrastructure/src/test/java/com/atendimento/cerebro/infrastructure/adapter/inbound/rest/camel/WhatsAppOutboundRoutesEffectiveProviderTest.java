@@ -17,17 +17,17 @@ class WhatsAppOutboundRoutesEffectiveProviderTest {
         assertThat(
                         WhatsAppOutboundRoutes.effectiveProvider(
                                 new TenantConfiguration(
-                                        TID, "", WhatsAppProviderType.META, null, "pnid", null, ProfileLevel.BASIC, null, null)))
+                                        TID, "", WhatsAppProviderType.META, null, "pnid", null, ProfileLevel.BASIC, null, null, null, null, null, null, null, 30, true, null, null, null)))
                 .isEqualTo(WhatsAppProviderType.SIMULATED);
         assertThat(
                         WhatsAppOutboundRoutes.effectiveProvider(
                                 new TenantConfiguration(
-                                        TID, "", WhatsAppProviderType.META, "tok", null, null, ProfileLevel.BASIC, null, null)))
+                                        TID, "", WhatsAppProviderType.META, "tok", null, null, ProfileLevel.BASIC, null, null, null, null, null, null, null, 30, true, null, null, null)))
                 .isEqualTo(WhatsAppProviderType.SIMULATED);
         assertThat(
                         WhatsAppOutboundRoutes.effectiveProvider(
                                 new TenantConfiguration(
-                                        TID, "", WhatsAppProviderType.META, "tok", "pnid", null, ProfileLevel.BASIC, null, null)))
+                                        TID, "", WhatsAppProviderType.META, "tok", "pnid", null, ProfileLevel.BASIC, null, null, null, null, null, null, null, 30, true, null, null, null)))
                 .isEqualTo(WhatsAppProviderType.META);
     }
 
@@ -44,6 +44,16 @@ class WhatsAppOutboundRoutesEffectiveProviderTest {
                                         null,
                                         ProfileLevel.BASIC,
                                         null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        30,
+                                        true,
+                                        null,
+                                        null,
                                         null)))
                 .isEqualTo(WhatsAppProviderType.SIMULATED);
         assertThat(
@@ -57,6 +67,16 @@ class WhatsAppOutboundRoutesEffectiveProviderTest {
                                         "https://h",
                                         ProfileLevel.BASIC,
                                         null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        30,
+                                        true,
+                                        null,
+                                        null,
                                         null)))
                 .isEqualTo(WhatsAppProviderType.EVOLUTION);
     }
@@ -66,7 +86,7 @@ class WhatsAppOutboundRoutesEffectiveProviderTest {
         assertThat(
                         WhatsAppOutboundRoutes.effectiveProvider(
                                 new TenantConfiguration(
-                                        TID, "", WhatsAppProviderType.SIMULATED, null, null, null, ProfileLevel.BASIC, null, null)))
+                                        TID, "", WhatsAppProviderType.SIMULATED, null, null, null, ProfileLevel.BASIC, null, null, null, null, null, null, null, 30, true, null, null, null)))
                 .isEqualTo(WhatsAppProviderType.SIMULATED);
     }
 }

@@ -38,6 +38,6 @@ export function mapProfileLevelToPlanTier(profileLevel: string): PlanTier {
   const u = profileLevel.trim().toUpperCase();
   if (u === "BASIC") return "starter";
   if (u === "PRO") return "pro";
-  if (u === "ULTRA") return "enterprise";
+  if (u === "ULTRA" || u === "COMERCIAL") return "enterprise";
   return readDefaultPlanTierFromEnv();
 }

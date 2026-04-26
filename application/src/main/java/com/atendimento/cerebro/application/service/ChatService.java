@@ -49,10 +49,16 @@ import com.atendimento.cerebro.application.scheduling.SchedulingExplicitTimeShor
 import com.atendimento.cerebro.application.scheduling.SchedulingToolContext;
 import com.atendimento.cerebro.application.scheduling.SystemPromptPlaceholders;
 import com.atendimento.cerebro.application.scheduling.SchedulingCreateAppointmentResult;
+import com.atendimento.cerebro.application.scheduling.SchedulingSlotCapture;
+import com.atendimento.cerebro.application.scheduling.SchedulingServiceAttribution;
 import com.atendimento.cerebro.application.scheduling.SchedulingUserReplyNormalizer;
+import com.atendimento.cerebro.application.scheduling.CancelOptionMap;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 
 import java.time.format.DateTimeFormatter;
 
@@ -64,6 +70,7 @@ import java.text.Normalizer;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.regex.Pattern;
+import java.util.regex.Matcher;
 
 import org.slf4j.Logger;
 
@@ -80,11 +87,23 @@ import org.slf4j.LoggerFactory;
  */
 
 public class ChatService implements ChatUseCase {
+    private static final String AXEZAP_INTRODUCTION_RULE =
+            "Regra de apresentação: ao iniciar atendimento com um cliente, apresente-se como: "
+                    + "'Olá! Sou o assistente inteligente da [Empresa], operando através da tecnologia AxeZap.'";
 
     private static final Pattern GREETING_HEAD =
             Pattern.compile(
                     "^(oi|ola|bom dia|boa tarde|boa noite|hi|hello)([\\s!,.…?]|$)",
                     Pattern.CASE_INSENSITIVE);
+    private static final Pattern SHORT_CONFIRMATION =
+            Pattern.compile(
+                    "^(sim|sí|confirmo|confirmado|pode|ok|isso|perfeito|fechado|pode\\s+ser|pode\\s+confirmar)\\b[.!\\s]*$",
+                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern RESCHEDULE_WITH_ID =
+            Pattern.compile(
+                    "(?i)\\b(reagend\\w*|remarc\\w*|mud\\w*)\\b(?:\\s+o)?(?:\\s+agendamento)?(?:\\s+(?:id|c[oó]digo|n[uú]mero|numero|n°|#))?\\s*[:#-]?\\s*(\\d{1,19})\\b");
+    private static final Pattern CLOCK_TIME = Pattern.compile("\\b([01]?\\d|2[0-3]):([0-5]\\d)\\b");
+    private static final Pattern CLOCK_TIME_ONLY = Pattern.compile("^\\s*([01]?\\d|2[0-3]):([0-5]\\d)\\s*$");
 
     private static final Logger LOG = LoggerFactory.getLogger(ChatService.class);
 
@@ -236,6 +255,10 @@ public class ChatService implements ChatUseCase {
                 SystemPromptPlaceholders.apply(
                         tenantConfig.map(tc -> tc.systemPrompt().strip()).orElse(""),
                         ZoneId.of(schedulingZoneId));
+        systemPrompt =
+                (systemPrompt == null || systemPrompt.isBlank())
+                        ? AXEZAP_INTRODUCTION_RULE
+                        : AXEZAP_INTRODUCTION_RULE + "\n\n" + systemPrompt;
 
         if (tenantConfig.isEmpty()) {
 
@@ -301,6 +324,13 @@ public class ChatService implements ChatUseCase {
 
         boolean schedulingTools = provider == AiChatProvider.GEMINI;
 
+        Optional<ChatResult> numericChoiceSanityCheck =
+                maybeHandleLikelyMisheardNumericChoice(
+                        schedulingTools, userText, historyForAi, context, userMessage);
+        if (numericChoiceSanityCheck.isPresent()) {
+            return numericChoiceSanityCheck.get();
+        }
+
         boolean cancelIntent = SchedulingUserReplyNormalizer.looksLikeCancellationIntent(userText);
         if (cancelIntent) {
             historyForAi = SchedulingUserReplyNormalizer.stripSchedulingStateFromHistory(historyForAi);
@@ -335,18 +365,29 @@ public class ChatService implements ChatUseCase {
 
         final List<Message> historyForSlotExpansion = historyForAi;
 
+        Optional<String> selectedServiceByIndex =
+                schedulingTools && !cancelIntent && !rescheduleIntent
+                        && SchedulingUserReplyNormalizer
+                                .shouldInterpretNumericChoiceAsServiceSelection(historyForSlotExpansion)
+                        ? SchedulingUserReplyNormalizer.resolveSelectedServiceFromUserChoice(
+                                userText, historyForSlotExpansion)
+                        : Optional.empty();
+
         SlotChoiceExpansion slotExpansion =
                 schedulingTools && !cancelIntent && !rescheduleIntent
-                        ? SchedulingExplicitTimeShortcut.tryExpand(
-                                        tenantId,
-                                        userText,
-                                        historyForSlotExpansion,
-                                        ZoneId.of(schedulingZoneId),
-                                        appointmentScheduling)
-                                .orElseGet(
-                                        () ->
-                                                SchedulingUserReplyNormalizer.expandNumericSlotChoice(
-                                                        userText, historyForSlotExpansion))
+                        ? (selectedServiceByIndex.isPresent()
+                                ? SlotChoiceExpansion.unchanged(userText)
+                                : SchedulingExplicitTimeShortcut.tryExpand(
+                                                tenantId,
+                                                userText,
+                                                historyForSlotExpansion,
+                                                ZoneId.of(schedulingZoneId),
+                                                appointmentScheduling,
+                                                appointmentService)
+                                        .orElseGet(
+                                                () ->
+                                                        SchedulingUserReplyNormalizer.expandNumericSlotChoice(
+                                                                userText, historyForSlotExpansion)))
                         : SlotChoiceExpansion.unchanged(userText);
         String userMessageForAi = slotExpansion.expandedUserMessage();
 
@@ -362,6 +403,71 @@ public class ChatService implements ChatUseCase {
         Optional<TenantAppointmentListItem> lastAppointment =
                 tenantAppointmentQuery.findMostRecentByConversationId(
                         tenantId, conversationId.value(), schedulingZoneId);
+        Optional<ChatResult> rescheduleConfirmationDraft =
+                maybePrepareRescheduleDraftForExplicitTime(
+                        schedulingTools,
+                        tenantId,
+                        conversationId.value(),
+                        userText,
+                        context,
+                        userMessage,
+                        historyForSlotExpansion,
+                        ZoneId.of(schedulingZoneId));
+        if (rescheduleConfirmationDraft.isPresent()) {
+            return rescheduleConfirmationDraft.get();
+        }
+        Optional<ChatResult> rescheduleList =
+                maybeListActiveAppointmentsForRescheduleContext(
+                        schedulingTools,
+                        rescheduleIntent,
+                        tenantId,
+                        conversationId.value(),
+                        userText,
+                        historyForSlotExpansion,
+                        context,
+                        userMessage,
+                        ZoneId.of(schedulingZoneId));
+        if (rescheduleList.isPresent()) {
+            return rescheduleList.get();
+        }
+        Optional<ChatResult> continueAfterPastTime =
+                maybeContinueSchedulingAfterPastTimeRejection(
+                        schedulingTools,
+                        tenantId,
+                        userText,
+                        historyForSlotExpansion,
+                        context,
+                        userMessage,
+                        ZoneId.of(schedulingZoneId));
+        if (continueAfterPastTime.isPresent()) {
+            return continueAfterPastTime.get();
+        }
+        Optional<ChatResult> rescheduleAskTimeById =
+                maybeAskRescheduleDateTimeForExplicitAppointmentId(
+                        schedulingTools,
+                        tenantId,
+                        conversationId.value(),
+                        userText,
+                        context,
+                        userMessage,
+                        historyForSlotExpansion,
+                        ZoneId.of(schedulingZoneId));
+        if (rescheduleAskTimeById.isPresent()) {
+            return rescheduleAskTimeById.get();
+        }
+        Optional<ChatResult> directRescheduleById =
+                maybeExecuteDirectRescheduleWithExplicitAppointmentId(
+                        schedulingTools,
+                        tenantId,
+                        conversationId.value(),
+                        userText,
+                        context,
+                        userMessage,
+                        crmRow,
+                        ZoneId.of(schedulingZoneId));
+        if (directRescheduleById.isPresent()) {
+            return directRescheduleById.get();
+        }
 
         String crmContext =
                 buildCrmContextForPrompt(
@@ -380,17 +486,72 @@ public class ChatService implements ChatUseCase {
                 stored = SchedulingUserReplyNormalizer.appendSchedulingDraft(
                         hardcoded, slotExpansion.pendingConfirmationDraft().get());
             }
+            stored =
+                    reattachSelectedServiceToSlotConfirmMessageIfMissing(
+                            stored, historyForSlotExpansion);
             Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(stored));
             ConversationContext updated = context.append(userMessage, assistantMessage);
             conversationContextStore.save(updated);
             return new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(stored));
         }
 
+        if (selectedServiceByIndex.isPresent()) {
+            String service = selectedServiceByIndex.get().strip();
+            clearCancellationContext(conversationId.value());
+            Optional<SchedulingEnforcedChoice> draftOrRecovered =
+                    SchedulingUserReplyNormalizer.parseLastDraftFromHistory(historyForSlotExpansion)
+                            .or(
+                                    () ->
+                                            SchedulingExplicitTimeShortcut.recoverEnforcedChoiceFromUserHistory(
+                                                    historyForSlotExpansion, ZoneId.of(schedulingZoneId)));
+            String dayPt;
+            if (draftOrRecovered.isPresent()) {
+                SchedulingEnforcedChoice d = draftOrRecovered.get();
+                dayPt = d.date().format(DateTimeFormatter.ofPattern("dd/MM/yyyy", java.util.Locale.forLanguageTag("pt-BR")));
+                String hardcoded =
+                        "Perfeito! O serviço *"
+                                + service
+                                + "* para *"
+                                + dayPt
+                                + "* às *"
+                                + d.timeHhMm()
+                                + "*. Posso confirmar o agendamento?";
+                String stored =
+                        SchedulingUserReplyNormalizer.appendSelectedService(
+                                SchedulingUserReplyNormalizer.appendSchedulingDraft(hardcoded, d), service);
+                Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(stored));
+                ConversationContext updated = context.append(userMessage, assistantMessage);
+                conversationContextStore.save(updated);
+                return new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(stored));
+            }
+            String hardcoded =
+                    "Perfeito! Você escolheu *"
+                            + service
+                            + "*.\n\nAgora me diga a data desejada para o agendamento.";
+            String stored = SchedulingUserReplyNormalizer.appendSelectedService(hardcoded, service);
+            Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(stored));
+            ConversationContext updated = context.append(userMessage, assistantMessage);
+            conversationContextStore.save(updated);
+            return new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(stored));
+        }
+
+        Optional<SchedulingEnforcedChoice> effectiveChoiceForCreate =
+                slotExpansion.enforcedChoice()
+                        .or(
+                                () ->
+                                        maybeRecoverEnforcedChoiceFromHistoryOnConfirmation(
+                                                schedulingTools,
+                                                userText,
+                                                historyForSlotExpansion,
+                                                ZoneId.of(schedulingZoneId)));
+        boolean confirmedCreateTurn =
+                SchedulingUserReplyNormalizer.isBackendCreateConfirmationInstruction(userMessageForAi)
+                        || isShortConfirmationMessage(userText);
         if (schedulingTools
-                && slotExpansion.enforcedChoice().isPresent()
+                && effectiveChoiceForCreate.isPresent()
                 && !slotExpansion.blockCreateAppointmentThisTurn()
-                && SchedulingUserReplyNormalizer.isBackendCreateConfirmationInstruction(userMessageForAi)) {
-            SchedulingEnforcedChoice choice = slotExpansion.enforcedChoice().get();
+                && confirmedCreateTurn) {
+            SchedulingEnforcedChoice choice = effectiveChoiceForCreate.get();
             String iso = choice.date().format(DateTimeFormatter.ISO_LOCAL_DATE);
             ZoneId calendarZone = ZoneId.of(schedulingZoneId);
             String clientName =
@@ -399,44 +560,107 @@ public class ChatService implements ChatUseCase {
                             .filter(n -> n != null && !n.isBlank())
                             .map(String::strip)
                             .orElse("Cliente");
-            String serviceName =
-                    SchedulingExplicitTimeShortcut.parseServiceNameForCreateFromHistory(historyForAi)
-                            .or(() ->
-                                    lastAppointment
-                                            .map(TenantAppointmentListItem::serviceName)
-                                            .filter(s -> s != null && !s.isBlank())
-                                            .map(String::strip))
-                            .orElse("Serviço");
             Optional<String> recentRescheduleRequest =
                     findRecentRescheduleRequestFromHistory(historyForAi, calendarZone);
+            boolean recentRescheduleIntentInHistory =
+                    SchedulingUserReplyNormalizer.hasRecentRescheduleUserIntentInHistory(historyForAi, 12);
+            Optional<String> serviceNameOpt =
+                    SchedulingExplicitTimeShortcut.parseServiceNameForCreateFromHistory(historyForAi);
+            if (serviceNameOpt.isEmpty()) {
+                String recentUserText =
+                        SchedulingServiceAttribution.mergeRecentUserText(
+                                historyForAi, userText != null ? userText : "", 20);
+                serviceNameOpt =
+                        appointmentService.resolveCatalogServiceMentionFromText(
+                                tenantId, recentUserText);
+            }
+            Optional<Long> toCancelId = Optional.empty();
             if (recentRescheduleRequest.isPresent()) {
-                Optional<Long> toCancel =
+                toCancelId =
                         appointmentService.resolveActiveAppointmentIdForReschedule(
                                 tenantId, conversationId.value(), calendarZone, recentRescheduleRequest.get());
-                if (toCancel.isPresent()) {
-                    LOG.info(
-                            "[scheduling-reschedule] confirmação de novo horário após indisponibilidade; a cancelar agendamento anterior antes de criar novo (tenant={} appointmentId={})",
+            }
+            if (toCancelId.isEmpty()) {
+                toCancelId = findRecentRescheduleAppointmentIdFromHistory(historyForAi);
+            }
+            if (toCancelId.isEmpty() && recentRescheduleIntentInHistory) {
+                toCancelId =
+                        appointmentService.getSingleActiveAppointmentId(
+                                tenantId, conversationId.value(), calendarZone);
+            }
+            if (serviceNameOpt.isEmpty() && toCancelId.isPresent()) {
+                serviceNameOpt =
+                        appointmentService.findServiceNameForActiveAppointment(
+                                tenantId, toCancelId.get(), conversationId.value(), calendarZone);
+            }
+            if (serviceNameOpt.isEmpty()) {
+                Optional<String> inferredUnknownService =
+                        SchedulingExplicitTimeShortcut.recoverServiceHintFromUserHistory(historyForAi)
+                                .filter(s -> !appointmentService.isServiceInTenantCatalog(tenantId, s));
+                if (inferredUnknownService.isPresent()) {
+                    String msg =
+                            appointmentService.buildUnknownServiceReplyWithOptions(
+                                    tenantId, inferredUnknownService.get());
+                    Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(msg));
+                    ConversationContext updatedAsk = context.append(userMessage, assistantMessage);
+                    conversationContextStore.save(updatedAsk);
+                    return new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(msg));
+                }
+                String schedulingLabel =
+                        toCancelId.isPresent() ? "reagendamento" : "agendamento";
+                String ask =
+                        "Não encontrei no catálogo um serviço válido para este pedido. "
+                                + "Para continuar o "
+                                + schedulingLabel
+                                + ", escolha primeiro o serviço desejado. "
+                                + "Responda com o número de uma opção abaixo "
+                                + "ou o nome exato do serviço.\n\n"
+                                + appointmentService.listTenantServicesForScheduling(tenantId);
+                Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(ask));
+                ConversationContext updatedAsk = context.append(userMessage, assistantMessage);
+                conversationContextStore.save(updatedAsk);
+                return new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(ask));
+            }
+            String serviceName = serviceNameOpt.get();
+            if (!appointmentService.isServiceInTenantCatalog(tenantId, serviceName)) {
+                String msg = appointmentService.buildUnknownServiceReplyWithOptions(tenantId, serviceName);
+                Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(msg));
+                ConversationContext updatedAsk = context.append(userMessage, assistantMessage);
+                conversationContextStore.save(updatedAsk);
+                return new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(msg));
+            }
+            if (toCancelId.isPresent()) {
+                Optional<String> sameDayPastTimeError =
+                        rejectIfSameDayTimeAlreadyPassed(choice.date(), choice.timeHhMm(), calendarZone);
+                if (sameDayPastTimeError.isPresent()) {
+                    String msg = sameDayPastTimeError.get();
+                    Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(msg));
+                    ConversationContext updatedFail = context.append(userMessage, assistantMessage);
+                    conversationContextStore.save(updatedFail);
+                    return new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(msg));
+                }
+                LOG.info(
+                        "[scheduling-reschedule] confirmação de novo horário após indisponibilidade; a cancelar agendamento anterior antes de criar novo (tenant={} appointmentId={})",
+                        tenantId.value(),
+                        toCancelId.get());
+                String cancelReply =
+                        appointmentService.cancelAppointment(
+                                tenantId,
+                                conversationId.value(),
+                                "",
+                                String.valueOf(toCancelId.get()),
+                                calendarZone);
+                if (!AppointmentService.isSuccessfulCancellationReply(cancelReply)) {
+                    LOG.warn(
+                            "[scheduling-reschedule] cancelamento prévio falhou; criação abortada (tenant={} appointmentId={} reply={})",
                             tenantId.value(),
-                            toCancel.get());
-                    String cancelReply =
-                            appointmentService.cancelAppointment(
-                                    tenantId,
-                                    conversationId.value(),
-                                    "",
-                                    String.valueOf(toCancel.get()),
-                                    calendarZone);
-                    if (!AppointmentService.isSuccessfulCancellationReply(cancelReply)) {
-                        LOG.warn(
-                                "[scheduling-reschedule] cancelamento prévio falhou; criação abortada (tenant={} appointmentId={} reply={})",
-                                tenantId.value(),
-                                toCancel.get(),
-                                cancelReply);
-                        Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(cancelReply));
-                        ConversationContext updatedFail = context.append(userMessage, assistantMessage);
-                        conversationContextStore.save(updatedFail);
-                        return new ChatResult(
-                                SchedulingUserReplyNormalizer.stripInternalSlotAppendix(cancelReply));
-                    }
+                            toCancelId.get(),
+                            cancelReply);
+                    Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(cancelReply));
+                    ConversationContext updatedFail = context.append(userMessage, assistantMessage);
+                    conversationContextStore.save(updatedFail);
+                    return new ChatResult(
+                            SchedulingUserReplyNormalizer.stripInternalSlotAppendix(cancelReply));
                 }
             }
             LOG.info(
@@ -444,6 +668,15 @@ public class ChatService implements ChatUseCase {
                     tenantId.value(),
                     iso,
                     choice.timeHhMm());
+            Optional<String> sameDayPastTimeError =
+                    rejectIfSameDayTimeAlreadyPassed(choice.date(), choice.timeHhMm(), calendarZone);
+            if (sameDayPastTimeError.isPresent()) {
+                String msg = sameDayPastTimeError.get();
+                Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(msg));
+                ConversationContext updatedFail = context.append(userMessage, assistantMessage);
+                conversationContextStore.save(updatedFail);
+                return new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(msg));
+            }
             String result =
                     appointmentService.createAppointment(
                             tenantId,
@@ -625,6 +858,25 @@ public class ChatService implements ChatUseCase {
 
     }
 
+    /**
+     * A linha «Entendido! opção N… [scheduling_draft:…]» não inclui serviço; o «sim» seguinte precisa de
+     * {@code [selected_service:…]} (ou eco inválido). Reutiliza a escolha anterior do histórico.
+     */
+    private static String reattachSelectedServiceToSlotConfirmMessageIfMissing(
+            String stored, List<Message> history) {
+        if (stored == null
+                || stored.isBlank()
+                || !stored.contains(SchedulingUserReplyNormalizer.SCHEDULING_DRAFT_APPENDIX_TOKEN)) {
+            return stored;
+        }
+        if (stored.contains(SchedulingUserReplyNormalizer.SELECTED_SERVICE_APPENDIX_TOKEN)) {
+            return stored;
+        }
+        return SchedulingUserReplyNormalizer.parseLastSelectedServiceFromHistory(history)
+                .map(sv -> SchedulingUserReplyNormalizer.appendSelectedService(stored, sv))
+                .orElse(stored);
+    }
+
     private static Optional<String> findRecentRescheduleRequestFromHistory(
             List<Message> history, ZoneId calendarZone) {
         if (history == null || history.isEmpty()) {
@@ -647,6 +899,528 @@ public class ChatService implements ChatUseCase {
             if (SchedulingUserReplyNormalizer.parseReagendamentoDeParaHint(stripped, calendarZone).isPresent()) {
                 return Optional.of(stripped);
             }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Sanity check para STT: quando o áudio «5» vira «sim» e o fluxo actual espera número/opção.
+     */
+    private Optional<ChatResult> maybeHandleLikelyMisheardNumericChoice(
+            boolean schedulingTools,
+            String userText,
+            List<Message> historyForAi,
+            ConversationContext context,
+            Message userMessage) {
+        if (!schedulingTools || userText == null || userText.isBlank()) {
+            return Optional.empty();
+        }
+        String stripped = userText.strip();
+        if (!SHORT_CONFIRMATION.matcher(stripped).matches()) {
+            return Optional.empty();
+        }
+        if (SchedulingUserReplyNormalizer.parseLastDraftFromHistory(historyForAi).isPresent()) {
+            return Optional.empty();
+        }
+        boolean expectsNumericChoice =
+                SchedulingUserReplyNormalizer.shouldInterpretNumericChoiceAsServiceSelection(historyForAi)
+                        || SchedulingUserReplyNormalizer.lastAssistantSuggestedAppointmentCancellation(historyForAi)
+                        || lastAssistantAskedForNumberChoice(historyForAi);
+        if (!expectsNumericChoice) {
+            return Optional.empty();
+        }
+        String msg =
+                "Só para confirmar: você quis dizer o número de uma opção (por exemplo, *5*)? "
+                        + "Se sim, responda apenas com o número.";
+        Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(msg));
+        ConversationContext updated = context.append(userMessage, assistantMessage);
+        conversationContextStore.save(updated);
+        return Optional.of(new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(msg)));
+    }
+
+    private static boolean lastAssistantAskedForNumberChoice(List<Message> history) {
+        if (history == null || history.isEmpty()) {
+            return false;
+        }
+        for (int i = history.size() - 1; i >= 0; i--) {
+            Message m = history.get(i);
+            if (m.role() != MessageRole.ASSISTANT || m.content() == null || m.content().isBlank()) {
+                continue;
+            }
+            String c = m.content().toLowerCase(Locale.ROOT);
+            if (c.contains(SchedulingUserReplyNormalizer.SCHEDULING_DRAFT_APPENDIX_TOKEN.toLowerCase(Locale.ROOT))) {
+                return false;
+            }
+            return c.contains("responda com o número")
+                    || c.contains("responda com o numero")
+                    || c.contains("diga apenas o código")
+                    || c.contains("diga apenas o codigo")
+                    || c.contains(SchedulingUserReplyNormalizer.SERVICE_OPTION_MAP_APPENDIX_TOKEN.toLowerCase(Locale.ROOT))
+                    || c.contains(CancelOptionMap.APPENDIX_PREFIX.toLowerCase(Locale.ROOT));
+        }
+        return false;
+    }
+
+    private static Optional<SchedulingEnforcedChoice> maybeRecoverEnforcedChoiceFromHistoryOnConfirmation(
+            boolean schedulingTools,
+            String userText,
+            List<Message> historyForAi,
+            ZoneId calendarZone) {
+        if (!schedulingTools || userText == null || userText.isBlank()) {
+            return Optional.empty();
+        }
+        String normalized = userText.strip();
+        if (!SHORT_CONFIRMATION.matcher(normalized).matches()) {
+            return Optional.empty();
+        }
+        return SchedulingExplicitTimeShortcut.recoverEnforcedChoiceFromUserHistory(historyForAi, calendarZone);
+    }
+
+    private static boolean isShortConfirmationMessage(String userText) {
+        if (userText == null || userText.isBlank()) {
+            return false;
+        }
+        return SHORT_CONFIRMATION.matcher(userText.strip()).matches();
+    }
+
+    private static Optional<Long> findRecentRescheduleAppointmentIdFromHistory(List<Message> history) {
+        if (history == null || history.isEmpty()) {
+            return Optional.empty();
+        }
+        int lowerBound = Math.max(0, history.size() - 12);
+        for (int i = history.size() - 1; i >= lowerBound; i--) {
+            Message m = history.get(i);
+            if (m.role() != MessageRole.USER) {
+                continue;
+            }
+            String content = m.content();
+            if (content == null || content.isBlank()) {
+                continue;
+            }
+            Matcher matcher = RESCHEDULE_WITH_ID.matcher(content.strip());
+            if (!matcher.find()) {
+                continue;
+            }
+            try {
+                return Optional.of(Long.parseLong(matcher.group(2)));
+            } catch (NumberFormatException ignored) {
+                // ignore malformed IDs and continue scanning
+            }
+        }
+        return Optional.empty();
+    }
+
+    private Optional<ChatResult> maybePrepareRescheduleDraftForExplicitTime(
+            boolean schedulingTools,
+            com.atendimento.cerebro.domain.tenant.TenantId tenantId,
+            String conversationId,
+            String userText,
+            ConversationContext context,
+            Message userMessage,
+            List<Message> historyForAi,
+            ZoneId calendarZone) {
+        if (!schedulingTools || userText == null || userText.isBlank()) {
+            return Optional.empty();
+        }
+        Optional<SchedulingEnforcedChoice> explicit =
+                SchedulingExplicitTimeShortcut.tryParseExplicitDateAndTimeInUserText(
+                        userText.strip(), calendarZone)
+                        .or(() -> parseTodayTimeFallback(userText, calendarZone));
+        if (explicit.isEmpty()) {
+            return Optional.empty();
+        }
+        Optional<Long> appointmentId = findRecentRescheduleAppointmentIdFromHistory(historyForAi);
+        if (appointmentId.isEmpty()) {
+            appointmentId =
+                    appointmentService.getSingleActiveAppointmentId(tenantId, conversationId, calendarZone);
+        }
+        if (appointmentId.isEmpty()) {
+            return Optional.empty();
+        }
+        String zoneId = calendarZone != null ? calendarZone.getId() : ZoneId.systemDefault().getId();
+        Optional<TenantAppointmentListItem> active =
+                tenantAppointmentQuery.findByIdForTenantAndConversation(
+                        tenantId, appointmentId.get(), conversationId, zoneId);
+        if (active.isEmpty()
+                || active.get().bookingStatus() != TenantAppointmentListItem.BookingStatus.AGENDADO) {
+            return Optional.empty();
+        }
+        String service = active.get().serviceName() != null ? active.get().serviceName().strip() : "";
+        if (service.isBlank() || !appointmentService.isServiceInTenantCatalog(tenantId, service)) {
+            return Optional.empty();
+        }
+        SchedulingEnforcedChoice target = explicit.get();
+        String dayPt =
+                target.date().format(DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.forLanguageTag("pt-BR")));
+        String hardcoded =
+                "Perfeito! O serviço *"
+                        + service
+                        + "* para *"
+                        + dayPt
+                        + "* às *"
+                        + target.timeHhMm()
+                        + "*. Posso confirmar o agendamento?";
+        String stored =
+                SchedulingUserReplyNormalizer.appendSelectedService(
+                        SchedulingUserReplyNormalizer.appendSchedulingDraft(hardcoded, target), service);
+        Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(stored));
+        ConversationContext updated = context.append(userMessage, assistantMessage);
+        conversationContextStore.save(updated);
+        return Optional.of(new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(stored)));
+    }
+
+    private static Optional<SchedulingEnforcedChoice> parseTodayTimeFallback(String userText, ZoneId calendarZone) {
+        if (userText == null || userText.isBlank()) {
+            return Optional.empty();
+        }
+        String lower = userText.toLowerCase(Locale.ROOT);
+        if (!lower.contains("hoje")) {
+            return Optional.empty();
+        }
+        Optional<String> hhMmOpt = SchedulingExplicitTimeShortcut.parseTimeHhMmFromUserText(userText);
+        if (hhMmOpt.isEmpty()) {
+            return Optional.empty();
+        }
+        ZoneId z = calendarZone != null ? calendarZone : ZoneId.systemDefault();
+        LocalDate day = LocalDate.now(z);
+        return Optional.of(new SchedulingEnforcedChoice(day, hhMmOpt.get()));
+    }
+
+    private Optional<ChatResult> maybeAskRescheduleDateTimeForExplicitAppointmentId(
+            boolean schedulingTools,
+            com.atendimento.cerebro.domain.tenant.TenantId tenantId,
+            String conversationId,
+            String userText,
+            ConversationContext context,
+            Message userMessage,
+            List<Message> historyForAi,
+            ZoneId calendarZone) {
+        if (!schedulingTools || userText == null || userText.isBlank()) {
+            return Optional.empty();
+        }
+        Matcher idMatcher = RESCHEDULE_WITH_ID.matcher(userText.strip());
+        if (!idMatcher.find()) {
+            return Optional.empty();
+        }
+        Optional<SchedulingEnforcedChoice> explicit =
+                SchedulingExplicitTimeShortcut.tryParseExplicitDateAndTimeInUserText(
+                                userText.strip(), calendarZone)
+                        .or(() -> parseTodayTimeFallback(userText, calendarZone));
+        String normalized = userText.toLowerCase(Locale.ROOT);
+        boolean sameDayWithClock =
+                (normalized.contains("mesmo dia")
+                                || normalized.contains("do mesmo dia")
+                                || normalized.contains("no mesmo dia"))
+                        && CLOCK_TIME.matcher(userText).find();
+        if (explicit.isPresent()) {
+            return Optional.empty();
+        }
+        if (sameDayWithClock) {
+            return Optional.empty();
+        }
+        long appointmentId;
+        try {
+            appointmentId = Long.parseLong(idMatcher.group(2));
+        } catch (NumberFormatException ignored) {
+            return Optional.empty();
+        }
+        String zoneId = calendarZone != null ? calendarZone.getId() : ZoneId.systemDefault().getId();
+        Optional<TenantAppointmentListItem> active =
+                tenantAppointmentQuery.findByIdForTenantAndConversation(
+                        tenantId, appointmentId, conversationId, zoneId);
+        if (active.isEmpty() || active.get().bookingStatus() != TenantAppointmentListItem.BookingStatus.AGENDADO) {
+            return Optional.empty();
+        }
+        String service = active.get().serviceName() != null ? active.get().serviceName().strip() : "";
+        String ask =
+                service.isBlank()
+                        ? "Perfeito, vamos reagendar o atendimento *"
+                                + appointmentId
+                                + "*. Informe a nova data e horário desejados (ex.: hoje 11:00)."
+                        : "Perfeito, vamos reagendar o *"
+                                + service
+                                + "* (ID "
+                                + appointmentId
+                                + "). Informe a nova data e horário desejados (ex.: hoje 11:00).";
+        Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(ask));
+        ConversationContext updated = context.append(userMessage, assistantMessage);
+        conversationContextStore.save(updated);
+        return Optional.of(new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(ask)));
+    }
+
+    private Optional<ChatResult> maybeContinueSchedulingAfterPastTimeRejection(
+            boolean schedulingTools,
+            com.atendimento.cerebro.domain.tenant.TenantId tenantId,
+            String userText,
+            List<Message> historyForAi,
+            ConversationContext context,
+            Message userMessage,
+            ZoneId calendarZone) {
+        if (!schedulingTools || userText == null || userText.isBlank() || historyForAi == null || historyForAi.isEmpty()) {
+            return Optional.empty();
+        }
+        String stripped = userText.strip();
+        if (!CLOCK_TIME_ONLY.matcher(stripped).matches()) {
+            return Optional.empty();
+        }
+        Message lastAssistant = null;
+        for (int i = historyForAi.size() - 1; i >= 0; i--) {
+            Message m = historyForAi.get(i);
+            if (m.role() == MessageRole.ASSISTANT && m.content() != null && !m.content().isBlank()) {
+                lastAssistant = m;
+                break;
+            }
+        }
+        if (lastAssistant == null) {
+            return Optional.empty();
+        }
+        String lastAssistantText = lastAssistant.content().toLowerCase(Locale.ROOT);
+        if (!lastAssistantText.contains("esse horário já passou para hoje")
+                && !lastAssistantText.contains("esse horario ja passou para hoje")) {
+            return Optional.empty();
+        }
+        String timeCanon = SchedulingSlotCapture.normalizeSingleSlotToken(stripped);
+        if (timeCanon == null) {
+            return Optional.empty();
+        }
+        Optional<String> serviceOpt = SchedulingExplicitTimeShortcut.parseServiceNameForCreateFromHistory(historyForAi);
+        if (serviceOpt.isEmpty()) {
+            return Optional.empty();
+        }
+        LocalDate day = LocalDate.now(calendarZone != null ? calendarZone : ZoneId.systemDefault());
+        String iso = day.format(DateTimeFormatter.ISO_LOCAL_DATE);
+        String availability = appointmentScheduling.checkAvailability(tenantId, iso);
+        List<String> slots = SchedulingSlotCapture.normalizeSlotTimes(
+                SchedulingSlotCapture.parseSlotTimesFromAvailabilityLine(availability));
+        if (slots.isEmpty()) {
+            String msg = "Para hoje não há horários livres neste momento. Posso verificar outro dia?";
+            Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(msg));
+            ConversationContext updated = context.append(userMessage, assistantMessage);
+            conversationContextStore.save(updated);
+            return Optional.of(new ChatResult(msg));
+        }
+        if (!slots.contains(timeCanon)) {
+            String intro =
+                    "O horário *"
+                            + timeCanon
+                            + "* não está disponível para hoje. Seguem os horários livres:\n\n"
+                            + SchedulingSlotCapture.buildPremiumFormattedSlotList(day, calendarZone, slots);
+            String stored = SchedulingUserReplyNormalizer.appendSchedulingAppendices(intro, slots, day);
+            Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(stored));
+            ConversationContext updated = context.append(userMessage, assistantMessage);
+            conversationContextStore.save(updated);
+            return Optional.of(new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(stored)));
+        }
+        String service = serviceOpt.get().strip();
+        String dayPt = day.format(DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.forLanguageTag("pt-BR")));
+        String hardcoded =
+                "Perfeito! O serviço *"
+                        + service
+                        + "* para *"
+                        + dayPt
+                        + "* às *"
+                        + timeCanon
+                        + "*. Posso confirmar o agendamento?";
+        SchedulingEnforcedChoice draft = new SchedulingEnforcedChoice(day, timeCanon);
+        String stored =
+                SchedulingUserReplyNormalizer.appendSelectedService(
+                        SchedulingUserReplyNormalizer.appendSchedulingDraft(hardcoded, draft), service);
+        Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(stored));
+        ConversationContext updated = context.append(userMessage, assistantMessage);
+        conversationContextStore.save(updated);
+        return Optional.of(new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(stored)));
+    }
+
+    private Optional<ChatResult> maybeListActiveAppointmentsForRescheduleContext(
+            boolean schedulingTools,
+            boolean rescheduleIntent,
+            com.atendimento.cerebro.domain.tenant.TenantId tenantId,
+            String conversationId,
+            String userText,
+            List<Message> historyForAi,
+            ConversationContext context,
+            Message userMessage,
+            ZoneId calendarZone) {
+        if (!schedulingTools || userText == null || userText.isBlank()) {
+            return Optional.empty();
+        }
+        String normalized = userText.strip();
+        boolean hasExplicitRescheduleId = RESCHEDULE_WITH_ID.matcher(normalized).find();
+        boolean hasExplicitDateTime =
+                SchedulingExplicitTimeShortcut.tryParseExplicitDateAndTimeInUserText(normalized, calendarZone)
+                                .isPresent()
+                        || parseTodayTimeFallback(userText, calendarZone).isPresent();
+        boolean listIntentInRescheduleFlow =
+                SchedulingUserReplyNormalizer.looksLikeListActiveAppointmentsIntent(normalized)
+                        && SchedulingUserReplyNormalizer.hasRecentRescheduleUserIntentInHistory(historyForAi, 12);
+        boolean shouldAutoListForReschedule =
+                rescheduleIntent && !hasExplicitRescheduleId && !hasExplicitDateTime;
+        if (!listIntentInRescheduleFlow && !shouldAutoListForReschedule) {
+            return Optional.empty();
+        }
+        String listed =
+                appointmentService.getActiveAppointments(tenantId, conversationId, calendarZone, true);
+        Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(listed));
+        ConversationContext updated = context.append(userMessage, assistantMessage);
+        conversationContextStore.save(updated);
+        return Optional.of(new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(listed)));
+    }
+
+    private Optional<ChatResult> maybeExecuteDirectRescheduleWithExplicitAppointmentId(
+            boolean schedulingTools,
+            com.atendimento.cerebro.domain.tenant.TenantId tenantId,
+            String conversationId,
+            String userText,
+            ConversationContext context,
+            Message userMessage,
+            Optional<CrmCustomerRecord> crmRow,
+            ZoneId calendarZone) {
+        if (!schedulingTools
+                || userText == null
+                || userText.isBlank()
+                || conversationId == null
+                || conversationId.isBlank()) {
+            return Optional.empty();
+        }
+        Matcher idMatcher = RESCHEDULE_WITH_ID.matcher(userText.strip());
+        if (!idMatcher.find()) {
+            return Optional.empty();
+        }
+        long appointmentId;
+        try {
+            appointmentId = Long.parseLong(idMatcher.group(2));
+        } catch (NumberFormatException ignored) {
+            return Optional.empty();
+        }
+        String zoneId = calendarZone != null ? calendarZone.getId() : ZoneId.systemDefault().getId();
+        Optional<TenantAppointmentListItem> target =
+                tenantAppointmentQuery.findByIdForTenantAndConversation(
+                        tenantId, appointmentId, conversationId, zoneId);
+        if (target.isEmpty()) {
+            return Optional.empty();
+        }
+        TenantAppointmentListItem current = target.get();
+        if (current.bookingStatus() != TenantAppointmentListItem.BookingStatus.AGENDADO) {
+            return Optional.empty();
+        }
+        Optional<SchedulingEnforcedChoice> parsed =
+                SchedulingExplicitTimeShortcut.tryParseExplicitDateAndTimeInUserText(
+                        userText.strip(), calendarZone);
+        Optional<SchedulingEnforcedChoice> targetChoice =
+                parsed.isPresent()
+                        ? parsed
+                        : parseSameDayTargetTimeFromRescheduleText(userText, current, calendarZone);
+        if (targetChoice.isEmpty()) {
+            return Optional.empty();
+        }
+        String serviceName = current.serviceName() != null ? current.serviceName().strip() : "";
+        if (serviceName.isBlank()) {
+            return Optional.empty();
+        }
+        if (!appointmentService.isServiceInTenantCatalog(tenantId, serviceName)) {
+            return Optional.empty();
+        }
+        SchedulingEnforcedChoice choice = targetChoice.get();
+        Optional<String> sameDayPastTimeError =
+                rejectIfSameDayTimeAlreadyPassed(choice.date(), choice.timeHhMm(), calendarZone);
+        if (sameDayPastTimeError.isPresent()) {
+            String msg = sameDayPastTimeError.get();
+            Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(msg));
+            ConversationContext updatedFail = context.append(userMessage, assistantMessage);
+            conversationContextStore.save(updatedFail);
+            return Optional.of(new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(msg)));
+        }
+        String iso = choice.date().format(DateTimeFormatter.ISO_LOCAL_DATE);
+        String clientName =
+                crmRow.map(CrmCustomerRecord::fullName)
+                        .filter(n -> n != null && !n.isBlank())
+                        .map(String::strip)
+                        .orElseGet(
+                                () ->
+                                        current.clientName() != null && !current.clientName().isBlank()
+                                                ? current.clientName().strip()
+                                                : "Cliente");
+        LOG.info(
+                "[scheduling-reschedule] execução direta por ID explícito (tenant={} appointmentId={} date={} time={})",
+                tenantId.value(),
+                appointmentId,
+                iso,
+                choice.timeHhMm());
+        String cancelReply =
+                appointmentService.cancelAppointment(
+                        tenantId,
+                        conversationId,
+                        "",
+                        String.valueOf(appointmentId),
+                        calendarZone);
+        if (!AppointmentService.isSuccessfulCancellationReply(cancelReply)) {
+            Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(cancelReply));
+            ConversationContext updatedFail = context.append(userMessage, assistantMessage);
+            conversationContextStore.save(updatedFail);
+            return Optional.of(
+                    new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(cancelReply)));
+        }
+        String createReply =
+                appointmentService.createAppointment(
+                        tenantId,
+                        iso,
+                        choice.timeHhMm(),
+                        clientName,
+                        serviceName,
+                        conversationId,
+                        calendarZone);
+        String reply = createReply != null ? createReply.strip() : "";
+        Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(reply));
+        ConversationContext updated = context.append(userMessage, assistantMessage);
+        conversationContextStore.save(updated);
+        return Optional.of(new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(reply)));
+    }
+
+    private static Optional<SchedulingEnforcedChoice> parseSameDayTargetTimeFromRescheduleText(
+            String userText, TenantAppointmentListItem current, ZoneId calendarZone) {
+        if (userText == null || userText.isBlank() || current == null || current.startsAt() == null) {
+            return Optional.empty();
+        }
+        String normalized = userText.toLowerCase(Locale.ROOT);
+        boolean sameDayMention =
+                normalized.contains("mesmo dia")
+                        || normalized.contains("do mesmo dia")
+                        || normalized.contains("no mesmo dia");
+        if (!sameDayMention) {
+            return Optional.empty();
+        }
+        Matcher tm = CLOCK_TIME.matcher(userText);
+        if (!tm.find()) {
+            return Optional.empty();
+        }
+        String hhMm = String.format(Locale.ROOT, "%02d:%02d", Integer.parseInt(tm.group(1)), Integer.parseInt(tm.group(2)));
+        LocalDate day =
+                ZonedDateTime.ofInstant(current.startsAt(), calendarZone != null ? calendarZone : ZoneId.systemDefault())
+                        .toLocalDate();
+        if (day.isBefore(LocalDate.now(calendarZone != null ? calendarZone : ZoneId.systemDefault()))) {
+            return Optional.empty();
+        }
+        return Optional.of(new SchedulingEnforcedChoice(day, hhMm));
+    }
+
+    private static Optional<String> rejectIfSameDayTimeAlreadyPassed(
+            LocalDate day, String timeHhMm, ZoneId calendarZone) {
+        if (day == null || timeHhMm == null || timeHhMm.isBlank()) {
+            return Optional.empty();
+        }
+        ZoneId z = calendarZone != null ? calendarZone : ZoneId.systemDefault();
+        LocalDateTime now = LocalDateTime.now(z);
+        if (!day.equals(now.toLocalDate())) {
+            return Optional.empty();
+        }
+        try {
+            LocalDateTime candidate = LocalDateTime.of(day, LocalTime.parse(timeHhMm.strip()));
+            if (candidate.isBefore(now)) {
+                return Optional.of(
+                        "Esse horário já passou para hoje. Pode escolher um horário a partir de agora?");
+            }
+        } catch (RuntimeException ignored) {
+            // Invalid time is handled by downstream validators/tooling.
         }
         return Optional.empty();
     }

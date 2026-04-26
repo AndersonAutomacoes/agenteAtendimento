@@ -105,8 +105,24 @@ cerebro:
   # Card de confirmação no WhatsApp após create_appointment bem-sucedido; maps-url envia segunda mensagem só com o link.
   appointment:
     confirmation:
-      location-line: "Oficina InteliZap - Salvador, BA"
+      location-line: "Oficina AxeZap - Salvador, BA"
       maps-url: ${CEREBRO_APPOINTMENT_MAPS_URL:https://maps.app.goo.gl/nAVH3fcubmPUMBmh7}
+  mail:
+    invite:
+      enabled: ${CEREBRO_MAIL_INVITE_ENABLED:false}
+      provider: ${CEREBRO_MAIL_INVITE_PROVIDER:}
+      resend-api-key: ${RESEND_API_KEY:}
+      from-email: ${CEREBRO_MAIL_INVITE_FROM_EMAIL:}
+      from-name: ${CEREBRO_MAIL_INVITE_FROM_NAME:}
+      registration-url: ${CEREBRO_MAIL_INVITE_REGISTRATION_URL:}
+      support-email: ${CEREBRO_MAIL_INVITE_SUPPORT_EMAIL:}
+  stt:
+    groq:
+      api-key: ${GROQ_API_KEY:}
+      api-url: ${GROQ_API_URL:https://api.groq.com/openai/v1/audio/transcriptions}
+      model: ${GROQ_STT_MODEL:whisper-large-v3}
+      language: ${GROQ_STT_LANGUAGE:pt}
+      request-timeout-ms: ${GROQ_STT_REQUEST_TIMEOUT_MS:2000}
   # Webhook WhatsApp: número (só dígitos) → tenantId (string). A persona do bot NÃO vem daqui:
   # vem da tabela PostgreSQL tenant_configuration (system_prompt) para esse mesmo tenant_id.
   # O valor à direita tem de coincidir com o tenantId usado no dashboard / PUT .../tenant/settings.

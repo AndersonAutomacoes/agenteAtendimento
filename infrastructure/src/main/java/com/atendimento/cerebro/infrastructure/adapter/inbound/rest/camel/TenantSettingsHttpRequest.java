@@ -10,4 +10,14 @@ public record TenantSettingsHttpRequest(
         String whatsappApiKey,
         String whatsappInstanceId,
         String whatsappBaseUrl,
-        String googleCalendarId) {}
+        String googleCalendarId,
+        String establishmentName,
+        String businessAddress,
+        String openingHours,
+        String businessContacts,
+        String businessFacilities,
+        Integer defaultAppointmentMinutes,
+        Boolean billingCompliant,
+        String calendarAccessNotes,
+        String spreadsheetUrl,
+        String whatsappBusinessNumber) {}

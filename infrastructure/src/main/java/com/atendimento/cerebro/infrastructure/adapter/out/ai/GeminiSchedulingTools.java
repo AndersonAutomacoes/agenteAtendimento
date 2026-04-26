@@ -12,8 +12,11 @@ import com.atendimento.cerebro.application.scheduling.SchedulingCalendarUserInte
 import com.atendimento.cerebro.application.scheduling.SchedulingEnforcedChoice;
 import com.atendimento.cerebro.application.scheduling.SchedulingCancelSessionCapture;
 import com.atendimento.cerebro.application.scheduling.SchedulingSlotCapture;
+import com.atendimento.cerebro.application.scheduling.SchedulingExplicitTimeShortcut;
+import com.atendimento.cerebro.application.scheduling.SchedulingServiceAttribution;
 import com.atendimento.cerebro.application.scheduling.SchedulingUserReplyNormalizer;
 import com.atendimento.cerebro.application.scheduling.ToolCreateAppointmentPreparation;
+import com.atendimento.cerebro.domain.conversation.Message;
 import com.atendimento.cerebro.application.service.AppointmentService;
 import com.atendimento.cerebro.application.service.AppointmentValidationService;
 import com.atendimento.cerebro.application.service.ChatService;
@@ -33,6 +36,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -88,6 +92,10 @@ public class GeminiSchedulingTools {
                             + "|(?is).*(mostrar?|liste|ver|exibir)\\s+(os\\s+)?(horários|horas|horário).*"
 
                             + "|(?is).*(tem\\s+vaga|há\\s+vaga)\\b.*");
+    private static final Pattern EXPLICIT_CONFIRMATION_FOR_BOOKING =
+            Pattern.compile(
+                    "^(sim|sí|ok|confirmo|confirmado|pode|isso|perfeito|fechado|pode\\s+confirmar)([.!\\s]|$)",
+                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
 
 
@@ -108,6 +116,8 @@ public class GeminiSchedulingTools {
     /** Histórico recente + mensagem actual (para personalizar main_text com o serviço, ex.: Alinhamento 3D). */
 
     private final String transcriptForServiceHint;
+
+    private final List<Message> conversationHistory;
 
     /** Definido no {@link com.atendimento.cerebro.application.dto.AICompletionRequest} (lista + slot_date); não usar ThreadLocal — as ferramentas podem correr noutra thread. */
 
@@ -157,6 +167,8 @@ public class GeminiSchedulingTools {
 
             String transcriptForServiceHint,
 
+            List<Message> conversationHistory,
+
             Optional<SchedulingEnforcedChoice> enforcedChoiceFromBackend,
 
             boolean blockCreateAppointment,
@@ -178,6 +190,9 @@ public class GeminiSchedulingTools {
         this.latestUserMessage = latestUserMessage != null ? latestUserMessage.strip() : "";
 
         this.transcriptForServiceHint = transcriptForServiceHint != null ? transcriptForServiceHint : "";
+
+        this.conversationHistory =
+                conversationHistory != null ? List.copyOf(conversationHistory) : Collections.emptyList();
 
         this.enforcedChoiceFromBackend = enforcedChoiceFromBackend != null ? enforcedChoiceFromBackend : Optional.empty();
 
@@ -383,7 +398,16 @@ public class GeminiSchedulingTools {
 
 
     @Tool(
+            name = "list_tenant_services",
+            description =
+                    "Lista os serviços disponíveis para agendamento neste tenant. Use esta ferramenta antes de "
+                            + "confirmar/agendar quando o cliente ainda não escolheu um serviço válido.")
+    public String list_tenant_services() {
+        toolInvocationCount.incrementAndGet();
+        return appointmentService.listTenantServicesForScheduling(tenantId);
+    }
 
+    @Tool(
             name = "create_appointment",
 
             description =
@@ -393,8 +417,9 @@ public class GeminiSchedulingTools {
                             + "check_availability (mesma data em yyyy-MM-DD). PROIBIDO: chamar se o utilizador só pediu "
 
                             + "horários/disponibilidade neste turno; PROIBIDO inventar ou supor um horário que o cliente "
-
-                            + "não escolheu. O utilizador deve ter indicado explicitamente o horário (texto ou botão).")
+                            + "não escolheu. O utilizador deve ter indicado explicitamente o horário (texto ou botão). "
+                            + "Também é obrigatório usar um serviço que esteja entre os serviços disponíveis do tenant "
+                            + "(liste com list_tenant_services quando houver dúvida).")
 
     public String create_appointment(
 
@@ -437,6 +462,9 @@ public class GeminiSchedulingTools {
                     + "Primeiro vou mostrar os horários disponíveis para você escolher um horário concreto.";
 
         }
+        if (!enforcedChoiceFromBackend.isPresent() && !looksLikeBookingConfirmation(latestUserMessage)) {
+            return "Antes de concluir o agendamento, confirme com o cliente se ele realmente deseja confirmar este horário.";
+        }
 
         String transcriptBlob =
                 transcriptForServiceHint.isBlank()
@@ -456,6 +484,41 @@ public class GeminiSchedulingTools {
                     tenantId.value(),
                     prep.messageForGemini());
             return prep.messageForGemini();
+        }
+        String serviceResolved = service != null ? service.strip() : "";
+        Optional<String> fromFlow = SchedulingExplicitTimeShortcut.parseServiceNameForCreateFromHistory(conversationHistory);
+        if (fromFlow.isPresent()) {
+            serviceResolved = fromFlow.get().strip();
+        } else if (!serviceResolved.isEmpty() && !appointmentService.isServiceInTenantCatalog(tenantId, serviceResolved)) {
+            String serviceHintBlob =
+                    (latestUserMessage == null ? "" : latestUserMessage)
+                            + "\n"
+                            + (transcriptForServiceHint == null ? "" : transcriptForServiceHint)
+                            + "\n"
+                            + serviceResolved;
+            Optional<String> inferred = appointmentService.resolveCatalogServiceMentionFromText(tenantId, serviceHintBlob);
+            if (inferred.isPresent()) {
+                LOG.info(
+                        "create_appointment: serviço normalizado via catálogo (tenant={} original={} resolved={})",
+                        tenantId.value(),
+                        serviceResolved,
+                        inferred.get());
+                serviceResolved = inferred.get();
+            }
+        } else if (serviceResolved.isEmpty()
+                || !SchedulingServiceAttribution.isServiceAccountedByConversation(
+                        serviceResolved, conversationHistory, latestUserMessage)) {
+            LOG.warn(
+                    "create_appointment: serviço sem âncora no que o cliente escreveu/escolheu (tenant={} modelo={})",
+                    tenantId.value(),
+                    service);
+            return "Para continuar o reagendamento, escolha primeiro o serviço desejado. "
+                    + "Ainda não está claro qual serviço o cliente escolheu. "
+                    + "Use list_tenant_services, mostre a lista e só depois crie o agendamento com o serviço que o "
+                    + "cliente indicou (por nome ou número).";
+        }
+        if (!appointmentService.isServiceInTenantCatalog(tenantId, serviceResolved)) {
+            return appointmentService.buildUnknownServiceReplyWithOptions(tenantId, serviceResolved);
         }
         if (enforcedChoiceFromBackend.isPresent()) {
             LOG.info(
@@ -483,7 +546,7 @@ public class GeminiSchedulingTools {
 
                 client_name,
 
-                service);
+                serviceResolved);
 
         var created =
                 appointmentService.createAppointmentWithResult(
@@ -491,7 +554,7 @@ public class GeminiSchedulingTools {
                         prep.dateIso(),
                         prep.timeHhMm(),
                         client_name,
-                        service,
+                        serviceResolved,
                         conversationId,
                         calendarZone);
         String result = created.message();
@@ -499,7 +562,7 @@ public class GeminiSchedulingTools {
             try {
                 successfulAppointmentDetails.set(
                         new AppointmentConfirmationDetails(
-                                service != null ? service.strip() : "",
+                                serviceResolved,
                                 client_name != null ? client_name.strip() : "",
                                 validated.day(),
                                 prep.timeHhMm(),
@@ -510,6 +573,14 @@ public class GeminiSchedulingTools {
         }
         return result;
 
+    }
+
+    private static boolean looksLikeBookingConfirmation(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return false;
+        }
+        String s = raw.strip();
+        return EXPLICIT_CONFIRMATION_FOR_BOOKING.matcher(s).find();
     }
 
     /**
@@ -531,7 +602,13 @@ public class GeminiSchedulingTools {
                             + "cancelar e ainda não houver id escolhido.")
     public String get_active_appointments() {
         toolInvocationCount.incrementAndGet();
-        String listed = appointmentService.getActiveAppointments(tenantId, conversationId, calendarZone);
+        boolean rescheduleContext =
+                SchedulingUserReplyNormalizer.looksLikeRescheduleOrTimeChangeIntent(latestUserMessage)
+                        || SchedulingUserReplyNormalizer.hasRecentRescheduleUserIntentInHistory(
+                                conversationHistory, 12);
+        String listed =
+                appointmentService.getActiveAppointments(
+                        tenantId, conversationId, calendarZone, rescheduleContext);
         lastGetActiveAppointmentsListText = listed;
         Map<Integer, Long> optionMap = CancelOptionMap.parseLastFromText(listed);
         if (!optionMap.isEmpty()) {
@@ -548,7 +625,10 @@ public class GeminiSchedulingTools {
             description =
                     "Cancela o agendamento. Passe appointment_id = ID mostrado na lista (número antes do serviço), ou "
                             + "«opção N» quando o mapa da sessão mapeia N para um ID. O backend também resolve a partir do "
-                            + "apêndice [cancel_option_map:…] no histórico. O parâmetro contact é opcional no WhatsApp.")
+                            + "apêndice [cancel_option_map:…] no histórico. O parâmetro contact é opcional no WhatsApp. "
+                            + "PROIBIDO: após o cliente pedir REAGENDAR e só indicar data/horário NOVO (ex.: «amanhã 12:00») — "
+                            + "isso NÃO é cancelamento; use check_availability e create_appointment, não este método nessa "
+                            + "mensagem.")
     public String cancel_appointment(
             @ToolParam(
                             description =
@@ -560,6 +640,16 @@ public class GeminiSchedulingTools {
                                     "ID numérico da lista (PK antes do serviço), ou «opção N», ou valor resolvido pelo mapa — "
                                             + "contra get_active_appointments nesta conversa.")
                     String appointment_id) {
+        if (SchedulingUserReplyNormalizer.isBareNewTimeProposalAfterRescheduleIntent(
+                latestUserMessage, conversationHistory)) {
+            toolInvocationCount.incrementAndGet();
+            LOG.warn(
+                    "cancel_appointment recusado: mensagem é data/hora nova após reagendar (tenant={})",
+                    tenantId.value());
+            return "Não cancele nesta etapa: o cliente indicou apenas data/horário para reagendar. "
+                    + "Use check_availability para a data escolhida, apresente os horários livres e seguidamente "
+                    + "create_appointment após confirmação. Não invoque cancel_appointment para esta mensagem.";
+        }
         toolInvocationCount.incrementAndGet();
         String c = contact == null ? "" : contact;
         String blobForCancel =

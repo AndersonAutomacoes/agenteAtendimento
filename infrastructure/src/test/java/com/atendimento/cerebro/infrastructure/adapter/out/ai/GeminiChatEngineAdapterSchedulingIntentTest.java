@@ -207,6 +207,38 @@ class GeminiChatEngineAdapterSchedulingIntentTest {
     }
 
     @Test
+    void listManagementContext_falseWhenRecentUserMessageRestartedSchedulingBeforeSim() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage("Quer ver a lista de agendamentos antes?"),
+                        Message.userMessage("Quero agendar uma revisão de freios para quinta-feira às 11 horas"),
+                        Message.assistantMessage("Para qual horário você gostaria de agendar?"));
+        AICompletionRequest req = new AICompletionRequest(tenant, hist, List.of(), "sim", "", AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.schedulingCancellationOrListManagementContext(req)).isFalse();
+    }
+
+    @Test
+    void forceDirectCancel_falseWhenAssistantAskedRescheduleCodeAndUserSentOnlyId() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage(
+                                """
+                                *Agendamentos*
+
+                                Segue o seu agendamento ativo:
+
+                                59) *Troca de Pastilhas* — 25/04/2026 17:30
+
+                                Para *Reagendar*, diga o código do agendamento (número à esquerda) e depois informe a nova data e horário.
+                                Para *Cancelar*, diga apenas o código do agendamento.
+                                """));
+        AICompletionRequest req = new AICompletionRequest(tenant, hist, List.of(), "59", "", AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.shouldForceProgrammaticCancelAppointment(req)).isFalse();
+    }
+
+    @Test
     void cancelContext_falseWhenSchedulingEnforcedChoicePresent_evenIfHistoryMentionsCancel() {
         TenantId tenant = new TenantId("tenant-1");
         LocalDate day = LocalDate.of(2026, 4, 16);

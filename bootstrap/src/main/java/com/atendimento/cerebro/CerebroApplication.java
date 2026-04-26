@@ -5,7 +5,9 @@ import com.atendimento.cerebro.infrastructure.config.AnalyticsIntentClassificati
 import com.atendimento.cerebro.infrastructure.config.CerebroAppointmentConfirmationProperties;
 import com.atendimento.cerebro.infrastructure.config.CerebroGoogleCalendarProperties;
 import com.atendimento.cerebro.infrastructure.config.FirebaseProperties;
+import com.atendimento.cerebro.infrastructure.config.GroqSttProperties;
 import com.atendimento.cerebro.infrastructure.config.ChatAnalyticsProperties;
+import com.atendimento.cerebro.infrastructure.config.InviteEmailProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -19,7 +21,9 @@ import org.springframework.scheduling.annotation.EnableScheduling;
     ChatAnalyticsProperties.class,
     FirebaseProperties.class,
     CerebroGoogleCalendarProperties.class,
-    CerebroAppointmentConfirmationProperties.class
+    CerebroAppointmentConfirmationProperties.class,
+    InviteEmailProperties.class,
+    GroqSttProperties.class
 })
 public class CerebroApplication {
 

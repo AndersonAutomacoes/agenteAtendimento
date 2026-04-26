@@ -7,9 +7,8 @@ import { toast } from "sonner";
 import { DeleteFileDialog } from "@/components/knowledge/delete-file-dialog";
 import { FileUploadZone } from "@/components/knowledge/file-upload-zone";
 import { KnowledgeBaseFilesTable } from "@/components/knowledge/uploaded-files-list";
+import { FeatureGuard } from "@/components/plan/feature-guard";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
 import {
   deleteKnowledgeFile,
   getKnowledgeBase,
@@ -132,7 +131,8 @@ export default function KnowledgePage() {
       : null;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
+    <FeatureGuard requiredPlan="pro" requiredFeature="KNOWLEDGE_BASE">
+      <div className="mx-auto max-w-3xl space-y-8">
       <DeleteFileDialog
         open={pendingDelete != null}
         fileName={pendingDelete?.fileName ?? ""}
@@ -146,19 +146,6 @@ export default function KnowledgePage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
         <p className="text-muted-foreground">{t("intro")}</p>
-      </div>
-
-      <div className="space-y-1">
-        <Label className="text-muted-foreground">{t("accountId")}</Label>
-        <p
-          className={cn(
-            "min-h-9 text-base font-semibold tracking-tight text-foreground sm:text-lg",
-            !tenantId.trim() && "font-normal text-muted-foreground",
-          )}
-          aria-label={t("accountId")}
-        >
-          {tenantId.trim() || "—"}
-        </p>
       </div>
 
       <FileUploadZone
@@ -200,6 +187,7 @@ export default function KnowledgePage() {
           setPendingDelete({ batchId, fileName })
         }
       />
-    </div>
+      </div>
+    </FeatureGuard>
   );
 }

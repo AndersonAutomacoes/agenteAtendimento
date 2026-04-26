@@ -73,7 +73,7 @@ public class ChatRestRoute extends RouteBuilder {
                 .consumes(MediaType.APPLICATION_JSON_VALUE)
                 .produces(MediaType.APPLICATION_JSON_VALUE)
                 .type(ChatHttpRequest.class)
-                .outType(ChatResult.class)
+                .outType(ChatHttpResponse.class)
                 .to("direct:chat");
 
         // @formatter:off
@@ -139,7 +139,12 @@ public class ChatRestRoute extends RouteBuilder {
     private void executarChat(Exchange exchange) {
         ChatCommand command = exchange.getIn().getBody(ChatCommand.class);
         ChatResult result = chatUseCase.chat(command);
-        exchange.getIn().setBody(result);
+        exchange.getIn()
+                .setBody(
+                        new ChatHttpResponse(
+                                result.assistantMessage(),
+                                result.whatsAppInteractive().orElse(null),
+                                result.additionalOutboundMessages()));
     }
 
     private void respostaFallback(Exchange exchange) {
@@ -147,7 +152,9 @@ public class ChatRestRoute extends RouteBuilder {
         if (failure == null) {
             failure = exchange.getProperty(Exchange.EXCEPTION_CAUGHT, Throwable.class);
         }
-        boolean timedOut = isLikelyTimeout(failure);
+        boolean timedOut =
+                isLikelyTimeout(failure)
+                        || Boolean.TRUE.equals(exchange.getProperty(CAMEL_RESPONSE_TIMED_OUT, Boolean.class));
         String failureClass = failure != null ? failure.getClass().getName() : "unknown";
 
         exchange.setProperty(PROP_CHAT_FALLBACK, Boolean.TRUE);
@@ -155,7 +162,7 @@ public class ChatRestRoute extends RouteBuilder {
         exchange.setProperty(PROP_CHAT_FAILURE_CLASS, failureClass);
 
         if (timedOut) {
-            exchange.getIn().setBody(new ChatResult(ChatFallbackMessages.TIMEOUT));
+            exchange.getIn().setBody(new ChatHttpResponse(ChatFallbackMessages.TIMEOUT, null, List.of()));
             exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.GATEWAY_TIMEOUT.value());
             LOG.warn(
                     "chat circuit fallback (timeout) tenantId={} sessionId={} failureClass={}",
@@ -163,7 +170,7 @@ public class ChatRestRoute extends RouteBuilder {
                     exchange.getProperty(PROP_SESSION, String.class),
                     failureClass);
         } else {
-            exchange.getIn().setBody(new ChatResult(ChatFallbackMessages.MAINTENANCE));
+            exchange.getIn().setBody(new ChatHttpResponse(ChatFallbackMessages.MAINTENANCE, null, List.of()));
             exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.SERVICE_UNAVAILABLE.value());
             String tid = exchange.getProperty(PROP_TENANT, String.class);
             String sid = exchange.getProperty(PROP_SESSION, String.class);

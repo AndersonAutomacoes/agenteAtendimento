@@ -75,6 +75,20 @@ class SchedulingSlotCaptureTest {
     }
 
     @Test
+    void parseSlotTimes_acceptsHorariosDisponiveisPhrase() {
+        String line = "Amanhã, 25/04/2026, temos horários disponíveis às 09:30, 10:00, 10:30.";
+        assertThat(SchedulingSlotCapture.parseSlotTimesFromAvailabilityLine(line))
+                .containsExactly("09:30", "10:00", "10:30");
+    }
+
+    @Test
+    void extractDateFromAvailabilityText_extractsBrDate() {
+        String line = "Amanhã, 25/04/2026, temos horários disponíveis às 09:30.";
+        assertThat(SchedulingSlotCapture.extractDateFromAvailabilityText(line))
+                .hasValue(LocalDate.of(2026, 4, 25));
+    }
+
+    @Test
     void setSlotsFromToolResult_ignoresWithoutHorariosLivres() {
         SchedulingSlotCapture.clear();
         SchedulingSlotCapture.setSlotsFromToolResult("09:00, 10:00", LocalDate.of(2026, 4, 15));

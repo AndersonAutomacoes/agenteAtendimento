@@ -23,7 +23,7 @@ export function NavAuthFooter({ variant, onNavigate }: NavAuthFooterProps) {
   const t = useTranslations("nav");
   const router = useRouter();
   const pathname = usePathname();
-  const { setTier } = usePlan();
+  const { setTier, setFeatures, setProfileLevel } = usePlan();
 
   const [authed, setAuthed] = React.useState(false);
 
@@ -80,6 +80,8 @@ export function NavAuthFooter({ variant, onNavigate }: NavAuthFooterProps) {
       /* ignore */
     }
     setTier(readDefaultPlanTierFromEnv());
+    setProfileLevel("BASIC");
+    setFeatures({});
     setAuthed(false);
     onNavigate?.();
     router.push("/login");

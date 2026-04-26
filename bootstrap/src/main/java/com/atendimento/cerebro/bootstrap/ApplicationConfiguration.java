@@ -13,10 +13,13 @@ import com.atendimento.cerebro.application.port.out.ConversationContextStorePort
 import com.atendimento.cerebro.application.port.out.CrmCustomerQueryPort;
 import com.atendimento.cerebro.application.port.out.CrmCustomerStorePort;
 import com.atendimento.cerebro.application.port.out.KnowledgeBasePort;
+import com.atendimento.cerebro.application.port.out.InviteEmailSenderPort;
 import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
+import com.atendimento.cerebro.application.port.out.PlanLimitPolicyPort;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentQueryPort;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentStorePort;
 import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort;
+import com.atendimento.cerebro.application.port.out.TenantServiceCatalogPort;
 import com.atendimento.cerebro.application.port.out.TextExtractorPort;
 import com.atendimento.cerebro.application.service.AnalyticsService;
 import com.atendimento.cerebro.application.service.ChatService;
@@ -33,17 +36,28 @@ import com.atendimento.cerebro.application.port.out.TenantInviteStorePort;
 import com.atendimento.cerebro.application.port.out.WhatsAppTextOutboundPort;
 import com.atendimento.cerebro.application.service.AppointmentReminderNotificationService;
 import com.atendimento.cerebro.application.service.PortalRegistrationService;
+import com.atendimento.cerebro.application.service.TenantInviteService;
 import com.atendimento.cerebro.application.service.TenantSettingsService;
 import com.atendimento.cerebro.infrastructure.config.AnalyticsCategorizationProperties;
 import com.atendimento.cerebro.infrastructure.config.AnalyticsIntentClassificationProperties;
 import com.atendimento.cerebro.infrastructure.config.ChatAnalyticsProperties;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
 public class ApplicationConfiguration {
+    @Bean
+    @ConditionalOnMissingBean(InviteEmailSenderPort.class)
+    public InviteEmailSenderPort inviteEmailSenderPort() {
+        return command -> {
+            throw new IllegalStateException(
+                    "Envio de convite por e-mail não configurado. Configure o adaptador de e-mail.");
+        };
+    }
+
 
     @Bean
     public AppointmentValidationService appointmentValidationService() {
@@ -55,14 +69,20 @@ public class ApplicationConfiguration {
             TenantAppointmentQueryPort tenantAppointmentQuery,
             TenantAppointmentStorePort tenantAppointmentStore,
             AppointmentSchedulingPort appointmentSchedulingPort,
+            TenantServiceCatalogPort tenantServiceCatalogPort,
             CrmCustomerQueryPort crmCustomerQuery,
-            ApplicationEventPublisher applicationEventPublisher) {
+            ApplicationEventPublisher applicationEventPublisher,
+            TenantConfigurationStorePort tenantConfigurationStorePort,
+            PlanLimitPolicyPort planLimitPolicyPort) {
         return new AppointmentService(
                 tenantAppointmentQuery,
                 tenantAppointmentStore,
                 appointmentSchedulingPort,
+                tenantServiceCatalogPort,
                 crmCustomerQuery,
-                applicationEventPublisher);
+                applicationEventPublisher,
+                tenantConfigurationStorePort,
+                planLimitPolicyPort);
     }
 
     @Bean
@@ -117,6 +137,13 @@ public class ApplicationConfiguration {
             PortalUserStorePort portalUserStore,
             FirebaseCustomClaimsPort firebaseCustomClaims) {
         return new PortalRegistrationService(tenantInviteStore, portalUserStore, firebaseCustomClaims);
+    }
+
+    @Bean
+    public TenantInviteService tenantInviteService(
+            TenantInviteStorePort tenantInviteStore,
+            InviteEmailSenderPort inviteEmailSenderPort) {
+        return new TenantInviteService(tenantInviteStore, inviteEmailSenderPort);
     }
 
     @Bean

@@ -6,6 +6,7 @@ import com.atendimento.cerebro.domain.tenant.ProfileLevel;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -52,6 +53,21 @@ public class PostgresPortalUserStore implements PortalUserStorePort {
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException("profile_level inválido na base: " + raw, e);
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PortalUser> listByTenantId(TenantId tenantId) {
+        return jdbcClient
+                .sql(
+                        """
+                        SELECT id, firebase_uid, tenant_id, profile_level
+                        FROM portal_user WHERE tenant_id = ?
+                        ORDER BY created_at ASC
+                        """)
+                .param(tenantId.value())
+                .query(this::mapRow)
+                .list();
     }
 
     @Override

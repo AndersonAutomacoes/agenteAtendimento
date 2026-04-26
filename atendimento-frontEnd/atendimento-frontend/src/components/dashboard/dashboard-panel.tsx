@@ -563,20 +563,19 @@ export function DashboardPanel() {
         ? "border-sky-500/40 bg-sky-500/10 text-sky-400"
         : "border-amber-500/40 bg-amber-500/10 text-amber-300";
 
+  const canAccessOpportunities = planMeetsRequirement(tier, "pro");
+  const canAccessExport = planMeetsRequirement(tier, "pro");
+
+  React.useEffect(() => {
+    if (!canAccessOpportunities && mainTab === "opportunities") {
+      setMainTab("metrics");
+    }
+  }, [canAccessOpportunities, mainTab]);
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <p
-            className={cn(
-              "min-h-9 max-w-[min(100%,14rem)] shrink-0 truncate text-base font-semibold tracking-tight text-foreground sm:max-w-xs sm:text-lg",
-              !tenantId.trim() && "font-normal text-muted-foreground",
-            )}
-            aria-label={t("accountId")}
-            title={tenantId.trim() || undefined}
-          >
-            {tenantId.trim() || "—"}
-          </p>
           <Button
             type="button"
             variant="outline"
@@ -584,7 +583,9 @@ export function DashboardPanel() {
             className="h-11 shrink-0 touch-manipulation gap-2 px-3"
             onClick={() => {
               void load();
-              if (mainTab === "opportunities") void loadOpportunities();
+              if (canAccessOpportunities && mainTab === "opportunities") {
+                void loadOpportunities();
+              }
             }}
             disabled={(loading && mainTab === "metrics") || !tenantId.trim()}
             aria-label={t("refresh")}
@@ -593,7 +594,9 @@ export function DashboardPanel() {
               className={cn(
                 "h-4 w-4 shrink-0",
                 (loading && mainTab === "metrics") ||
-                  (opportunitiesLoading && mainTab === "opportunities")
+                  (canAccessOpportunities &&
+                    opportunitiesLoading &&
+                    mainTab === "opportunities")
                   ? "animate-spin"
                   : false,
               )}
@@ -619,20 +622,22 @@ export function DashboardPanel() {
               >
                 {t("mainTabMetrics")}
               </Button>
-              <Button
-                type="button"
-                size="touch"
-                variant={mainTab === "opportunities" ? "default" : "outline"}
-                onClick={() => setMainTab("opportunities")}
-                className={cn(
-                  "gap-1.5",
-                  mainTab === "opportunities" &&
-                    "bg-primary text-primary-foreground shadow-md shadow-cyan-500/20",
-                )}
-              >
-                <Target className="h-4 w-4 shrink-0" aria-hidden />
-                {t("mainTabOpportunities")}
-              </Button>
+              {canAccessOpportunities ? (
+                <Button
+                  type="button"
+                  size="touch"
+                  variant={mainTab === "opportunities" ? "default" : "outline"}
+                  onClick={() => setMainTab("opportunities")}
+                  className={cn(
+                    "gap-1.5",
+                    mainTab === "opportunities" &&
+                      "bg-primary text-primary-foreground shadow-md shadow-cyan-500/20",
+                  )}
+                >
+                  <Target className="h-4 w-4 shrink-0" aria-hidden />
+                  {t("mainTabOpportunities")}
+                </Button>
+              ) : null}
             </div>
           ) : null}
           {mainTab === "metrics" ? (
@@ -665,49 +670,51 @@ export function DashboardPanel() {
               </Button>
             ))}
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                size="touch"
-                variant="outline"
-                disabled={!tenantId.trim() || !periodRange || exportLoading}
-                className="gap-1 shrink-0"
-              >
-                {exportLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                ) : null}
-                {t("export.button")}
-                <ChevronDown className="h-4 w-4 opacity-70" aria-hidden />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-44">
-              <DropdownMenuItem
-                disabled={exportLoading}
-                onSelect={() => {
-                  if (!planMeetsRequirement(tier, "enterprise")) {
-                    queueMicrotask(() => setExportUpgradeOpen(true));
-                    return;
-                  }
-                  void runExport("csv");
-                }}
-              >
-                {t("export.csv")}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={exportLoading}
-                onSelect={() => {
-                  if (!planMeetsRequirement(tier, "enterprise")) {
-                    queueMicrotask(() => setExportUpgradeOpen(true));
-                    return;
-                  }
-                  void runExport("pdf");
-                }}
-              >
-                {t("export.pdf")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {canAccessExport ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  size="touch"
+                  variant="outline"
+                  disabled={!tenantId.trim() || !periodRange || exportLoading}
+                  className="gap-1 shrink-0"
+                >
+                  {exportLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  ) : null}
+                  {t("export.button")}
+                  <ChevronDown className="h-4 w-4 opacity-70" aria-hidden />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-44">
+                <DropdownMenuItem
+                  disabled={exportLoading}
+                  onSelect={() => {
+                    if (!planMeetsRequirement(tier, "enterprise")) {
+                      queueMicrotask(() => setExportUpgradeOpen(true));
+                      return;
+                    }
+                    void runExport("csv");
+                  }}
+                >
+                  {t("export.csv")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={exportLoading}
+                  onSelect={() => {
+                    if (!planMeetsRequirement(tier, "enterprise")) {
+                      queueMicrotask(() => setExportUpgradeOpen(true));
+                      return;
+                    }
+                    void runExport("pdf");
+                  }}
+                >
+                  {t("export.pdf")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
             </>
           ) : null}
         </div>

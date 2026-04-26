@@ -4,6 +4,7 @@ import com.atendimento.cerebro.application.port.in.IngestionUseCase;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel.IngestErrorResponse;
 import com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel.IngestHttpResponse;
+import com.atendimento.cerebro.infrastructure.security.TenantContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -40,9 +41,14 @@ public class IngestMultipartController {
 
     @PostMapping(value = "/ingest", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> ingest(
-            @RequestParam("tenantId") String tenantId, @RequestPart("file") MultipartFile file) {
-        if (tenantId == null || tenantId.isBlank()) {
-            return ResponseEntity.badRequest().body(new IngestErrorResponse("tenantId é obrigatório"));
+            @RequestParam(value = "tenantId", required = false) String tenantId, @RequestPart("file") MultipartFile file) {
+        String effectiveTenantId = TenantContext.getTenantIdOrSecurityContext().orElse(null);
+        if (effectiveTenantId == null || effectiveTenantId.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new IngestErrorResponse("não autenticado"));
+        }
+        if (tenantId != null && !tenantId.isBlank() && !effectiveTenantId.equals(tenantId.strip())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(new IngestErrorResponse("tenantId não coincide com a sessão"));
         }
         if (file == null || file.isEmpty()) {
             return ResponseEntity.badRequest().body(new IngestErrorResponse("arquivo 'file' é obrigatório"));
@@ -53,9 +59,9 @@ public class IngestMultipartController {
                 name = "upload";
             }
             byte[] bytes = file.getBytes();
-            LOG.info("ingest (Spring MVC) tenantId={} filename={} size={}", tenantId.strip(), name, bytes.length);
+            LOG.info("ingest (Spring MVC) tenantId={} filename={} size={}", effectiveTenantId, name, bytes.length);
             int n = ingestionUseCase.ingest(
-                    new TenantId(tenantId.strip()), bytes, name, file.getSize());
+                    new TenantId(effectiveTenantId), bytes, name, file.getSize());
             return ResponseEntity.ok(new IngestHttpResponse(n));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(new IngestErrorResponse(e.getMessage()));

@@ -9,8 +9,6 @@ import { PlanProvider } from "@/components/plan/plan-provider";
 import { Providers } from "@/components/providers";
 import { routing } from "@/i18n/routing";
 
-import "../globals.css";
-
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
@@ -48,12 +46,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const t = await getTranslations({ locale, namespace: "meta" });
   const tPwa = await getTranslations({ locale, namespace: "pwa" });
   return {
-    title: t("title"),
+    title: "AxeZap - Atendimento Inteligente",
     description: t("description"),
-    applicationName: "InteliZap",
+    applicationName: "AxeZap",
     appleWebApp: {
       capable: true,
-      title: "InteliZap",
+      title: "AxeZap",
       statusBarStyle: "black-translucent",
     },
     formatDetection: {
@@ -67,7 +65,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
     },
     openGraph: {
-      siteName: "InteliZap",
+      siteName: "AxeZap",
       type: "website",
       locale,
       title: t("title"),
@@ -91,18 +89,14 @@ export default async function LocaleLayout({ children, params }: Props) {
   const messages = await getMessages();
 
   return (
-    <html
-      lang={locale}
-      className={`${inter.variable} ${geistMono.variable} dark h-full antialiased`}
-      suppressHydrationWarning
-    >
-      <body className="min-h-full font-sans">
+    <div className={`${inter.variable} ${geistMono.variable} dark min-h-full antialiased`}>
+      <div className="min-h-full font-sans">
         <Providers>
           <NextIntlClientProvider locale={locale} messages={messages}>
             <PlanProvider>{children}</PlanProvider>
           </NextIntlClientProvider>
         </Providers>
-      </body>
-    </html>
+      </div>
+    </div>
   );
 }

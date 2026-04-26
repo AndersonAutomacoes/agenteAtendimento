@@ -7,6 +7,7 @@ public record TenantAppointmentRecord(
         TenantId tenantId,
         String conversationId,
         String clientName,
+        Long serviceId,
         String serviceName,
         Instant startsAt,
         Instant endsAt,
@@ -21,6 +22,9 @@ public record TenantAppointmentRecord(
         }
         if (serviceName == null || serviceName.isBlank()) {
             throw new IllegalArgumentException("serviceName must not be blank");
+        }
+        if (serviceId == null || serviceId <= 0) {
+            throw new IllegalArgumentException("serviceId must be provided");
         }
         if (startsAt == null || endsAt == null) {
             throw new IllegalArgumentException("startsAt and endsAt are required");

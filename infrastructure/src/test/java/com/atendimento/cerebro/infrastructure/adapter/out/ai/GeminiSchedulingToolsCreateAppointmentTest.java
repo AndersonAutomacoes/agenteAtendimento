@@ -6,14 +6,17 @@ import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
 import com.atendimento.cerebro.application.port.out.CrmCustomerQueryPort;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentQueryPort;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentStorePort;
+import com.atendimento.cerebro.application.port.out.TenantServiceCatalogPort;
 import com.atendimento.cerebro.application.event.AppointmentConfirmedEvent;
 import com.atendimento.cerebro.application.scheduling.CreateAppointmentResult;
 import com.atendimento.cerebro.application.scheduling.SchedulingEnforcedChoice;
 import com.atendimento.cerebro.application.service.AppointmentService;
 import com.atendimento.cerebro.application.service.AppointmentValidationService;
+import com.atendimento.cerebro.domain.conversation.Message;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -30,10 +33,14 @@ class GeminiSchedulingToolsCreateAppointmentTest {
 
     private static AppointmentService appointmentServiceDelegatingTo(
             AppointmentSchedulingPort port, ApplicationEventPublisher eventPublisher) {
+        TenantServiceCatalogPort catalog = Mockito.mock(TenantServiceCatalogPort.class);
+        when(catalog.findServiceIdByName(any(), any())).thenReturn(Optional.of(1L));
+        when(catalog.listActiveServiceNames(any())).thenReturn(List.of("Alinhamento"));
         return new AppointmentService(
                 Mockito.mock(TenantAppointmentQueryPort.class),
                 Mockito.mock(TenantAppointmentStorePort.class),
                 port,
+                catalog,
                 Mockito.mock(CrmCustomerQueryPort.class),
                 eventPublisher);
     }
@@ -57,6 +64,7 @@ class GeminiSchedulingToolsCreateAppointmentTest {
                             String isoDate,
                             String localTime,
                             String clientName,
+                            Long serviceId,
                             String serviceName,
                             String conversationId) {
                         captured[0] = isoDate;
@@ -81,6 +89,7 @@ class GeminiSchedulingToolsCreateAppointmentTest {
                         zone,
                         "Confirmo 15:30.",
                         "",
+                        List.of(Message.assistantMessage("x\n[selected_service:Alinhamento]")),
                         Optional.of(new SchedulingEnforcedChoice(enforcedDay, "15:30")),
                         false,
                         Optional.empty());
@@ -109,6 +118,7 @@ class GeminiSchedulingToolsCreateAppointmentTest {
                             String isoDate,
                             String localTime,
                             String clientName,
+                            Long serviceId,
                             String serviceName,
                             String conversationId) {
                         called[0] = true;
@@ -132,10 +142,11 @@ class GeminiSchedulingToolsCreateAppointmentTest {
                         zone,
                         "sim",
                         "Quero cancelar o agendamento anterior\n",
+                        List.of(Message.assistantMessage("x\n[selected_service:Alinhamento]")),
                         Optional.of(new SchedulingEnforcedChoice(enforcedDay, "17:30")),
                         false,
                         Optional.empty());
-        String out = tools.create_appointment(enforcedDay.toString(), "17:30", "Cliente", "Revisão");
+        String out = tools.create_appointment(enforcedDay.toString(), "17:30", "Cliente", "Alinhamento");
         assertThat(called[0]).isTrue();
         assertThat(out).contains("Agendamento criado");
         verify(events).publishEvent(org.mockito.ArgumentMatchers.any(AppointmentConfirmedEvent.class));
@@ -159,6 +170,7 @@ class GeminiSchedulingToolsCreateAppointmentTest {
                             String isoDate,
                             String localTime,
                             String clientName,
+                            Long serviceId,
                             String serviceName,
                             String conversationId) {
                         throw new AssertionError("não deve chamar create");
@@ -180,11 +192,61 @@ class GeminiSchedulingToolsCreateAppointmentTest {
                         zone,
                         "sim",
                         "",
+                        List.of(),
                         Optional.empty(),
                         false,
                         Optional.of(anchorDay));
         String out = tools.create_appointment(modelDay.toString(), "10:30", "Cliente", "Serviço");
         assertThat(out).contains(anchorDay.toString()).contains("não bate");
+        verify(appointmentService, never())
+                .createAppointmentWithResult(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void createAppointment_requiresExplicitConfirmationBeforeCreating() {
+        ZoneId zone = ZoneId.of("America/Sao_Paulo");
+        AppointmentSchedulingPort port =
+                new AppointmentSchedulingPort() {
+                    @Override
+                    public String checkAvailability(TenantId tenantId, String isoDate) {
+                        return "";
+                    }
+
+                    @Override
+                    public CreateAppointmentResult createAppointment(
+                            TenantId tenantId,
+                            String isoDate,
+                            String localTime,
+                            String clientName,
+                            Long serviceId,
+                            String serviceName,
+                            String conversationId) {
+                        throw new AssertionError("não deve chamar create sem confirmação explícita");
+                    }
+
+                    @Override
+                    public boolean deleteCalendarEvent(TenantId tenantId, String googleEventId) {
+                        return true;
+                    }
+                };
+        AppointmentService appointmentService = Mockito.mock(AppointmentService.class);
+        GeminiSchedulingTools tools =
+                new GeminiSchedulingTools(
+                        TID,
+                        "conv-1",
+                        port,
+                        new AppointmentValidationService(),
+                        appointmentService,
+                        zone,
+                        "09:00",
+                        "",
+                        List.of(),
+                        Optional.empty(),
+                        false,
+                        Optional.empty());
+
+        String out = tools.create_appointment("2026-04-25", "09:00", "Cliente", "Serviço");
+        assertThat(out).contains("confirme com o cliente");
         verify(appointmentService, never())
                 .createAppointmentWithResult(any(), any(), any(), any(), any(), any(), any());
     }
@@ -206,6 +268,7 @@ class GeminiSchedulingToolsCreateAppointmentTest {
                             String isoDate,
                             String localTime,
                             String clientName,
+                            Long serviceId,
                             String serviceName,
                             String conversationId) {
                         return CreateAppointmentResult.failure("");
@@ -226,6 +289,7 @@ class GeminiSchedulingToolsCreateAppointmentTest {
                         ZoneId.of("America/Sao_Paulo"),
                         "",
                         "",
+                        List.of(),
                         Optional.empty(),
                         false,
                         Optional.empty());
@@ -251,6 +315,7 @@ class GeminiSchedulingToolsCreateAppointmentTest {
                             String isoDate,
                             String localTime,
                             String clientName,
+                            Long serviceId,
                             String serviceName,
                             String conversationId) {
                         return CreateAppointmentResult.failure("");
@@ -271,10 +336,59 @@ class GeminiSchedulingToolsCreateAppointmentTest {
                         ZoneId.of("America/Sao_Paulo"),
                         "",
                         "",
+                        List.of(),
                         Optional.empty(),
                         false,
                         Optional.empty());
         assertThat(tools.get_active_appointments()).isEqualTo("listed");
         verify(appointmentService).getActiveAppointments(TID, "wa-5511", ZoneId.of("America/Sao_Paulo"));
+    }
+
+    @Test
+    void listTenantServices_delegatesToAppointmentService() {
+        AppointmentService appointmentService = Mockito.mock(AppointmentService.class);
+        when(appointmentService.listTenantServicesForScheduling(any()))
+                .thenReturn("Serviços disponíveis para agendamento:\n- Alinhamento");
+        AppointmentSchedulingPort port =
+                new AppointmentSchedulingPort() {
+                    @Override
+                    public String checkAvailability(TenantId tenantId, String isoDate) {
+                        return "";
+                    }
+
+                    @Override
+                    public CreateAppointmentResult createAppointment(
+                            TenantId tenantId,
+                            String isoDate,
+                            String localTime,
+                            String clientName,
+                            Long serviceId,
+                            String serviceName,
+                            String conversationId) {
+                        return CreateAppointmentResult.failure("");
+                    }
+
+                    @Override
+                    public boolean deleteCalendarEvent(TenantId tenantId, String googleEventId) {
+                        return true;
+                    }
+                };
+        GeminiSchedulingTools tools =
+                new GeminiSchedulingTools(
+                        TID,
+                        "wa-5511",
+                        port,
+                        new AppointmentValidationService(),
+                        appointmentService,
+                        ZoneId.of("America/Sao_Paulo"),
+                        "",
+                        "",
+                        List.of(),
+                        Optional.empty(),
+                        false,
+                        Optional.empty());
+
+        assertThat(tools.list_tenant_services()).contains("Serviços disponíveis");
+        verify(appointmentService).listTenantServicesForScheduling(TID);
     }
 }

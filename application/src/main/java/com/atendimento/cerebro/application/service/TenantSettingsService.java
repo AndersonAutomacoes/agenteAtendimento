@@ -33,6 +33,25 @@ public class TenantSettingsService implements UpdateTenantSettingsUseCase {
         String googleCal =
                 c.googleCalendarId() != null ? nullIfBlankToNull(c.googleCalendarId()) : base.googleCalendarId();
 
+        String est = c.establishmentName() != null ? nullIfBlankToNull(c.establishmentName()) : base.establishmentName();
+        String addr = c.businessAddress() != null ? nullIfBlankToNull(c.businessAddress()) : base.businessAddress();
+        String hours = c.openingHours() != null ? nullIfBlankToNull(c.openingHours()) : base.openingHours();
+        String contacts = c.businessContacts() != null ? nullIfBlankToNull(c.businessContacts()) : base.businessContacts();
+        String facilities =
+                c.businessFacilities() != null ? nullIfBlankToNull(c.businessFacilities()) : base.businessFacilities();
+        int slotMin =
+                c.defaultAppointmentMinutes() != null
+                        ? clampSlotMinutes(c.defaultAppointmentMinutes())
+                        : base.defaultAppointmentMinutes();
+        boolean adimpl = c.billingCompliant() != null ? c.billingCompliant() : base.billingCompliant();
+        String calNotes =
+                c.calendarAccessNotes() != null ? nullIfBlankToNull(c.calendarAccessNotes()) : base.calendarAccessNotes();
+        String sheet = c.spreadsheetUrl() != null ? nullIfBlankToNull(c.spreadsheetUrl()) : base.spreadsheetUrl();
+        String waBus =
+                c.whatsappBusinessNumber() != null
+                        ? nullIfBlankToNull(c.whatsappBusinessNumber())
+                        : base.whatsappBusinessNumber();
+
         return new TenantConfiguration(
                 base.tenantId(),
                 c.systemPrompt(),
@@ -42,7 +61,21 @@ public class TenantSettingsService implements UpdateTenantSettingsUseCase {
                 baseUrl,
                 base.profileLevel(),
                 base.portalPasswordHash(),
-                googleCal);
+                googleCal,
+                est,
+                addr,
+                hours,
+                contacts,
+                facilities,
+                slotMin,
+                adimpl,
+                calNotes,
+                sheet,
+                waBus);
+    }
+
+    private static int clampSlotMinutes(int raw) {
+        return Math.max(5, Math.min(480, raw));
     }
 
     /**

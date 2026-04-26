@@ -24,7 +24,7 @@ export default function LoginPage() {
   const t = useTranslations("loginPage");
   const tApi = useTranslations("api");
   const router = useRouter();
-  const { setTier } = usePlan();
+  const { setTier, setFeatures, setProfileLevel } = usePlan();
   const translateApi = React.useCallback((key: string) => tApi(key), [tApi]);
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -53,6 +53,8 @@ export default function LoginPage() {
         /* ignore */
       }
       setTier(mapProfileLevelToPlanTier(session.profileLevel));
+      setProfileLevel(session.profileLevel);
+      setFeatures(session.features ?? {});
       toast.success(t("success"));
       router.push("/");
     } catch (err) {

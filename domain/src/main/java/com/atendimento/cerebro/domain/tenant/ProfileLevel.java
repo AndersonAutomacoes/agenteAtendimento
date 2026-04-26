@@ -6,7 +6,8 @@ package com.atendimento.cerebro.domain.tenant;
 public enum ProfileLevel {
     BASIC,
     PRO,
-    ULTRA;
+    ULTRA,
+    COMERCIAL;
 
     /** {@code true} se este nível for igual ou superior a {@code required}. */
     public boolean meets(ProfileLevel required) {

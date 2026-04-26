@@ -2,7 +2,9 @@
 
 import { useTranslations } from "next-intl";
 import * as React from "react";
+import { Loader2 } from "lucide-react";
 
+import type { PlanFeatureKey, ProfileLevel } from "@/services/apiService";
 import { cn } from "@/lib/utils";
 import { type PlanTier, planMeetsRequirement } from "@/lib/plan-tier";
 
@@ -12,6 +14,10 @@ import { UpgradePlanPanel } from "./upgrade-plan-panel";
 export type FeatureGuardProps = {
   /** Plano mínimo para usar o conteúdo sem bloqueio. */
   requiredPlan: PlanTier;
+  /** Perfil específico exigido (ex.: COMERCIAL para backoffice interno). */
+  requiredProfile?: ProfileLevel;
+  /** Feature flag vinda do backend (source of truth quando presente). */
+  requiredFeature?: PlanFeatureKey;
   children: React.ReactNode;
   className?: string;
   /** Destino do botão de upgrade (ex.: página de billing). */
@@ -20,14 +26,36 @@ export type FeatureGuardProps = {
 
 export function FeatureGuard({
   requiredPlan,
+  requiredProfile,
+  requiredFeature,
   children,
   className,
   upgradeHref = "/settings",
 }: FeatureGuardProps) {
   const t = useTranslations("plan");
-  const { tier } = usePlan();
+  const { tier, profileLevel, features, featuresHydrated } = usePlan();
+  const [mounted, setMounted] = React.useState(false);
 
-  const allowed = planMeetsRequirement(tier, requiredPlan);
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (requiredFeature && (!mounted || !featuresHydrated)) {
+    return (
+      <div className={cn("flex min-h-[12rem] items-center justify-center rounded-xl border border-border/60", className)}>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          <span>{t("checkingAccess")}</span>
+        </div>
+      </div>
+    );
+  }
+
+  const allowed =
+    (requiredProfile == null || profileLevel === requiredProfile) &&
+    (requiredFeature == null
+      ? planMeetsRequirement(tier, requiredPlan)
+      : features[requiredFeature] === true);
 
   if (allowed) {
     return <>{children}</>;

@@ -4,6 +4,7 @@ import com.atendimento.cerebro.application.dto.WhatsAppInteractiveReply;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -41,6 +42,7 @@ public final class SchedulingSlotCapture {
     private static final ThreadLocal<String> INTERACTIVE_MAIN_TEXT = new ThreadLocal<>();
 
     private static final Pattern TIME_TOKEN = Pattern.compile("\\b(\\d{1,2}:\\d{2})\\b");
+    private static final Pattern BR_DATE_TOKEN = Pattern.compile("\\b(\\d{1,2}/\\d{1,2}/\\d{4})\\b");
     /** HH:mm válido (24h). */
     private static final Pattern HM_STRICT = Pattern.compile("^([01][0-9]|2[0-3]):([0-5][0-9])$");
     private static final DateTimeFormatter PT_BR_DATE =
@@ -215,12 +217,28 @@ public final class SchedulingSlotCapture {
         return normalizeSlotTimes(new ArrayList<>(rough));
     }
 
-    private static final Pattern HORARIOS_LIVRES = Pattern.compile("(?i)hor[aá]rios\\s+livres");
+    private static final Pattern HORARIOS_DISPONIBILIDADE =
+            Pattern.compile("(?i)hor[aá]rios\\s+(livres|dispon[ií]veis)");
 
     private static final Pattern NENHUM_HORARIO_LIVRE = Pattern.compile("(?i)nenhum\\s+hor[aá]rio");
 
     private static boolean containsHorariosLivresMarker(String s) {
-        return s != null && HORARIOS_LIVRES.matcher(s).find();
+        return s != null && HORARIOS_DISPONIBILIDADE.matcher(s).find();
+    }
+
+    public static Optional<LocalDate> extractDateFromAvailabilityText(String text) {
+        if (text == null || text.isBlank()) {
+            return Optional.empty();
+        }
+        Matcher m = BR_DATE_TOKEN.matcher(text);
+        if (!m.find()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(LocalDate.parse(m.group(1), PT_BR_DATE));
+        } catch (DateTimeParseException e) {
+            return Optional.empty();
+        }
     }
 
     /** Regista horários extraídos do retorno textual da ferramenta (ex.: "09:00, 10:00"). */

@@ -247,4 +247,37 @@ class WhatsAppWebhookParserTest {
         assertThat(tm.providerMessageId()).isEqualTo("wamid.meta123");
         assertThat(tm.text()).isEqualTo("Oi");
     }
+
+    @Test
+    void evolution_messagesUpsert_audioPayload_withRealOggUrl_isParsed() throws Exception {
+        String json =
+                """
+                {
+                  "event": "messages.upsert",
+                  "data": {
+                    "key": {
+                      "remoteJid": "5511999999999@s.whatsapp.net",
+                      "fromMe": false,
+                      "id": "AUDIO-123"
+                    },
+                    "message": {
+                      "audioMessage": {
+                        "url": "https://file-examples.com/storage/feff4d9a21636f5d34f6f86/2017/11/file_example_OOG_1MG.ogg",
+                        "mimetype": "audio/ogg; codecs=opus"
+                      }
+                    },
+                    "messageType": "audioMessage"
+                  }
+                }
+                """;
+        var in = parser.parse(mapper.readTree(json));
+        assertThat(in).isInstanceOf(WhatsAppWebhookParser.Incoming.AudioMessage.class);
+        var am = (WhatsAppWebhookParser.Incoming.AudioMessage) in;
+        assertThat(am.fromRaw()).isEqualTo("5511999999999");
+        assertThat(am.mediaUrl())
+                .isEqualTo(
+                        "https://file-examples.com/storage/feff4d9a21636f5d34f6f86/2017/11/file_example_OOG_1MG.ogg");
+        assertThat(am.mimeType()).contains("audio/ogg");
+        assertThat(am.providerMessageId()).isEqualTo("AUDIO-123");
+    }
 }

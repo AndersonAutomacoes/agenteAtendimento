@@ -14,7 +14,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
 import { toBcp47ForDates } from "@/lib/intl-locale";
 import { cn } from "@/lib/utils";
 import {
@@ -107,7 +106,7 @@ export default function AppointmentsPage() {
   };
 
   return (
-    <FeatureGuard requiredPlan="pro">
+    <FeatureGuard requiredPlan="pro" requiredFeature="APPOINTMENTS">
       <CustomerRecordDialog
         open={fichaOpen}
         onOpenChange={setFichaOpen}
@@ -120,15 +119,6 @@ export default function AppointmentsPage() {
           <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
           <p className="text-muted-foreground">{t("subtitle")}</p>
           <div className="mt-4 max-w-md space-y-1">
-            <Label className="text-muted-foreground">{t("accountId")}</Label>
-            <p
-              className={cn(
-                "min-h-9 font-mono text-base font-semibold tracking-tight text-foreground sm:text-lg",
-                !tenantId.trim() && "font-normal text-muted-foreground",
-              )}
-            >
-              {tenantId.trim() || "—"}
-            </p>
             {!tenantId.trim() ? (
               <p className="pt-1 text-xs text-amber-600 dark:text-amber-400/90">
                 {t("needAccount")}

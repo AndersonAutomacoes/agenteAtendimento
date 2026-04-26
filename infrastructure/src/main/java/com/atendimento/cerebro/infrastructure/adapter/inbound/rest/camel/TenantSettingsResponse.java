@@ -14,4 +14,14 @@ public record TenantSettingsResponse(
         String whatsappApiKey,
         String whatsappInstanceId,
         String whatsappBaseUrl,
-        String googleCalendarId) {}
+        String googleCalendarId,
+        String establishmentName,
+        String businessAddress,
+        String openingHours,
+        String businessContacts,
+        String businessFacilities,
+        int defaultAppointmentMinutes,
+        boolean billingCompliant,
+        String calendarAccessNotes,
+        String spreadsheetUrl,
+        String whatsappBusinessNumber) {}

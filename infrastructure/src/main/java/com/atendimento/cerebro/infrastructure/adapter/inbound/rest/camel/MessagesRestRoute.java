@@ -88,16 +88,10 @@ public class MessagesRestRoute extends RouteBuilder {
     }
 
     private void handleGet(Exchange exchange) {
-        String tenantId = exchange.getMessage().getHeader("tenantId", String.class);
-        if (tenantId == null || tenantId.isBlank()) {
-            tenantId = parseQueryParam(exchange.getMessage().getHeader(Exchange.HTTP_QUERY, String.class), "tenantId");
-        }
-        if (tenantId == null || tenantId.isBlank()) {
-            exchange.getIn().setBody(new IngestErrorResponse("tenantId é obrigatório"));
-            exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
+        String tenantId = requireAuthorizedTenant(exchange);
+        if (tenantId == null) {
             return;
         }
-        tenantId = tenantId.strip();
         TenantId tenant = new TenantId(tenantId);
         List<ChatMessage> rows = chatMessageRepository.findLastByTenantId(tenant, DEFAULT_LIMIT);
         List<ChatMessageItemResponse> items = rows.stream().map(MessagesRestRoute::toItem).toList();
@@ -112,16 +106,10 @@ public class MessagesRestRoute extends RouteBuilder {
     }
 
     private void handleHumanReply(Exchange exchange) {
-        String tenantId = exchange.getMessage().getHeader("tenantId", String.class);
-        if (tenantId == null || tenantId.isBlank()) {
-            tenantId = parseQueryParam(exchange.getMessage().getHeader(Exchange.HTTP_QUERY, String.class), "tenantId");
-        }
-        if (tenantId == null || tenantId.isBlank()) {
-            exchange.getIn().setBody(new IngestErrorResponse("tenantId é obrigatório"));
-            exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
+        String tenantId = requireAuthorizedTenant(exchange);
+        if (tenantId == null) {
             return;
         }
-        tenantId = tenantId.strip();
 
         HumanReplyBody body = exchange.getIn().getBody(HumanReplyBody.class);
         if (body == null
@@ -212,16 +200,10 @@ public class MessagesRestRoute extends RouteBuilder {
     }
 
     private void handleRetry(Exchange exchange) {
-        String tenantId = exchange.getMessage().getHeader("tenantId", String.class);
-        if (tenantId == null || tenantId.isBlank()) {
-            tenantId = parseQueryParam(exchange.getMessage().getHeader(Exchange.HTTP_QUERY, String.class), "tenantId");
-        }
-        if (tenantId == null || tenantId.isBlank()) {
-            exchange.getIn().setBody(new IngestErrorResponse("tenantId é obrigatório"));
-            exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
+        String tenantId = requireAuthorizedTenant(exchange);
+        if (tenantId == null) {
             return;
         }
-        tenantId = tenantId.strip();
 
         String idRaw = exchange.getMessage().getHeader("id", String.class);
         if (idRaw == null || idRaw.isBlank()) {
@@ -292,5 +274,13 @@ public class MessagesRestRoute extends RouteBuilder {
             }
         }
         return null;
+    }
+
+    private static String requireAuthorizedTenant(Exchange exchange) {
+        String requested = exchange.getMessage().getHeader("tenantId", String.class);
+        if (requested == null || requested.isBlank()) {
+            requested = parseQueryParam(exchange.getMessage().getHeader(Exchange.HTTP_QUERY, String.class), "tenantId");
+        }
+        return CamelAuthSupport.authorizedTenantOrAbort(exchange, requested);
     }
 }

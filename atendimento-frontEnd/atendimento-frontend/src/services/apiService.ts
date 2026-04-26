@@ -1,5 +1,5 @@
 /**
- * Chamadas HTTP ao backend Cérebro.
+ * Chamadas HTTP ao backend AxeZap.
  *
  * - `next.config.ts` define em **development** `NEXT_PUBLIC_API_BASE` para o Java
  *   (ex.: http://localhost:8080) por defeito, para o browser falar direto com o
@@ -21,7 +21,16 @@ export function getApiBaseUrl(): string {
 /** ID token Firebase (Bearer) para RBAC analytics/dashboard/export. */
 export const CEREBRO_AUTH_TOKEN_KEY = "cerebro-access-token";
 
-export type ProfileLevel = "BASIC" | "PRO" | "ULTRA";
+export type ProfileLevel = "BASIC" | "PRO" | "ULTRA" | "COMERCIAL";
+export type PlanFeatureKey =
+  | "DASHBOARD"
+  | "ANALYTICS"
+  | "ANALYTICS_EXPORT_CSV"
+  | "ANALYTICS_EXPORT_PDF"
+  | "APPOINTMENTS"
+  | "KNOWLEDGE_BASE"
+  | "MONITORING"
+  | "SETTINGS";
 
 export type PortalRegisterResponse = {
   tenantId: string;
@@ -31,7 +40,13 @@ export type PortalRegisterResponse = {
 export type PortalSession = {
   tenantId: string;
   profileLevel: ProfileLevel;
+  features: Partial<Record<PlanFeatureKey, boolean>>;
 };
+
+function parseProfileLevel(raw: unknown): ProfileLevel {
+  if (raw === "PRO" || raw === "ULTRA" || raw === "COMERCIAL") return raw;
+  return "BASIC";
+}
 
 function authHeaders(): Record<string, string> {
   if (typeof window === "undefined") return {};
@@ -79,7 +94,7 @@ export async function postPortalRegister(inviteCode: string): Promise<PortalRegi
   }
   return {
     tenantId: o.tenantId,
-    profileLevel: o.profileLevel as ProfileLevel,
+    profileLevel: parseProfileLevel(o.profileLevel),
   };
 }
 
@@ -102,7 +117,31 @@ export async function getPortalSession(): Promise<PortalSession> {
   if (typeof o.tenantId !== "string" || typeof o.profileLevel !== "string") {
     throw new Error(apiI18nKey("errors.invalidSessionResponse"));
   }
-  return { tenantId: o.tenantId, profileLevel: o.profileLevel as ProfileLevel };
+  const allowedFeatures: PlanFeatureKey[] = [
+    "DASHBOARD",
+    "ANALYTICS",
+    "ANALYTICS_EXPORT_CSV",
+    "ANALYTICS_EXPORT_PDF",
+    "APPOINTMENTS",
+    "KNOWLEDGE_BASE",
+    "MONITORING",
+    "SETTINGS",
+  ];
+  const featuresRaw = o.features;
+  const features: Partial<Record<PlanFeatureKey, boolean>> = {};
+  if (featuresRaw && typeof featuresRaw === "object") {
+    const r = featuresRaw as Record<string, unknown>;
+    for (const key of allowedFeatures) {
+      if (typeof r[key] === "boolean") {
+        features[key] = r[key] as boolean;
+      }
+    }
+  }
+  return {
+    tenantId: o.tenantId,
+    profileLevel: parseProfileLevel(o.profileLevel),
+    features,
+  };
 }
 
 function chatUrl(): string {
@@ -112,11 +151,8 @@ function chatUrl(): string {
 
 /** Ingest: no Java real o path é `/v1/ingest`; com proxy Next usamos `/api/v1/ingest`. */
 function ingestUrl(tenantId: string): string {
-  const base = getApiBaseUrl();
   const q = new URLSearchParams({ tenantId }).toString();
-  if (base) {
-    return `${base}/v1/ingest?${q}`;
-  }
+  // Sempre via proxy Next para evitar preflight/CORS no upload multipart com Authorization.
   return `/api/v1/ingest?${q}`;
 }
 
@@ -239,6 +275,7 @@ export async function postIngest(
 
   const res = await fetch(ingestUrl(tenantId), {
     method: "POST",
+    headers: { ...authHeaders() },
     body: form,
   });
 
@@ -298,6 +335,17 @@ export type TenantSettings = {
   whatsappApiKey: string | null;
   whatsappInstanceId: string | null;
   whatsappBaseUrl: string | null;
+  googleCalendarId: string | null;
+  establishmentName: string | null;
+  businessAddress: string | null;
+  openingHours: string | null;
+  businessContacts: string | null;
+  businessFacilities: string | null;
+  defaultAppointmentMinutes: number;
+  billingCompliant: boolean;
+  calendarAccessNotes: string | null;
+  spreadsheetUrl: string | null;
+  whatsappBusinessNumber: string | null;
 };
 
 export type TenantSettingsPayload = {
@@ -307,6 +355,80 @@ export type TenantSettingsPayload = {
   whatsappApiKey: string | null;
   whatsappInstanceId: string | null;
   whatsappBaseUrl: string | null;
+  googleCalendarId: string | null;
+  establishmentName: string | null;
+  businessAddress: string | null;
+  openingHours: string | null;
+  businessContacts: string | null;
+  businessFacilities: string | null;
+  defaultAppointmentMinutes: number;
+  billingCompliant: boolean;
+  calendarAccessNotes: string | null;
+  spreadsheetUrl: string | null;
+  whatsappBusinessNumber: string | null;
+};
+
+export type TenantServiceRow = {
+  id: number;
+  name: string;
+  durationMinutes: number | null;
+  active: boolean;
+};
+
+export type PortalUserRow = {
+  id: string;
+  firebaseUid: string;
+  profileLevel: ProfileLevel;
+};
+
+export type TenantInviteResponse = {
+  inviteCode: string;
+  message: string;
+  emailHint: string;
+  emailSentTo?: string;
+};
+
+export type InternalTenantCreatePayload = {
+  tenantId: string;
+  establishmentName: string;
+  customerEmail: string;
+  profileLevel: ProfileLevel;
+};
+
+export type InternalTenantCreateResponse = {
+  tenantId: string;
+  profileLevel: ProfileLevel;
+  inviteCode: string;
+  message: string;
+};
+
+export type InternalTenantListItem = {
+  tenantId: string;
+  establishmentName: string | null;
+  active: boolean;
+  profileLevel: ProfileLevel;
+  contacts: string | null;
+  billingCompliant: boolean;
+  monthlyAppointmentsUsed: number;
+  monthlyAppointmentsLimit: number | null;
+};
+
+export type InternalTenantUpdatePayload = {
+  establishmentName?: string | null;
+  customerEmail?: string | null;
+  profileLevel: ProfileLevel;
+  active?: boolean;
+};
+
+export type PlanConfigFeature = {
+  profileLevel: ProfileLevel;
+  featureKey: string;
+  enabled: boolean;
+};
+
+export type PlanConfigLimit = {
+  profileLevel: ProfileLevel;
+  maxAppointmentsPerMonth: number | null;
 };
 
 /** GET: servlet Camel {@code /api/v1/tenant/settings?tenantId=}. */
@@ -353,13 +475,16 @@ export async function getTenantSettings(tenantId: string): Promise<TenantSetting
   if (typeof o.tenantId !== "string" || typeof o.systemPrompt !== "string") {
     throw new Error(apiI18nKey("errors.invalidSettingsPayload"));
   }
-  const profileRaw = typeof o.profileLevel === "string" ? o.profileLevel : "BASIC";
-  const profileLevel: ProfileLevel =
-    profileRaw === "PRO" || profileRaw === "ULTRA" ? profileRaw : "BASIC";
+  const profileLevel: ProfileLevel = parseProfileLevel(o.profileLevel);
   const raw = typeof o.whatsappProviderType === "string" ? o.whatsappProviderType : "SIMULATED";
   const whatsappProviderType: WhatsAppProviderType = isWhatsAppProviderType(raw)
     ? raw
     : "SIMULATED";
+
+  const num =
+    typeof o.defaultAppointmentMinutes === "number" && o.defaultAppointmentMinutes > 0
+      ? o.defaultAppointmentMinutes
+      : 30;
 
   return {
     tenantId: o.tenantId,
@@ -370,6 +495,18 @@ export async function getTenantSettings(tenantId: string): Promise<TenantSetting
     whatsappInstanceId:
       typeof o.whatsappInstanceId === "string" ? o.whatsappInstanceId : null,
     whatsappBaseUrl: typeof o.whatsappBaseUrl === "string" ? o.whatsappBaseUrl : null,
+    googleCalendarId: typeof o.googleCalendarId === "string" ? o.googleCalendarId : null,
+    establishmentName: typeof o.establishmentName === "string" ? o.establishmentName : null,
+    businessAddress: typeof o.businessAddress === "string" ? o.businessAddress : null,
+    openingHours: typeof o.openingHours === "string" ? o.openingHours : null,
+    businessContacts: typeof o.businessContacts === "string" ? o.businessContacts : null,
+    businessFacilities: typeof o.businessFacilities === "string" ? o.businessFacilities : null,
+    defaultAppointmentMinutes: num,
+    billingCompliant: typeof o.billingCompliant === "boolean" ? o.billingCompliant : true,
+    calendarAccessNotes: typeof o.calendarAccessNotes === "string" ? o.calendarAccessNotes : null,
+    spreadsheetUrl: typeof o.spreadsheetUrl === "string" ? o.spreadsheetUrl : null,
+    whatsappBusinessNumber:
+      typeof o.whatsappBusinessNumber === "string" ? o.whatsappBusinessNumber : null,
   };
 }
 
@@ -463,7 +600,7 @@ function messagesHumanReplyUrl(tenantId: string): string {
 export async function getChatMessages(tenantId: string): Promise<ChatMessagesPayload> {
   const res = await fetch(chatMessagesUrl(tenantId), {
     method: "GET",
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/json", ...authHeaders() },
   });
 
   const text = await res.text();
@@ -519,6 +656,7 @@ export async function humanHandoffConversation(
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
+      ...authHeaders(),
     },
     body: JSON.stringify({ phoneNumber }),
   });
@@ -545,6 +683,7 @@ export async function enableBotForConversation(
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
+      ...authHeaders(),
     },
     body: JSON.stringify({ phoneNumber }),
   });
@@ -573,6 +712,7 @@ export async function sendHumanMonitorMessage(
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
+      ...authHeaders(),
     },
     body: JSON.stringify({ phoneNumber, text }),
   });
@@ -890,21 +1030,15 @@ export type KnowledgeBaseFileItem = {
 };
 
 function knowledgeBaseListUrl(tenantId: string): string {
-  const base = getApiBaseUrl();
   const q = new URLSearchParams({ tenantId }).toString();
-  if (base) {
-    return `${base}/api/v1/knowledge-base?${q}`;
-  }
+  // Sempre via proxy Next para manter same-origin e evitar preflight/CORS com Authorization.
   return `/api/v1/knowledge-base?${q}`;
 }
 
 function knowledgeBaseDeleteUrl(tenantId: string, batchId: string): string {
-  const base = getApiBaseUrl();
   const q = new URLSearchParams({ tenantId }).toString();
   const path = encodeURIComponent(batchId);
-  if (base) {
-    return `${base}/api/v1/knowledge-base/${path}?${q}`;
-  }
+  // Sempre via proxy Next para manter same-origin e evitar preflight/CORS com Authorization.
   return `/api/v1/knowledge-base/${path}?${q}`;
 }
 
@@ -926,7 +1060,7 @@ export async function getKnowledgeBase(
 ): Promise<KnowledgeBaseFileItem[]> {
   const res = await fetch(knowledgeBaseListUrl(tenantId), {
     method: "GET",
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/json", ...authHeaders() },
   });
 
   const text = await res.text();
@@ -963,7 +1097,7 @@ export async function deleteKnowledgeFile(
 ): Promise<void> {
   const res = await fetch(knowledgeBaseDeleteUrl(tenantId, batchId), {
     method: "DELETE",
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/json", ...authHeaders() },
   });
 
   if (res.status === 204) {
@@ -989,7 +1123,7 @@ export async function retryChatMessage(
 ): Promise<void> {
   const res = await fetch(chatMessageRetryUrl(tenantId, messageId), {
     method: "POST",
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/json", ...authHeaders() },
   });
 
   const text = await res.text();
@@ -1013,10 +1147,486 @@ export async function putTenantSettings(
 ): Promise<void> {
   const res = await fetch(tenantSettingsPutUrl(), {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(payload),
   });
 
+  const text = await res.text();
+  if (!res.ok) {
+    let json: unknown;
+    try {
+      json = text ? JSON.parse(text) : {};
+    } catch {
+      throw new Error(apiI18nKey("errors.serverUnavailable"));
+    }
+    throw new Error(
+      httpErrorUserMessage(res.status, json, "errors.saveTenantChannelFailed"),
+    );
+  }
+}
+
+function tenantPortalUsersGetUrl(tenantId: string): string {
+  const base = getApiBaseUrl();
+  const q = new URLSearchParams({ tenantId }).toString();
+  if (base) {
+    return `${base}/api/v1/tenant/portal-users?${q}`;
+  }
+  return `/api/v1/tenant/portal-users?${q}`;
+}
+
+function tenantInvitesPostUrl(tenantId?: string): string {
+  const base = getApiBaseUrl();
+  const endpoint = base ? `${base}/api/v1/tenant/invites` : "/api/v1/tenant/invites";
+  if (!tenantId) {
+    return endpoint;
+  }
+  const q = new URLSearchParams({ tenantId }).toString();
+  return `${endpoint}?${q}`;
+}
+
+function tenantServicesGetUrl(tenantId: string): string {
+  const base = getApiBaseUrl();
+  const q = new URLSearchParams({ tenantId }).toString();
+  if (base) {
+    return `${base}/api/v1/tenant/services?${q}`;
+  }
+  return `/api/v1/tenant/services?${q}`;
+}
+
+function tenantServicesPutUrl(tenantId?: string): string {
+  const base = getApiBaseUrl();
+  const endpoint = base ? `${base}/api/v1/tenant/services` : "/api/v1/tenant/services";
+  if (!tenantId) {
+    return endpoint;
+  }
+  const q = new URLSearchParams({ tenantId }).toString();
+  return `${endpoint}?${q}`;
+}
+
+function internalTenantsPostUrl(): string {
+  const base = getApiBaseUrl();
+  return base ? `${base}/api/v1/internal/tenants` : "/api/v1/internal/tenants";
+}
+
+function internalTenantsGetUrl(q?: string): string {
+  const base = getApiBaseUrl();
+  const qs = new URLSearchParams();
+  if (q?.trim()) {
+    qs.set("q", q.trim());
+  }
+  const suffix = qs.toString();
+  const endpoint = base ? `${base}/api/v1/internal/tenants` : "/api/v1/internal/tenants";
+  return suffix ? `${endpoint}?${suffix}` : endpoint;
+}
+
+function internalTenantInviteUrl(tenantId: string): string {
+  const base = getApiBaseUrl();
+  const id = encodeURIComponent(tenantId);
+  return base
+    ? `${base}/api/v1/internal/tenants/${id}/invites`
+    : `/api/v1/internal/tenants/${id}/invites`;
+}
+
+function internalTenantUrl(tenantId: string): string {
+  const base = getApiBaseUrl();
+  const id = encodeURIComponent(tenantId);
+  return base ? `${base}/api/v1/internal/tenants/${id}` : `/api/v1/internal/tenants/${id}`;
+}
+
+function internalTenantActivateUrl(tenantId: string): string {
+  const base = getApiBaseUrl();
+  const id = encodeURIComponent(tenantId);
+  return base
+    ? `${base}/api/v1/internal/tenants/${id}/activate`
+    : `/api/v1/internal/tenants/${id}/activate`;
+}
+
+function internalPlansConfigUrl(): string {
+  const base = getApiBaseUrl();
+  return base ? `${base}/api/v1/internal/plans/config` : "/api/v1/internal/plans/config";
+}
+
+export async function getPortalUsers(tenantId: string): Promise<PortalUserRow[]> {
+  const res = await fetch(tenantPortalUsersGetUrl(tenantId), {
+    method: "GET",
+    headers: { Accept: "application/json", ...authHeaders() },
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(apiI18nKey("errors.serverUnavailable"));
+  }
+  if (!res.ok) {
+    throw new Error(
+      httpErrorUserMessage(res.status, json, "errors.loadSettingsFailed"),
+    );
+  }
+  const o = json as { users?: unknown };
+  if (!Array.isArray(o.users)) {
+    return [];
+  }
+  return o.users
+    .map((u) => u as Record<string, unknown>)
+    .map((u) => ({
+      id: String(u.id ?? ""),
+      firebaseUid: String(u.firebaseUid ?? ""),
+      profileLevel: (["BASIC", "PRO", "ULTRA", "COMERCIAL"].includes(
+        u.profileLevel as string,
+      )
+        ? (u.profileLevel as ProfileLevel)
+        : "BASIC") as ProfileLevel,
+    }));
+}
+
+export async function postTenantInvite(
+  maxUses?: number,
+  tenantId?: string,
+  inviteEmail?: string,
+): Promise<TenantInviteResponse> {
+  const res = await fetch(tenantInvitesPostUrl(tenantId), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({
+      maxUses: maxUses != null && maxUses > 0 ? maxUses : 5,
+      inviteEmail: inviteEmail?.trim() ? inviteEmail.trim() : undefined,
+    }),
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(apiI18nKey("errors.serverUnavailable"));
+  }
+  if (!res.ok) {
+    throw new Error(
+      httpErrorUserMessage(res.status, json, "errors.saveTenantChannelFailed"),
+    );
+  }
+  const o = json as Record<string, unknown>;
+  return {
+    inviteCode: String(o.inviteCode ?? ""),
+    message: String(o.message ?? ""),
+    emailHint: String(o.emailHint ?? ""),
+    emailSentTo:
+      typeof o.emailSentTo === "string" && o.emailSentTo.length > 0
+        ? o.emailSentTo
+        : undefined,
+  };
+}
+
+export async function getTenantServices(
+  tenantId: string,
+): Promise<TenantServiceRow[]> {
+  const res = await fetch(tenantServicesGetUrl(tenantId), {
+    method: "GET",
+    headers: { Accept: "application/json", ...authHeaders() },
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(apiI18nKey("errors.serverUnavailable"));
+  }
+  if (!res.ok) {
+    throw new Error(
+      httpErrorUserMessage(res.status, json, "errors.loadSettingsFailed"),
+    );
+  }
+  const o = json as { services?: unknown };
+  if (!Array.isArray(o.services)) {
+    return [];
+  }
+  return o.services
+    .map((s) => s as Record<string, unknown>)
+    .map((s) => ({
+      id: Number(s.id) || 0,
+      name: String(s.name ?? ""),
+      durationMinutes:
+        typeof s.durationMinutes === "number" ? s.durationMinutes : null,
+      active: s.active === true,
+    }));
+}
+
+export async function putTenantServices(
+  items: { name: string; durationMinutes: number | null; active: boolean }[],
+  tenantId?: string,
+): Promise<void> {
+  const res = await fetch(tenantServicesPutUrl(tenantId), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ services: items }),
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    let json: unknown;
+    try {
+      json = text ? JSON.parse(text) : {};
+    } catch {
+      throw new Error(apiI18nKey("errors.serverUnavailable"));
+    }
+    throw new Error(
+      httpErrorUserMessage(res.status, json, "errors.saveTenantChannelFailed"),
+    );
+  }
+}
+
+export async function postInternalTenantCreate(
+  payload: InternalTenantCreatePayload,
+): Promise<InternalTenantCreateResponse> {
+  const res = await fetch(internalTenantsPostUrl(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(payload),
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(apiI18nKey("errors.serverUnavailable"));
+  }
+  if (!res.ok) {
+    throw new Error(
+      httpErrorUserMessage(res.status, json, "errors.saveTenantChannelFailed"),
+    );
+  }
+  const o = json as Record<string, unknown>;
+  const profileLevel: ProfileLevel = parseProfileLevel(o.profileLevel);
+  return {
+    tenantId: String(o.tenantId ?? ""),
+    profileLevel,
+    inviteCode: String(o.inviteCode ?? ""),
+    message: String(o.message ?? ""),
+  };
+}
+
+export async function getInternalTenants(
+  q?: string,
+): Promise<InternalTenantListItem[]> {
+  const res = await fetch(internalTenantsGetUrl(q), {
+    method: "GET",
+    headers: { Accept: "application/json", ...authHeaders() },
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(apiI18nKey("errors.serverUnavailable"));
+  }
+  if (!res.ok) {
+    throw new Error(
+      httpErrorUserMessage(res.status, json, "errors.loadSettingsFailed"),
+    );
+  }
+  const o = json as { tenants?: unknown };
+  if (!Array.isArray(o.tenants)) {
+    return [];
+  }
+  return o.tenants
+    .map((x) => x as Record<string, unknown>)
+    .map((x) => {
+      const profileLevel: ProfileLevel = parseProfileLevel(x.profileLevel);
+      return {
+        tenantId: String(x.tenantId ?? ""),
+        establishmentName:
+          typeof x.establishmentName === "string" ? x.establishmentName : null,
+        active: x.active !== false,
+        profileLevel,
+        contacts: typeof x.contacts === "string" ? x.contacts : null,
+        billingCompliant: x.billingCompliant === true,
+        monthlyAppointmentsUsed:
+          typeof x.monthlyAppointmentsUsed === "number"
+            ? x.monthlyAppointmentsUsed
+            : 0,
+        monthlyAppointmentsLimit:
+          typeof x.monthlyAppointmentsLimit === "number"
+            ? x.monthlyAppointmentsLimit
+            : null,
+      };
+    });
+}
+
+export async function postInternalTenantInvite(
+  tenantId: string,
+  maxUses = 5,
+  inviteEmail?: string,
+): Promise<{ tenantId: string; inviteCode: string; message: string }> {
+  const res = await fetch(internalTenantInviteUrl(tenantId), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({
+      maxUses,
+      inviteEmail: inviteEmail?.trim() ? inviteEmail.trim() : undefined,
+    }),
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(apiI18nKey("errors.serverUnavailable"));
+  }
+  if (!res.ok) {
+    throw new Error(
+      httpErrorUserMessage(res.status, json, "errors.saveTenantChannelFailed"),
+    );
+  }
+  const o = json as Record<string, unknown>;
+  return {
+    tenantId: String(o.tenantId ?? ""),
+    inviteCode: String(o.inviteCode ?? ""),
+    message: String(o.message ?? ""),
+  };
+}
+
+export async function putInternalTenant(
+  tenantId: string,
+  payload: InternalTenantUpdatePayload,
+): Promise<{ tenantId: string; active: boolean; message: string }> {
+  const res = await fetch(internalTenantUrl(tenantId), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({
+      establishmentName: payload.establishmentName ?? null,
+      customerEmail: payload.customerEmail ?? null,
+      profileLevel: payload.profileLevel,
+      active: payload.active ?? null,
+    }),
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(apiI18nKey("errors.serverUnavailable"));
+  }
+  if (!res.ok) {
+    throw new Error(
+      httpErrorUserMessage(res.status, json, "errors.saveTenantChannelFailed"),
+    );
+  }
+  const o = json as Record<string, unknown>;
+  return {
+    tenantId: String(o.tenantId ?? tenantId),
+    active: o.active !== false,
+    message: String(o.message ?? ""),
+  };
+}
+
+export async function deleteInternalTenant(
+  tenantId: string,
+): Promise<{ tenantId: string; active: boolean; message: string }> {
+  const res = await fetch(internalTenantUrl(tenantId), {
+    method: "DELETE",
+    headers: { Accept: "application/json", ...authHeaders() },
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(apiI18nKey("errors.serverUnavailable"));
+  }
+  if (!res.ok) {
+    throw new Error(
+      httpErrorUserMessage(res.status, json, "errors.saveTenantChannelFailed"),
+    );
+  }
+  const o = json as Record<string, unknown>;
+  return {
+    tenantId: String(o.tenantId ?? tenantId),
+    active: o.active === true,
+    message: String(o.message ?? ""),
+  };
+}
+
+export async function activateInternalTenant(
+  tenantId: string,
+): Promise<{ tenantId: string; active: boolean; message: string }> {
+  const res = await fetch(internalTenantActivateUrl(tenantId), {
+    method: "POST",
+    headers: { Accept: "application/json", ...authHeaders() },
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(apiI18nKey("errors.serverUnavailable"));
+  }
+  if (!res.ok) {
+    throw new Error(
+      httpErrorUserMessage(res.status, json, "errors.saveTenantChannelFailed"),
+    );
+  }
+  const o = json as Record<string, unknown>;
+  return {
+    tenantId: String(o.tenantId ?? tenantId),
+    active: o.active !== false,
+    message: String(o.message ?? ""),
+  };
+}
+
+export async function getInternalPlansConfig(): Promise<{
+  features: PlanConfigFeature[];
+  limits: PlanConfigLimit[];
+}> {
+  const res = await fetch(internalPlansConfigUrl(), {
+    method: "GET",
+    headers: { Accept: "application/json", ...authHeaders() },
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(apiI18nKey("errors.serverUnavailable"));
+  }
+  if (!res.ok) {
+    throw new Error(
+      httpErrorUserMessage(res.status, json, "errors.loadSettingsFailed"),
+    );
+  }
+  const o = json as { features?: unknown; limits?: unknown };
+  const features = Array.isArray(o.features)
+    ? o.features.map((x) => x as Record<string, unknown>).map((x) => {
+        const profileLevel: ProfileLevel = parseProfileLevel(x.profileLevel);
+        return {
+          profileLevel,
+          featureKey: String(x.featureKey ?? ""),
+          enabled: x.enabled === true,
+        };
+      })
+    : [];
+  const limits = Array.isArray(o.limits)
+    ? o.limits.map((x) => x as Record<string, unknown>).map((x) => {
+        const profileLevel: ProfileLevel = parseProfileLevel(x.profileLevel);
+        return {
+          profileLevel,
+          maxAppointmentsPerMonth:
+            typeof x.maxAppointmentsPerMonth === "number"
+              ? x.maxAppointmentsPerMonth
+              : null,
+        };
+      })
+    : [];
+  return { features, limits };
+}
+
+export async function putInternalPlansConfig(payload: {
+  features: PlanConfigFeature[];
+  limits: PlanConfigLimit[];
+}): Promise<void> {
+  const res = await fetch(internalPlansConfigUrl(), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(payload),
+  });
   const text = await res.text();
   if (!res.ok) {
     let json: unknown;

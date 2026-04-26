@@ -162,8 +162,10 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         exchange.getMessage().setHeader(WhatsAppOutboundHeaders.PROVIDER, effective.name());
         exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_TENANT_CONFIG, config);
         exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_TO, to != null ? to : "");
-        exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_TEXT, safeBody);
         Object interactive = exchange.getIn().getHeader(WhatsAppOutboundHeaders.WHATSAPP_INTERACTIVE);
+        String effectiveText =
+                shouldSuppressPlainTextWhenInteractive(effective, interactive) ? "" : safeBody;
+        exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_TEXT, effectiveText);
         exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_INTERACTIVE, interactive);
         if (interactive instanceof WhatsAppInteractiveReply reply
                 && reply.slotTimes() != null
@@ -258,6 +260,17 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
                     : WhatsAppProviderType.SIMULATED;
             case SIMULATED -> WhatsAppProviderType.SIMULATED;
         };
+    }
+
+    static boolean shouldSuppressPlainTextWhenInteractive(
+            WhatsAppProviderType provider, Object interactive) {
+        if (provider != WhatsAppProviderType.EVOLUTION) {
+            return false;
+        }
+        if (!(interactive instanceof WhatsAppInteractiveReply reply)) {
+            return false;
+        }
+        return reply.slotTimes() != null && !reply.slotTimes().isEmpty();
     }
 
     private void prepareMetaHttp(Exchange exchange) throws Exception {

@@ -7,8 +7,8 @@ const THEME_TINT = "#1e2836";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "InteliZap",
-    short_name: "InteliZap",
+    name: "AxeZap",
+    short_name: "AxeZap",
     description:
       "Plataforma de automação de atendimento por IA — dashboards, monitoramento e integração WhatsApp.",
     start_url: "/",

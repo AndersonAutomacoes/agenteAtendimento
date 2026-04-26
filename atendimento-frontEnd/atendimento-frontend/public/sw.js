@@ -1,5 +1,5 @@
-/* InteliZap — service worker básico: reforça carregamento de assets estáticos em redes instáveis */
-const CACHE = "intelizap-static-v1";
+/* AxeZap — service worker básico: reforça carregamento de assets estáticos em redes instáveis */
+const CACHE = "axezap-static-v1";
 
 self.addEventListener("install", () => {
   self.skipWaiting();

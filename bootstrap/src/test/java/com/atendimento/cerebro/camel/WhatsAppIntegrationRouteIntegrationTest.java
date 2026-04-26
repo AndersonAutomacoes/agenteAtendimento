@@ -3,22 +3,27 @@ package com.atendimento.cerebro.camel;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.atendimento.cerebro.application.dto.AudioTranscriptionResult;
 import com.atendimento.cerebro.application.dto.ChatCommand;
 import com.atendimento.cerebro.application.dto.ChatResult;
 import com.atendimento.cerebro.application.port.in.ChatUseCase;
+import com.atendimento.cerebro.application.port.out.AudioTranscriptionPort;
 import com.atendimento.cerebro.application.port.out.ConversationBotStatePort;
 import com.atendimento.cerebro.application.port.out.WhatsAppOutboundPort;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel.ChatFallbackMessages;
 import com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel.IngestErrorResponse;
 import com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel.WhatsAppWebhookResponse;
+import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -63,6 +68,9 @@ class WhatsAppIntegrationRouteIntegrationTest {
 
     @MockitoBean
     private WhatsAppOutboundPort whatsAppOutboundPort;
+
+    @MockitoBean
+    private AudioTranscriptionPort audioTranscriptionPort;
 
     @AfterEach
     void resetConversationBotState() {
@@ -181,6 +189,85 @@ class WhatsAppIntegrationRouteIntegrationTest {
         assertThat(response.getBody()).isNotNull().extracting(WhatsAppWebhookResponse::status).isEqualTo("human_handoff");
         verifyNoInteractions(chatUseCase);
         verifyNoInteractions(whatsAppOutboundPort);
+    }
+
+    @Test
+    void postWhatsApp_audioFromEvolution_transcribesAndContinuesChatFlow() {
+        when(audioTranscriptionPort.transcribe(any(), any(), any(), any()))
+                .thenReturn(Optional.of(new AudioTranscriptionResult("Olá, quero agendar", 0.95d, "pt")));
+        when(chatUseCase.chat(any())).thenReturn(new ChatResult("Resposta via áudio"));
+
+        String evolutionAudioJson =
+                """
+                {
+                  "event": "messages.upsert",
+                  "data": {
+                    "key": {
+                      "remoteJid": "5511999999999@s.whatsapp.net",
+                      "fromMe": false
+                    },
+                    "message": {
+                      "audioMessage": {
+                        "url": "https://evolution.local/audio/123.ogg",
+                        "mimetype": "audio/ogg; codecs=opus"
+                      }
+                    },
+                    "messageType": "audioMessage"
+                  }
+                }
+                """;
+
+        ResponseEntity<WhatsAppWebhookResponse> response = postWebhook(evolutionAudioJson, WhatsAppWebhookResponse.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull().extracting(WhatsAppWebhookResponse::status).isEqualTo("processed");
+        verify(audioTranscriptionPort).transcribe(any(), eq("https://evolution.local/audio/123.ogg"), any(), any());
+        verify(whatsAppOutboundPort)
+                .sendMessage(eq(new TenantId("tenant-wa")), eq("5511999999999"), eq("Processando seu áudio..."));
+        verify(whatsAppOutboundPort)
+                .sendMessage(eq(new TenantId("tenant-wa")), eq("5511999999999"), eq("Resposta via áudio"), any());
+
+        ArgumentCaptor<ChatCommand> commandCaptor = ArgumentCaptor.forClass(ChatCommand.class);
+        verify(chatUseCase).chat(commandCaptor.capture());
+        assertThat(commandCaptor.getValue().userMessage()).isEqualTo("Olá, quero agendar");
+    }
+
+    @Test
+    void postWhatsApp_audioFromEvolution_withoutTranscription_returnsFriendlyPromptAndSkipsChat() {
+        when(audioTranscriptionPort.transcribe(any(), any(), any(), any())).thenReturn(Optional.empty());
+
+        String evolutionAudioJson =
+                """
+                {
+                  "event": "messages.upsert",
+                  "data": {
+                    "key": {
+                      "remoteJid": "5511999999999@s.whatsapp.net",
+                      "fromMe": false
+                    },
+                    "message": {
+                      "audioMessage": {
+                        "url": "https://evolution.local/audio/123.ogg",
+                        "mimetype": "audio/ogg; codecs=opus"
+                      }
+                    },
+                    "messageType": "audioMessage"
+                  }
+                }
+                """;
+
+        ResponseEntity<WhatsAppWebhookResponse> response = postWebhook(evolutionAudioJson, WhatsAppWebhookResponse.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull().extracting(WhatsAppWebhookResponse::status).isEqualTo("processed");
+        verify(whatsAppOutboundPort)
+                .sendMessage(eq(new TenantId("tenant-wa")), eq("5511999999999"), eq("Processando seu áudio..."));
+        verify(whatsAppOutboundPort)
+                .sendMessage(
+                        eq(new TenantId("tenant-wa")),
+                        eq("5511999999999"),
+                        eq("Não consegui processar seu áudio, poderia digitar ou enviar novamente?"));
+        verify(chatUseCase, never()).chat(any());
     }
 
     private <T> ResponseEntity<T> postWebhook(String jsonBody, Class<T> responseType) {

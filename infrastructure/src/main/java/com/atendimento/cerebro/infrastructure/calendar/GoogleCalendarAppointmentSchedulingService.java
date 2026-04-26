@@ -42,6 +42,7 @@ public class GoogleCalendarAppointmentSchedulingService implements AppointmentSc
     private static final Logger LOG = LoggerFactory.getLogger(GoogleCalendarAppointmentSchedulingService.class);
     private static final DateTimeFormatter ISO_DATE = DateTimeFormatter.ISO_LOCAL_DATE;
     private static final DateTimeFormatter PT_BR_DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.forLanguageTag("pt-BR"));
+    private static final DateTimeFormatter HH_MM = DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT);
 
     private final TenantConfigurationStorePort tenantConfigurationStore;
     private final CerebroGoogleCalendarProperties props;
@@ -152,6 +153,7 @@ public class GoogleCalendarAppointmentSchedulingService implements AppointmentSc
             String isoDate,
             String localTime,
             String clientName,
+            Long serviceId,
             String serviceName,
             String conversationId) {
         Optional<String> calId = googleCalendarService.resolveEffectiveCalendarId(resolveCalendarId(tenantId));
@@ -189,12 +191,13 @@ public class GoogleCalendarAppointmentSchedulingService implements AppointmentSc
                             + "daqui a instantes.");
         }
         try {
-            String title = serviceName.strip() + " — " + clientName.strip();
+            String title = formatCalendarEventSummary(serviceName, time, clientName);
+            String description = formatCalendarEventDescription(conversationId);
             GoogleCalendarCreatedEvent created =
                     googleCalendarService.createEvent(
                             title,
                             startLocal,
-                            "Agendamento via agente de atendimento InteliZap.",
+                            description,
                             calId.get(),
                             props.getSlotMinutes());
             String googleId = created.eventId();
@@ -228,7 +231,7 @@ public class GoogleCalendarAppointmentSchedulingService implements AppointmentSc
             String conv = conversationId == null || conversationId.isBlank() ? null : conversationId.strip();
             TenantAppointmentRecord record =
                     new TenantAppointmentRecord(
-                            tenantId, conv, clientName.strip(), serviceName.strip(), start, end, googleId);
+                            tenantId, conv, clientName.strip(), serviceId, serviceName.strip(), start, end, googleId);
             Optional<Long> rowIdOpt = appointmentTx.insertIfNoDbOverlap(tenantId, start, end, record);
             if (rowIdOpt.isEmpty()) {
                 try {
@@ -295,5 +298,40 @@ public class GoogleCalendarAppointmentSchedulingService implements AppointmentSc
                 .map(c -> c.googleCalendarId())
                 .filter(s -> s != null && !s.isBlank())
                 .map(String::strip);
+    }
+
+    static String formatCalendarEventSummary(String serviceName, LocalTime time, String clientName) {
+        String service = normalizeSummaryPart(serviceName, "SERVICO");
+        String client = normalizeSummaryPart(clientName, "CLIENTE");
+        String hhmm = time == null ? "--:--" : HH_MM.format(time);
+        return service + " - " + hhmm + " - " + client;
+    }
+
+    static String formatCalendarEventDescription(String conversationId) {
+        StringBuilder out = new StringBuilder("Agendamento via agente de atendimento AxeZap.");
+        String waDigits = extractWhatsAppDigitsFromConversationId(conversationId);
+        if (waDigits != null) {
+            out.append("\nWhatsApp cliente: https://wa.me/").append(waDigits);
+        }
+        return out.toString();
+    }
+
+    private static String extractWhatsAppDigitsFromConversationId(String conversationId) {
+        if (conversationId == null || conversationId.isBlank()) {
+            return null;
+        }
+        String raw = conversationId.strip();
+        if (!raw.startsWith("wa-")) {
+            return null;
+        }
+        String digits = raw.substring(3).replaceAll("\\D+", "");
+        return digits.isBlank() ? null : digits;
+    }
+
+    private static String normalizeSummaryPart(String raw, String fallback) {
+        if (raw == null || raw.isBlank()) {
+            return fallback;
+        }
+        return raw.strip().replaceAll("\\s+", " ").toUpperCase(Locale.forLanguageTag("pt-BR"));
     }
 }

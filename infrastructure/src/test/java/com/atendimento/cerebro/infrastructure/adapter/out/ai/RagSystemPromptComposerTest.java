@@ -64,6 +64,7 @@ class RagSystemPromptComposerTest {
                 .contains("não peça permissão")
                 .contains("lista devolvida pela ferramenta")
                 .contains("IMEDIATAMENTE")
+                .contains("PROIBIDO inferir/reutilizar serviço de CRM")
                 .contains("Reagendar / trocar horário")
                 .contains("cancel_appointment do agendamento correcto primeiro");
     }

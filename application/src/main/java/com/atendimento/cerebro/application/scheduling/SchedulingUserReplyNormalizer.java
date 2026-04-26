@@ -31,6 +31,8 @@ public final class SchedulingUserReplyNormalizer {
 
     /** Rascunho data|hora após escolha por número; confirmado na mensagem seguinte. */
     public static final String SCHEDULING_DRAFT_APPENDIX_TOKEN = "[scheduling_draft:";
+    public static final String SERVICE_OPTION_MAP_APPENDIX_TOKEN = "[service_option_map:";
+    public static final String SELECTED_SERVICE_APPENDIX_TOKEN = "[selected_service:";
 
     private static final Pattern APPENDIX_ANY = Pattern.compile("\\[slot_options:([^\\]]+)\\]");
     private static final Pattern DRAFT_ANY = Pattern.compile("\\[scheduling_draft:([^\\|]+)\\|([^\\]]+)\\]");
@@ -38,6 +40,8 @@ public final class SchedulingUserReplyNormalizer {
     /** Extrai HH:mm na ordem (não usar split por vírgula: evita desalinhamento se o payload tiver anomalias). */
     private static final Pattern SLOT_OPTION_TIMES_IN_ORDER = Pattern.compile("\\b(\\d{1,2}:\\d{2})\\b");
     private static final Pattern SLOT_DATE_ANY = Pattern.compile("\\[slot_date:([^\\]]+)\\]");
+    private static final Pattern SERVICE_OPTION_MAP_ANY = Pattern.compile("\\[service_option_map:([^\\]]+)\\]");
+    private static final Pattern SELECTED_SERVICE_ANY = Pattern.compile("\\[selected_service:([^\\]]+)\\]");
     private static final Pattern TIME = Pattern.compile("\\b([01]?[0-9]|2[0-3]):([0-5][0-9])\\b");
     /** Índice da opção (1…999) quando a mensagem é só dígitos. */
     private static final Pattern SOLO_DIGITS = Pattern.compile("^\\s*(\\d{1,3})\\s*$");
@@ -131,6 +135,8 @@ public final class SchedulingUserReplyNormalizer {
         s = s.replaceAll("(?s)\\[slot_options:[^\\]]+\\]", "");
         s = s.replaceAll("(?s)\\[slot_date:[^\\]]+\\]", "");
         s = s.replaceAll("(?s)\\[scheduling_draft:[^\\]]+\\]", "");
+        s = s.replaceAll("(?s)\\[service_option_map:[^\\]]+\\]", "");
+        s = s.replaceAll("(?s)\\[selected_service:[^\\]]+\\]", "");
         // Não usar \\s* entre * — remove *\\n* e cola blocos WhatsApp na mesma linha.
         s = s.replaceAll("\\*{1,2}[ \\t]*\\*{1,2}", "");
         s = s.replaceAll("(?s)\\n{3,}", "\n\n");
@@ -160,6 +166,139 @@ public final class SchedulingUserReplyNormalizer {
         }
         String iso = draft.date().format(DateTimeFormatter.ISO_LOCAL_DATE);
         return base + "\n\n" + SCHEDULING_DRAFT_APPENDIX_TOKEN + iso + "|" + draft.timeHhMm() + "]";
+    }
+
+    public static String appendSelectedService(String content, String serviceName) {
+        if (content == null || serviceName == null || serviceName.isBlank()) {
+            return content;
+        }
+        String base = content.strip();
+        if (base.contains(SELECTED_SERVICE_APPENDIX_TOKEN)) {
+            return base;
+        }
+        String safe = serviceName.strip().replace("]", ")").replace("|", "/");
+        return base + "\n\n" + SELECTED_SERVICE_APPENDIX_TOKEN + safe + "]";
+    }
+
+    public static Optional<String> resolveSelectedServiceFromUserChoice(String userMessage, List<Message> history) {
+        if (userMessage == null || userMessage.isBlank() || history == null || history.isEmpty()) {
+            return Optional.empty();
+        }
+        Optional<Integer> idx = tryParseOptionIndexFromUserMessage(userMessage);
+        if (idx.isEmpty()) {
+            return Optional.empty();
+        }
+        return parseLastServiceOptionMapFromHistory(history).flatMap(map -> mapServiceIndex(idx.get(), map));
+    }
+
+    public static Optional<String> parseLastSelectedServiceFromHistory(List<Message> history) {
+        if (history == null || history.isEmpty()) {
+            return Optional.empty();
+        }
+        for (int i = history.size() - 1; i >= 0; i--) {
+            Message m = history.get(i);
+            if (m.role() != MessageRole.ASSISTANT || m.senderType() != SenderType.BOT) {
+                continue;
+            }
+            String content = m.content();
+            if (content == null || content.isBlank()) {
+                continue;
+            }
+            Matcher mat = SELECTED_SERVICE_ANY.matcher(content);
+            String last = null;
+            while (mat.find()) {
+                last = mat.group(1).strip();
+            }
+            if (last != null
+                    && !last.isBlank()
+                    && SchedulingExplicitTimeShortcut.isPlausibleServiceNameForSelectedServiceToken(last)) {
+                return Optional.of(last);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<String> parseLastServiceOptionMapFromHistory(List<Message> history) {
+        for (int i = history.size() - 1; i >= 0; i--) {
+            Message m = history.get(i);
+            if (m.role() != MessageRole.ASSISTANT || m.senderType() != SenderType.BOT) {
+                continue;
+            }
+            String content = m.content();
+            if (content == null || content.isBlank()) {
+                continue;
+            }
+            Matcher mat = SERVICE_OPTION_MAP_ANY.matcher(content);
+            String last = null;
+            while (mat.find()) {
+                last = mat.group(1);
+            }
+            if (last != null && !last.isBlank()) {
+                return Optional.of(last);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<String> mapServiceIndex(int index, String rawMap) {
+        if (index <= 0 || rawMap == null || rawMap.isBlank()) {
+            return Optional.empty();
+        }
+        String[] entries = rawMap.split("\\|");
+        for (String entry : entries) {
+            String e = entry == null ? "" : entry.strip();
+            if (e.isEmpty() || !e.contains("=")) {
+                continue;
+            }
+            int eq = e.indexOf('=');
+            String k = e.substring(0, eq).strip();
+            String v = e.substring(eq + 1).strip();
+            try {
+                if (Integer.parseInt(k) == index && !v.isBlank()) {
+                    return Optional.of(v);
+                }
+            } catch (NumberFormatException ignored) {
+                // ignore invalid fragments
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * A lista {@code [service_option_map:…]} é mais recente no histórico do que {@code [slot_options:…]} — a
+     * resposta numérica deve mapear para serviço, não para horário.
+     */
+    private static boolean serviceOptionMapIsAuthoritativeOverSlotList(List<Message> history) {
+        if (history == null || history.isEmpty()) {
+            return false;
+        }
+        int lastSlot = -1;
+        int lastService = -1;
+        for (int i = 0; i < history.size(); i++) {
+            Message m = history.get(i);
+            if (m.role() != MessageRole.ASSISTANT || m.senderType() != SenderType.BOT) {
+                continue;
+            }
+            String c = m.content();
+            if (c == null || c.isBlank()) {
+                continue;
+            }
+            if (c.contains(SLOT_OPTIONS_APPENDIX_TOKEN)) {
+                lastSlot = i;
+            }
+            if (c.contains(SERVICE_OPTION_MAP_APPENDIX_TOKEN)) {
+                lastService = i;
+            }
+        }
+        return lastService > lastSlot;
+    }
+
+    /**
+     * Resposta numérica do utilizador deve ser interpretada como escolha de serviço quando a última lista de serviços
+     * ({@code [service_option_map:…]}) é mais recente do que a última lista de horários ({@code [slot_options:…]}).
+     */
+    public static boolean shouldInterpretNumericChoiceAsServiceSelection(List<Message> history) {
+        return serviceOptionMapIsAuthoritativeOverSlotList(history);
     }
 
     /**
@@ -201,6 +340,12 @@ public final class SchedulingUserReplyNormalizer {
                     false,
                     Optional.empty(),
                     0);
+        }
+
+        if (tryParseOptionIndexFromUserMessage(normalized).isPresent()
+                && serviceOptionMapIsAuthoritativeOverSlotList(history)
+                && resolveSelectedServiceFromUserChoice(userMessage, history).isPresent()) {
+            return SlotChoiceExpansion.unchanged(userMessage);
         }
 
         List<String> options = parseLastSlotOptionsFromHistory(history);
@@ -250,7 +395,6 @@ public final class SchedulingUserReplyNormalizer {
         }
         LocalDate d = agreedDate.get();
         SchedulingEnforcedChoice choice = new SchedulingEnforcedChoice(d, time);
-        String iso = d.format(DateTimeFormatter.ISO_LOCAL_DATE);
         String dayPt = d.format(PT_BR_DAY);
         if (selectionByIndex) {
             String hardcoded =
@@ -269,15 +413,19 @@ public final class SchedulingUserReplyNormalizer {
                     Optional.of(hardcoded),
                     optionNumber);
         }
-        String expanded =
-                "Confirmo o horário "
+        String hardcoded =
+                "Entendido! Você escolheu o horário "
                         + time
-                        + " para o dia "
-                        + iso
-                        + ". Use esta data (yyyy-MM-DD: "
-                        + iso
-                        + ") em create_appointment.";
-        return new SlotChoiceExpansion(expanded, Optional.of(choice), Optional.empty(), false, Optional.empty(), 0);
+                        + " do dia "
+                        + dayPt
+                        + ". Posso confirmar o agendamento?";
+        return new SlotChoiceExpansion(
+                hardcoded,
+                Optional.empty(),
+                Optional.of(choice),
+                true,
+                Optional.of(hardcoded),
+                0);
     }
 
     /**
@@ -659,6 +807,73 @@ public final class SchedulingUserReplyNormalizer {
     }
 
     /**
+     * Nas últimas {@code maxUserMessages} mensagens do utilizador, houve pedido explícito de reagendar/remarcar.
+     */
+    public static boolean hasRecentRescheduleUserIntentInHistory(List<Message> history, int maxUserMessages) {
+        if (history == null || history.isEmpty() || maxUserMessages <= 0) {
+            return false;
+        }
+        int userSeen = 0;
+        for (int i = history.size() - 1; i >= 0; i--) {
+            Message m = history.get(i);
+            if (m.role() != MessageRole.USER) {
+                continue;
+            }
+            userSeen++;
+            if (userSeen > maxUserMessages) {
+                break;
+            }
+            String c = m.content();
+            if (c == null || c.isBlank()) {
+                continue;
+            }
+            if (looksLikeRescheduleOrTimeChangeIntent(c)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * A mensagem actual é só a indicação de data/horário após reagendamento (ex. «Amanhã 12:00»), sem
+     * cancelar/desmarcar — não se deve deixar o modelo chamar {@code cancel_appointment} nesse passo.
+     */
+    public static boolean isBareNewTimeProposalAfterRescheduleIntent(
+            String latestUserMessage, List<Message> history) {
+        if (latestUserMessage == null || latestUserMessage.isBlank()) {
+            return false;
+        }
+        if (looksLikeCancellationIntent(latestUserMessage)) {
+            return false;
+        }
+        if (!hasRecentRescheduleUserIntentInHistory(history, 8)) {
+            return false;
+        }
+        String s = Normalizer.normalize(latestUserMessage.strip(), Normalizer.Form.NFKC);
+        if (s.length() > 200) {
+            return false;
+        }
+        if (!TIME.matcher(s).find()) {
+            return false;
+        }
+        String n = s.toLowerCase(Locale.ROOT);
+        if (n.contains("cancel")
+                || n.contains("desmarc")
+                || n.contains("anul")
+                || n.contains("exclu")) {
+            return false;
+        }
+        if (n.contains("amanh")
+                || n.contains("ananh")
+                || n.contains("hoje")
+                || (n.contains("depois") && n.contains("amanh"))
+                || LOOSE_BR_DATE.matcher(s).find()) {
+            return true;
+        }
+        return Pattern.compile("(?i)\\b(às|as)\\s*\\d{1,2}:\\d{2}").matcher(s).find();
+    }
+
+    /**
      * Cliente quer trocar/remarcar um horário já existente (cancelar + novo agendamento em sequência), não um pedido
      * genérico de «ver vagas».
      */
@@ -755,10 +970,17 @@ public final class SchedulingUserReplyNormalizer {
      * Instrução para o system prompt em intenção de reagendar (não ecoa no WhatsApp).
      */
     public static final String RESCHEDULE_SYSTEM_BLOCK =
-            "Reagendar/remarcar: primeiro valide a disponibilidade do horário pretendido (check_availability). "
-                    + "Se o horário desejado estiver disponível, cancele o agendamento anterior correcto com "
-                    + "cancel_appointment e só então conclua com create_appointment. Se não estiver disponível, informe "
-                    + "que o horário actual foi mantido e peça para escolher uma opção da lista disponível.";
+            "Reagendar/remarcar: (1) invoque check_availability para a data/hora indicada; (2) apresente as opções e, "
+                    + "só com confirmação, create_appointment com o serviço e hora certos. "
+                    + "Antes de create_appointment, o serviço deve estar explicitamente escolhido nesta conversa "
+                    + "(nome ou opção da lista de list_tenant_services). "
+                    + "PROIBIDO inferir serviço pelo CRM, por agendamento anterior ou por contexto implícito. "
+                    + "PROIBIDO: chamar cancel_appointment quando a mensagem actual do cliente for apenas data/horário "
+                    + "(ex.: «amanhã 12:00») a seguir a um pedido de reagendar — isso NÃO é cancelar. Nesse passo, "
+                    + "apenas check_availability (e list_tenant_services se faltar o serviço). "
+                    + "A substituição do agendamento antigo fica a cargo do backend após o novo reservar com sucesso. "
+                    + "Se o horário pedido estiver indisponível, informe e mantenha o compromisso actual até o cliente "
+                    + "aceitar outro horário listado.";
 
     private static final DateTimeFormatter BR_SLASH_DATE = DateTimeFormatter.ofPattern("d/M/yyyy", Locale.ROOT);
 

@@ -1,9 +1,13 @@
 package com.atendimento.cerebro.infrastructure.adapter.inbound.rest;
 
 import com.atendimento.cerebro.infrastructure.service.TransactionalPortalRegistrationService;
+import com.atendimento.cerebro.domain.tenant.PlanFeature;
 import com.atendimento.cerebro.infrastructure.security.FirebasePendingInviteAuthenticationToken;
+import com.atendimento.cerebro.infrastructure.security.FeatureAccessEvaluator;
 import com.atendimento.cerebro.infrastructure.security.PortalAuthenticationToken;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.http.HttpStatus;
@@ -20,9 +24,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final TransactionalPortalRegistrationService portalRegistrationService;
+    private final FeatureAccessEvaluator featureAccessEvaluator;
 
-    public AuthController(TransactionalPortalRegistrationService portalRegistrationService) {
+    public AuthController(
+            TransactionalPortalRegistrationService portalRegistrationService,
+            FeatureAccessEvaluator featureAccessEvaluator) {
         this.portalRegistrationService = portalRegistrationService;
+        this.featureAccessEvaluator = featureAccessEvaluator;
     }
 
     @PostMapping("/register")
@@ -63,7 +71,15 @@ public class AuthController {
     @GetMapping("/me")
     public ResponseEntity<?> me(HttpServletRequest request, Authentication authentication) {
         if (authentication instanceof PortalAuthenticationToken portal) {
-            return ResponseEntity.ok(new SessionResponse(portal.getTenantId(), portal.getProfileLevel().name()));
+            Map<String, Boolean> features = new LinkedHashMap<>();
+            for (PlanFeature feature : PlanFeature.values()) {
+                features.put(
+                        feature.name(),
+                        featureAccessEvaluator.canAccess(portal.getProfileLevel(), feature));
+            }
+            return ResponseEntity.ok(
+                    new SessionResponse(
+                            portal.getTenantId(), portal.getProfileLevel().name(), features));
         }
         if (authentication instanceof FirebasePendingInviteAuthenticationToken) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
@@ -94,7 +110,8 @@ public class AuthController {
 
     public record RegisterResponse(String tenantId, String profileLevel) {}
 
-    public record SessionResponse(String tenantId, String profileLevel) {}
+    public record SessionResponse(
+            String tenantId, String profileLevel, Map<String, Boolean> features) {}
 
     public record ErrorBody(String error) {}
 }
