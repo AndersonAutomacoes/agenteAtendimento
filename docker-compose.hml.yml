@@ -8,7 +8,10 @@
 #   • ou, após deploy da pipeline, "docker compose up" porque a pipeline copia hml -> docker-compose.yml
 #
 # Uso: cd /opt/axezap && docker compose -f docker-compose.hml.yml pull && docker compose -f docker-compose.hml.yml up -d
-# GHCR_IMAGE (minúsculas) vem do deploy na pipeline + .env; as restantes variáveis como em .env local.
+# GHCR_IMAGE (minúsculas) vem do deploy na pipeline + .env; a pipeline copia também docker/postgres/init-evolution.sql
+#
+# Se o volume Postgres já existir sem a base `evolution`, cria-a uma vez:
+#   docker exec -it cerebro-postgres psql -U cerebro -d postgres -c "CREATE DATABASE evolution;"
 
 name: axezap-hml
 
@@ -30,6 +33,7 @@ services:
       - "5433:5432"
     volumes:
       - cerebro_pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init-evolution.sql:/docker-entrypoint-initdb.d/02-init-evolution.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U cerebro -d cerebro"]
       interval: 5s
@@ -58,10 +62,17 @@ services:
       - cerebro_internal
     ports:
       - "8083:8080"
+    environment:
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://cerebro:cerebro@postgres:5432/evolution?schema=public
     env_file:
       - .env
     volumes:
       - evolution_instances:/evolution/instances
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   api:
     image: ${GHCR_IMAGE:?GHCR_IMAGE_required_lowercase_ghcr}

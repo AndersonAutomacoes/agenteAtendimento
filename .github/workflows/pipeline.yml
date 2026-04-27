@@ -88,7 +88,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           script: |
-            mkdir -p /opt/axezap
+            mkdir -p /opt/axezap/docker/postgres
             chmod 755 /opt/axezap
 
       - name: Copy docker-compose to server
@@ -100,6 +100,18 @@ jobs:
           port: 22
           source: "docker-compose.hml.yml"
           target: /opt/axezap/
+          strip_components: 0
+          overwrite: true
+
+      - name: Copy Postgres init script (base evolution) to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_IP_HML }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          source: "docker/postgres/init-evolution.sql"
+          target: /opt/axezap/docker/postgres/
           strip_components: 0
           overwrite: true
 
