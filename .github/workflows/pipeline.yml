@@ -143,6 +143,10 @@ jobs:
               echo "GROQ_API_KEY=$GROQ_API_KEY"
               echo "GEMINI_API_KEY=$GEMINI_API_KEY"
             } >> .env
+            if [ -f docker-compose.hml.yml ]; then
+              cp -f docker-compose.hml.yml docker-compose.yml
+              echo "OK: docker-compose.yml = cópia de docker-compose.hml.yml (default docker compose up usa GHCR, não build local)"
+            fi
             echo "=== docker login ghcr.io (stderr/stdout) ==="
             if [ -n "${GHCR_READ_TOKEN:-}" ]; then
               echo "$GHCR_READ_TOKEN" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin

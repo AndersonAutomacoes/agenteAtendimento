@@ -1,6 +1,11 @@
 # Homologação: mesma stack que docker-compose.yml (Postgres, Redis, Evolution, API),
 # mas a API vem de imagem publicada no GHCR (sem --build no servidor).
-# Deixar a cópia do repositório (ou ficheiros) em /opt/axezap: .env, secrets/, docker-compose.hml.yml
+# Deixar em /opt/axezap: .env, secrets/, e este ficheiro.
+#
+# No servidor, NÃO uses só "docker compose up" com o docker-compose.yml de desenvolvimento
+# (ele faz build e precisa de Dockerfile; na pasta não há).
+#   • docker compose -f docker-compose.hml.yml up -d
+#   • ou, após deploy da pipeline, "docker compose up" porque a pipeline copia hml -> docker-compose.yml
 #
 # Uso: cd /opt/axezap && docker compose -f docker-compose.hml.yml pull && docker compose -f docker-compose.hml.yml up -d
 # GHCR_IMAGE (minúsculas) vem do deploy na pipeline + .env; as restantes variáveis como em .env local.
@@ -83,7 +88,8 @@ services:
       SPRING_AI_GOOGLE_GENAI_EMBEDDING_API_KEY: ${GEMINI_API_KEY:-}
       SPRING_AI_MODEL_EMBEDDING_TEXT: google-genai
       CEREBRO_WHATSAPP_EVOLUTION_BASE_URL: http://evolution-api:8080
-      CEREBRO_FIREBASE_ENABLED: ${CEREBRO_FIREBASE_ENABLED:-true}
+      # HML: por defeito false (sem account JSON no droplet o mount pode virar "Is a directory"). Ativar e montar o JSON: ver volumes abaixo
+      CEREBRO_FIREBASE_ENABLED: ${CEREBRO_FIREBASE_ENABLED:-false}
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       FIREBASE_SERVICE_ACCOUNT_JSON_PATH: ${FIREBASE_SERVICE_ACCOUNT_JSON_PATH:-/run/firebase.json}
       CEREBRO_GOOGLE_CALENDAR_MOCK: ${CEREBRO_GOOGLE_CALENDAR_MOCK:-false}
@@ -119,7 +125,8 @@ services:
       evolution-api:
         condition: service_started
     volumes:
-      - ./secrets/gen-lang-client-0922152835-firebase-adminsdk-fbsvc-525d75aa1f.json:/run/firebase.json:ro
+      # Só com CEREBRO_FIREBASE_ENABLED=true e o ficheiro presente no host; se a origem em falta, o Docker cria dir e a app dá "firebase.json (Is a directory)"
+      # - ./secrets/...-firebase-adminsdk-....json:/run/firebase.json:ro
       - ${GOOGLE_CALENDAR_CREDENTIALS_FILE:-./bootstrap/src/main/resources/credentials.json}:/run/google-calendar-sa.json:ro
 
 volumes:
