@@ -66,12 +66,18 @@ services:
       DATABASE_ENABLED: "true"
       DATABASE_PROVIDER: postgresql
       DATABASE_CONNECTION_URI: postgresql://cerebro:cerebro@postgres:5432/evolution?schema=public
+      # Sem isto, a API tenta redis://localhost (defeito interno) → "redis disconnected" em loop
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://:cerebroredis@redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: evolution
     env_file:
       - .env
     volumes:
       - evolution_instances:/evolution/instances
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   api:
