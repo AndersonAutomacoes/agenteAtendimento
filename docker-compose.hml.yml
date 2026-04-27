@@ -1,0 +1,35 @@
+# Homologação (DigitalOcean): só a API a partir do GHCR.
+# GHCR_IMAGE: obrigatório, em minúsculas (requisito ghcr.io), ex. ghcr.io/org/repo:develop
+# Variáveis: .env em /opt/axezap (a pipeline actualiza GHCR_IMAGE, DATABASE_URL_HML, GROQ_API_KEY)
+#
+# Uso local: docker compose -f docker-compose.hml.yml up -d
+
+name: axezap-hml
+
+networks:
+  hml:
+    driver: bridge
+
+services:
+  axezap-api:
+    image: ${GHCR_IMAGE:?GHCR_IMAGE_required_lowercase_ghcr}
+    container_name: axezap-hml
+    restart: always
+    networks:
+      - hml
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: ${DATABASE_URL_HML}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      DD_SERVICE: axezap-hml
+      DD_ENV: hml
+      DD_VERSION: 1.0.0
+    labels:
+      com.datadoghq.ad.logs: '[{"source": "java", "service": "axezap-hml"}]'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 90s

@@ -98,7 +98,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
-          source: "docker-compose.yml"
+          source: "docker-compose.hml.yml"
           target: /opt/axezap/
           strip_components: 0
           overwrite: true
@@ -115,26 +115,41 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
+          command_timeout: 30m
+          script_stop: true
           envs: GHCR_IMAGE,GHCR_READ_TOKEN,DATABASE_URL_HML,GROQ_API_KEY
           script: |
-            set -euo pipefail
+            set -e
             mkdir -p /opt/axezap
             cd /opt/axezap
-            if [ -n "${GHCR_READ_TOKEN:-}" ]; then
-              echo "$GHCR_READ_TOKEN" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
+            if [ -z "${GHCR_IMAGE:-}" ]; then
+              echo "ERRO: GHCR_IMAGE vazio" >&2
+              exit 1
             fi
+            GHCR_IMAGE=$(printf '%s' "$GHCR_IMAGE" | tr '[:upper:]' '[:lower:]')
+            export GHCR_IMAGE
+            echo "=== GHCR_IMAGE (minúsculas) ==="
+            echo "$GHCR_IMAGE"
+            echo "=== merge .env (awk; evita exit 1 do grep sem linhas) ==="
             umask 026
             touch .env
-            # Preserva chaves fora do deploy (ex.: GEMINI, Redis) e atualiza só o que vem do GitHub
-            grep -Ev '^(GHCR_IMAGE|DATABASE_URL_HML|GROQ_API_KEY)=' .env > .env.tmp
+            awk '/^(GHCR_IMAGE|DATABASE_URL_HML|GROQ_API_KEY)=/{next}1' .env > .env.tmp
             mv .env.tmp .env
             {
               echo "GHCR_IMAGE=$GHCR_IMAGE"
               echo "DATABASE_URL_HML=$DATABASE_URL_HML"
               echo "GROQ_API_KEY=$GROQ_API_KEY"
             } >> .env
-            docker compose -f docker-compose.yml --profile hml pull axezap-api
-            docker compose -f docker-compose.yml --profile hml up -d axezap-api
+            echo "=== docker login ghcr.io (stderr/stdout) ==="
+            if [ -n "${GHCR_READ_TOKEN:-}" ]; then
+              echo "$GHCR_READ_TOKEN" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
+            else
+              echo "AVISO: GHCR_READ_TOKEN vazio; sem login (pull de imagem privada pode falhar)" >&2
+            fi
+            echo "=== docker compose -f docker-compose.hml.yml pull (stderr/stdout) ==="
+            docker compose -f docker-compose.hml.yml pull
+            echo "=== docker compose -f docker-compose.hml.yml up -d --force-recreate (stderr/stdout) ==="
+            docker compose -f docker-compose.hml.yml up -d --force-recreate
 
   deploy-prd:
     needs: build-and-test
