@@ -66,6 +66,9 @@ cerebro:
     enabled: ${CEREBRO_FIREBASE_ENABLED:true}
     project-id: ${FIREBASE_PROJECT_ID:}
     service-account-json-path: ${FIREBASE_SERVICE_ACCOUNT_JSON_PATH:}
+  # Origens do painel (Next) para CORS — várias separadas por vírgula. HML: incluir http://<IP_VPS>:3000
+  cors:
+    allowed-origins: ${CEREBRO_CORS_ALLOWED_ORIGINS:http://localhost:3000}
   analytics:
     categorization:
       enabled: true

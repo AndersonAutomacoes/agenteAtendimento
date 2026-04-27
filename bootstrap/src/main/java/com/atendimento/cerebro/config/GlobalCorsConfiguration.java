@@ -1,10 +1,13 @@
 package com.atendimento.cerebro.config;
 
+import java.util.Arrays;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
+import org.springframework.util.StringUtils;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
@@ -16,12 +19,19 @@ import org.springframework.web.filter.CorsFilter;
 @Configuration
 public class GlobalCorsConfiguration {
 
-    private static final String FRONTEND_ORIGIN = "http://localhost:3000";
-
     @Bean
-    public FilterRegistrationBean<CorsFilter> corsFilterRegistration() {
+    public FilterRegistrationBean<CorsFilter> corsFilterRegistration(
+            @Value("${cerebro.cors.allowed-origins:http://localhost:3000}") String allowedOrigins) {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of(FRONTEND_ORIGIN));
+        List<String> origins =
+                Arrays.stream(allowedOrigins.split(","))
+                        .map(String::trim)
+                        .filter(StringUtils::hasText)
+                        .toList();
+        if (origins.isEmpty()) {
+            origins = List.of("http://localhost:3000");
+        }
+        config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setMaxAge(3600L);

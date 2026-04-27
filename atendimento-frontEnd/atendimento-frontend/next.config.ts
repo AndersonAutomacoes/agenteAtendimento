@@ -61,6 +61,8 @@ const devAllowedOrigins =
   process.env.NODE_ENV !== "production" ? readAllowedDevOriginsFromEnvFiles() : [];
 
 const nextConfig: NextConfig = {
+  // Imagem Docker: servidor em `atendimento-frontend/Dockerfile` (node server.js)
+  output: "standalone",
   env: {
     NEXT_PUBLIC_API_BASE:
       process.env.NEXT_PUBLIC_API_BASE?.trim() || defaultPublicApiBase,

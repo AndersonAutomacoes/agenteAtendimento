@@ -1,5 +1,6 @@
-# Homologação: mesma stack que docker-compose.yml (Postgres, Redis, Evolution, API),
-# mas a API vem de imagem publicada no GHCR (sem --build no servidor).
+# Homologação: Postgres, Redis, Evolution, API, **web (Next.js :3000)**.
+# A API e o painel vêm de imagens GHCR (sem --build no servidor; a pipeline publica e grava GHCR_IMAGE + GHCR_WEB_IMAGE no .env).
+# Aceder ao site: http://<IP do VPS>:3000 — no .env do servidor, defina CEREBRO_CORS_ALLOWED_ORIGINS e (opcional) mail invite URL com a mesma origem.
 # Deixar em /opt/axezap: .env, secrets/, e este ficheiro.
 #
 # No servidor, NÃO uses só "docker compose up" com o docker-compose.yml de desenvolvimento
@@ -132,6 +133,8 @@ services:
       # Já o Dockerfile; sem isto, ConnectException a localhost:8126 (o agente está no host, não no container)
       DD_TRACE_AGENT_URL: ${DD_TRACE_AGENT_URL:-http://host.docker.internal:8126}
       DD_TRACE_ENABLED: ${DD_TRACE_ENABLED:-true}
+      # Várias origens com vírgula; inclua http://<IP_PÚBLICO>:3000 para o painel (Next) falar com a API
+      CEREBRO_CORS_ALLOWED_ORIGINS: ${CEREBRO_CORS_ALLOWED_ORIGINS:-http://localhost:3000}
     labels:
       com.datadoghq.ad.logs: '[{"source": "java", "service": "axezap-hml"}]'
     healthcheck:
@@ -151,6 +154,19 @@ services:
       # Só com CEREBRO_FIREBASE_ENABLED=true e o ficheiro presente no host; se a origem em falta, o Docker cria dir e a app dá "firebase.json (Is a directory)"
       # - ./secrets/...-firebase-adminsdk-....json:/run/firebase.json:ro
       - ${GOOGLE_CALENDAR_CREDENTIALS_FILE:-./bootstrap/src/main/resources/credentials.json}:/run/google-calendar-sa.json:ro
+
+  # Painel Next.js (produção = rewrites no servidor internos para a API; browser só fala com :3000)
+  web:
+    image: ${GHCR_WEB_IMAGE:?GHCR_WEB_IMAGE_required_e_g_pipeline_ghcr_web}
+    container_name: cerebro-web
+    restart: always
+    networks:
+      - cerebro_internal
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   cerebro_pgdata:

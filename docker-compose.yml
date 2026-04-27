@@ -157,6 +157,7 @@ services:
       # Datadog APM: agent no host. Sem agente, no .env: DD_TRACE_ENABLED=false
       DD_TRACE_AGENT_URL: ${DD_TRACE_AGENT_URL:-http://host.docker.internal:8126}
       DD_TRACE_ENABLED: ${DD_TRACE_ENABLED:-true}
+      CEREBRO_CORS_ALLOWED_ORIGINS: ${CEREBRO_CORS_ALLOWED_ORIGINS:-http://localhost:3000}
     depends_on:
       postgres:
         condition: service_healthy
@@ -168,6 +169,22 @@ services:
       - ./secrets/gen-lang-client-0922152835-firebase-adminsdk-fbsvc-525d75aa1f.json:/run/firebase.json:ro
       # Google Calendar: mesmo JSON de service account que em bootstrap (ou copie para secrets/). Host: variável opcional.
       - ${GOOGLE_CALENDAR_CREDENTIALS_FILE:-./bootstrap/src/main/resources/credentials.json}:/run/google-calendar-sa.json:ro
+
+  web:
+    build:
+      context: atendimento-frontEnd/atendimento-frontend
+      dockerfile: Dockerfile
+      args:
+        BACKEND_URL: http://cerebro-api:8080
+    container_name: cerebro-web
+    restart: always
+    networks:
+      - cerebro_internal
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   cerebro_pgdata:
