@@ -233,10 +233,21 @@ jobs:
             else
               echo "AVISO: FIREBASE_SERVICE_ACCOUNT_JSON_B64 vazio; mantendo ficheiro existente em /opt/axezap/secrets/firebase.json (se houver)." >&2
             fi
+            # B64 inválido ou JSON em claro no segredo faria base64 -d falhar e, com set -e, abortar todo o deploy.
+            # Grava em ficheiro temporário e só substitui o destino se a decodificação produzir ficheiro não vazio.
             if [ -n "${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64:-}" ]; then
-              printf '%s' "$GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64" | base64 -d > /opt/axezap/secrets/google-calendar-sa.json
-              chmod 644 /opt/axezap/secrets/google-calendar-sa.json
-              echo "OK: /opt/axezap/secrets/google-calendar-sa.json via GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64."
+              TMP_CAL="/tmp/google-calendar-sa-$$.json"
+              if printf '%s' "$GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64" | base64 -d > "$TMP_CAL" 2>/dev/null \
+                && [ -s "$TMP_CAL" ]
+              then
+                mkdir -p /opt/axezap/secrets
+                mv -f "$TMP_CAL" /opt/axezap/secrets/google-calendar-sa.json
+                chmod 644 /opt/axezap/secrets/google-calendar-sa.json
+                echo "OK: /opt/axezap/secrets/google-calendar-sa.json via GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64."
+              else
+                rm -f "$TMP_CAL"
+                echo "AVISO: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 não decodificou para JSON (use: base64 -w0 < ficheiro.json no Linux e coloque o resultado no segredo, ou deixe vazio e use o ficheiro do passo SCP / manual no servidor)." >&2
+              fi
             else
               echo "INFO: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 vazio; a usar ficheiro copiado no deploy (segredo JSON) se existir."
             fi
