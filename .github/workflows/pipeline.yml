@@ -190,7 +190,9 @@ jobs:
             mkdir -p /opt/axezap/secrets
             if [ -n "${FIREBASE_SERVICE_ACCOUNT_JSON_B64:-}" ]; then
               printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON_B64" | base64 -d > /opt/axezap/secrets/firebase.json
-              chmod 600 /opt/axezap/secrets/firebase.json
+              # O processo Java no container roda como utilizador não-root ("spring"),
+              # então o bind mount precisa de permissão de leitura para "others".
+              chmod 644 /opt/axezap/secrets/firebase.json
               echo "OK: /opt/axezap/secrets/firebase.json atualizado via secret base64."
             else
               echo "AVISO: FIREBASE_SERVICE_ACCOUNT_JSON_B64 vazio; mantendo ficheiro existente em /opt/axezap/secrets/firebase.json (se houver)." >&2
