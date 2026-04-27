@@ -211,7 +211,35 @@ jobs:
             echo "=== docker compose -f docker-compose.hml.yml pull (stderr/stdout) ==="
             docker compose -f docker-compose.hml.yml pull
             echo "=== docker compose -f docker-compose.hml.yml up -d --force-recreate (stderr/stdout) ==="
+            set +e
             docker compose -f docker-compose.hml.yml up -d --force-recreate
+            UP_EXIT=$?
+            set -e
+            if [ $UP_EXIT -ne 0 ]; then
+              echo "ERRO: docker compose up falhou (exit=$UP_EXIT). Coletando diagnóstico..."
+              docker compose -f docker-compose.hml.yml ps || true
+              docker logs --tail=300 cerebro-api || true
+              echo "=== firebase.json no host ==="
+              ls -lah /opt/axezap/secrets/firebase.json || true
+              file /opt/axezap/secrets/firebase.json || true
+              exit $UP_EXIT
+            fi
+            echo "=== pós-up: verificar saúde dos serviços ==="
+            docker compose -f docker-compose.hml.yml ps
+            API_CID="$(docker compose -f docker-compose.hml.yml ps -q api)"
+            if [ -n "$API_CID" ]; then
+              API_HEALTH="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$API_CID" 2>/dev/null || echo unknown)"
+              if [ "$API_HEALTH" != "healthy" ]; then
+                echo "ERRO: API não está healthy (status=$API_HEALTH). Coletando diagnóstico..."
+                docker logs --tail=300 cerebro-api || true
+                echo "=== firebase.json no host ==="
+                ls -lah /opt/axezap/secrets/firebase.json || true
+                file /opt/axezap/secrets/firebase.json || true
+                echo "=== firebase path dentro do container api ==="
+                docker exec -i cerebro-api sh -lc 'echo "$FIREBASE_SERVICE_ACCOUNT_JSON_PATH"; ls -lah /run/firebase.json; file /run/firebase.json' || true
+                exit 1
+              fi
+            fi
 
   deploy-prd:
     needs: build-and-test
