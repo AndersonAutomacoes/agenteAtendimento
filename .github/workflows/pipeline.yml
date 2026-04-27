@@ -267,6 +267,19 @@ jobs:
               echo "OK: docker-compose.yml = cópia de docker-compose.hml.yml (default docker compose up usa GHCR, não build local)"
             fi
             set -e
+            echo "=== verificar ficheiros de secrets antes do compose (evita mount como directório vazio) ==="
+            if [ ! -f /opt/axezap/secrets/firebase.json ] || [ -d /opt/axezap/secrets/firebase.json ]; then
+              echo "ERRO: /opt/axezap/secrets/firebase.json tem de existir e ser um ficheiro regular (defina FIREBASE_SERVICE_ACCOUNT_JSON_B64 na pipeline ou copie o JSON para o servidor)." >&2
+              ls -la /opt/axezap/secrets 2>/dev/null || true
+              exit 1
+            fi
+            chmod 644 /opt/axezap/secrets/firebase.json
+            if [ -e /opt/axezap/secrets/google-calendar-sa.json ] && [ ! -f /opt/axezap/secrets/google-calendar-sa.json ]; then
+              echo "ERRO: google-calendar-sa.json existe mas não é ficheiro regular (apague o directório e recoloque o JSON)." >&2
+              ls -la /opt/axezap/secrets/google-calendar-sa.json 2>/dev/null || true
+              exit 1
+            fi
+            [ -f /opt/axezap/secrets/google-calendar-sa.json ] && chmod 644 /opt/axezap/secrets/google-calendar-sa.json || true
             echo "=== docker login ghcr.io (stderr/stdout) ==="
             if [ -n "${GHCR_READ_TOKEN:-}" ]; then
               echo "$GHCR_READ_TOKEN" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
@@ -284,29 +297,51 @@ jobs:
             UP_EXIT=$?
             set -e
             if [ $UP_EXIT -ne 0 ]; then
-              echo "ERRO: docker compose up falhou (exit=$UP_EXIT). Coletando diagnóstico..."
+              echo "ERRO: docker compose up falhou (exit=$UP_EXIT). Diagnóstico:"
               docker compose -f docker-compose.hml.yml ps || true
-              docker logs --tail=300 cerebro-api || true
+              echo "=== últimas linhas cerebro-api ==="
+              docker logs cerebro-api 2>&1 | tail -200 || true
+              echo "=== últimas linhas cerebro-postgres ==="
+              docker logs cerebro-postgres 2>&1 | tail -120 || true
+              echo "=== últimas linhas cerebro-redis ==="
+              docker logs cerebro-redis 2>&1 | tail -60 || true
+              echo "=== secrets no host ==="
+              ls -lah /opt/axezap/secrets || true
+              file /opt/axezap/secrets/firebase.json 2>/dev/null || true
+              exit $UP_EXIT
+            fi
+            echo "=== pós-up: compose ps + logs recentes da API ==="
+            docker compose -f docker-compose.hml.yml ps
+            echo "=== aguardar arranque JVM / healthcheck (20s) ==="
+            sleep 20
+            docker logs cerebro-api 2>&1 | tail -100 || true
+            echo "=== aguardar API healthy (até ~3 min, 18×10s) ==="
+            API_HEALTH="unknown"
+            for _try in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18; do
+              API_CID="$(docker compose -f docker-compose.hml.yml ps -q api 2>/dev/null || true)"
+              if [ -z "$API_CID" ]; then
+                echo "tentativa $_try: container cerebro-api ainda não listado"
+                sleep 10
+                continue
+              fi
+              API_HEALTH="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$API_CID" 2>/dev/null || echo unknown)"
+              echo "tentativa $_try: API health=$API_HEALTH"
+              if [ "$API_HEALTH" = "healthy" ]; then
+                echo "OK: cerebro-api está healthy."
+                break
+              fi
+              sleep 10
+            done
+            if [ "$API_HEALTH" != "healthy" ]; then
+              echo "ERRO: API não ficou healthy (último status=$API_HEALTH)."
+              docker compose -f docker-compose.hml.yml ps || true
+              docker logs cerebro-api 2>&1 | tail -250 || true
               echo "=== firebase.json no host ==="
               ls -lah /opt/axezap/secrets/firebase.json || true
               file /opt/axezap/secrets/firebase.json || true
-              exit $UP_EXIT
-            fi
-            echo "=== pós-up: verificar saúde dos serviços ==="
-            docker compose -f docker-compose.hml.yml ps
-            API_CID="$(docker compose -f docker-compose.hml.yml ps -q api)"
-            if [ -n "$API_CID" ]; then
-              API_HEALTH="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$API_CID" 2>/dev/null || echo unknown)"
-              if [ "$API_HEALTH" != "healthy" ]; then
-                echo "ERRO: API não está healthy (status=$API_HEALTH). Coletando diagnóstico..."
-                docker logs --tail=300 cerebro-api || true
-                echo "=== firebase.json no host ==="
-                ls -lah /opt/axezap/secrets/firebase.json || true
-                file /opt/axezap/secrets/firebase.json || true
-                echo "=== firebase path dentro do container api ==="
-                docker exec -i cerebro-api sh -lc 'echo "$FIREBASE_SERVICE_ACCOUNT_JSON_PATH"; ls -lah /run/firebase.json; file /run/firebase.json' || true
-                exit 1
-              fi
+              echo "=== mounts /run dentro do container api ==="
+              docker exec -i cerebro-api sh -lc 'echo "FIREBASE_SERVICE_ACCOUNT_JSON_PATH=$FIREBASE_SERVICE_ACCOUNT_JSON_PATH"; ls -lah /run/firebase.json /run/google-calendar-sa.json 2>&1; file /run/firebase.json 2>&1; true' || true
+              exit 1
             fi
 
   deploy-prd:
