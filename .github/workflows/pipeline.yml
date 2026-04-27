@@ -233,7 +233,9 @@ jobs:
             else
               echo "AVISO: FIREBASE_SERVICE_ACCOUNT_JSON_B64 vazio; mantendo ficheiro existente em /opt/axezap/secrets/firebase.json (se houver)." >&2
             fi
-            # B64 inválido: inner if; mv/chmod a falhar (ex. destino é directório) mataria o job com set -e se não tratado.
+            # Imediatamente +e: o VPS pode ter pipefail no perfil; set +e sozinho não o desliga.
+            set +e
+            set +o pipefail 2>/dev/null || true
             if [ -n "${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64:-}" ]; then
               TMP_CAL="/tmp/google-calendar-sa-$$.json"
               if printf '%s' "$GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64" | base64 -d > "$TMP_CAL" 2>/dev/null \
@@ -254,8 +256,6 @@ jobs:
             else
               echo "INFO: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 vazio; a usar ficheiro copiado no deploy ou manual no servidor, se existir."
             fi
-            # echo/cp com set -e abortam o deploy com permissão ou fs só a leitura
-            set +e
             if [ -f /opt/axezap/secrets/google-calendar-sa.json ] && [ -s /opt/axezap/secrets/google-calendar-sa.json ]; then
               echo "GOOGLE_CALENDAR_CREDENTIALS_FILE=./secrets/google-calendar-sa.json" >> .env
               if [ $? -ne 0 ]; then echo "AVISO: append GOOGLE_CALENDAR_CREDENTIALS_FILE a .env falhou" >&2; fi
