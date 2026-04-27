@@ -173,6 +173,9 @@ jobs:
           target: "/opt/axezap/secrets/"
           overwrite: true
 
+      # Segredos opcionais no GitHub (se vazios, mantém-se o que já existir no .env do VPS):
+      # AUTHENTICATION_API_KEY, RESEND_API_KEY, FIREBASE_PROJECT_ID, CEREBRO_FIREBASE_ENABLED, CEREBRO_CORS_ALLOWED_ORIGINS,
+      # CEREBRO_MAIL_INVITE_*, WEBHOOK_GLOBAL_URL, GEMINI_CHAT_MODEL.
       - name: Remote pull and up
         uses: appleboy/ssh-action@v1.0.3
         env:
@@ -182,6 +185,17 @@ jobs:
           DATABASE_URL_HML: ${{ secrets.DATABASE_URL_HML }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          AUTHENTICATION_API_KEY: ${{ secrets.AUTHENTICATION_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          CEREBRO_FIREBASE_ENABLED: ${{ secrets.CEREBRO_FIREBASE_ENABLED }}
+          CEREBRO_CORS_ALLOWED_ORIGINS: ${{ secrets.CEREBRO_CORS_ALLOWED_ORIGINS }}
+          CEREBRO_MAIL_INVITE_FROM_EMAIL: ${{ secrets.CEREBRO_MAIL_INVITE_FROM_EMAIL }}
+          CEREBRO_MAIL_INVITE_FROM_NAME: ${{ secrets.CEREBRO_MAIL_INVITE_FROM_NAME }}
+          CEREBRO_MAIL_INVITE_REGISTRATION_URL: ${{ secrets.CEREBRO_MAIL_INVITE_REGISTRATION_URL }}
+          CEREBRO_MAIL_INVITE_SUPPORT_EMAIL: ${{ secrets.CEREBRO_MAIL_INVITE_SUPPORT_EMAIL }}
+          WEBHOOK_GLOBAL_URL: ${{ secrets.WEBHOOK_GLOBAL_URL }}
+          GEMINI_CHAT_MODEL: ${{ secrets.GEMINI_CHAT_MODEL }}
           FIREBASE_SERVICE_ACCOUNT_JSON_B64: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON_B64 }}
           # Opcional: mesmo padrão do Firebase — JSON em base64 (preenchido no GitHub) gravado no servidor; sobrescreve ficheiro do passo scp.
           GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64: ${{ secrets.GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 }}
@@ -192,7 +206,7 @@ jobs:
           port: 22
           command_timeout: 30m
           script_stop: true
-          envs: GHCR_IMAGE,GHCR_WEB_IMAGE,GHCR_READ_TOKEN,DATABASE_URL_HML,GROQ_API_KEY,GEMINI_API_KEY,FIREBASE_SERVICE_ACCOUNT_JSON_B64,GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64
+          envs: GHCR_IMAGE,GHCR_WEB_IMAGE,GHCR_READ_TOKEN,DATABASE_URL_HML,GROQ_API_KEY,GEMINI_API_KEY,AUTHENTICATION_API_KEY,RESEND_API_KEY,FIREBASE_PROJECT_ID,CEREBRO_FIREBASE_ENABLED,CEREBRO_CORS_ALLOWED_ORIGINS,CEREBRO_MAIL_INVITE_FROM_EMAIL,CEREBRO_MAIL_INVITE_FROM_NAME,CEREBRO_MAIL_INVITE_REGISTRATION_URL,CEREBRO_MAIL_INVITE_SUPPORT_EMAIL,WEBHOOK_GLOBAL_URL,GEMINI_CHAT_MODEL,FIREBASE_SERVICE_ACCOUNT_JSON_B64,GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64
           script: |
             set -e
             mkdir -p /opt/axezap
@@ -209,19 +223,44 @@ jobs:
             echo "$GHCR_IMAGE"
             echo "=== GHCR_WEB_IMAGE (minúsculas) ==="
             echo "$GHCR_WEB_IMAGE"
-            echo "=== merge .env (chaves reescritas a partir dos secrets do GitHub) ==="
+            echo "=== merge .env (GitHub Actions → /opt/axezap/.env; GEMINI/GROQ com %q para caracteres especiais) ==="
             umask 026
             touch .env
-            # Remove reescritas anteriores; SPRING_DATASOURCE_URL: cópia com host "postgres" em ambientes antigos
-            awk '/^(GHCR_IMAGE|GHCR_WEB_IMAGE|DATABASE_URL_HML|GROQ_API_KEY|GEMINI_API_KEY|SPRING_DATASOURCE_URL|GOOGLE_CALENDAR_CREDENTIALS_FILE)=/{next}1' .env > .env.tmp
+            append_kv_allow_empty() {
+              local k="$1"
+              local v="$2"
+              printf '%s=' "$k" >> .env
+              if [ -n "$v" ]; then
+                printf '%q' "$v" >> .env
+              fi
+              printf '\n' >> .env
+            }
+            append_kv_if_set() {
+              local k="$1"
+              local v="$2"
+              [ -n "$v" ] || return 0
+              printf '%s=' "$k" >> .env
+              printf '%q' "$v" >> .env
+              printf '\n' >> .env
+            }
+            awk '/^(GHCR_IMAGE|GHCR_WEB_IMAGE|DATABASE_URL_HML|GROQ_API_KEY|GEMINI_API_KEY|GEMINI_CHAT_MODEL|AUTHENTICATION_API_KEY|RESEND_API_KEY|FIREBASE_PROJECT_ID|CEREBRO_FIREBASE_ENABLED|CEREBRO_CORS_ALLOWED_ORIGINS|CEREBRO_MAIL_INVITE_FROM_EMAIL|CEREBRO_MAIL_INVITE_FROM_NAME|CEREBRO_MAIL_INVITE_REGISTRATION_URL|CEREBRO_MAIL_INVITE_SUPPORT_EMAIL|WEBHOOK_GLOBAL_URL|SPRING_DATASOURCE_URL|GOOGLE_CALENDAR_CREDENTIALS_FILE)=/{next}1' .env > .env.tmp
             mv .env.tmp .env
-            {
-              echo "GHCR_IMAGE=$GHCR_IMAGE"
-              echo "GHCR_WEB_IMAGE=$GHCR_WEB_IMAGE"
-              echo "DATABASE_URL_HML=$DATABASE_URL_HML"
-              echo "GROQ_API_KEY=$GROQ_API_KEY"
-              echo "GEMINI_API_KEY=$GEMINI_API_KEY"
-            } >> .env
+            append_kv_allow_empty GHCR_IMAGE "$GHCR_IMAGE"
+            append_kv_allow_empty GHCR_WEB_IMAGE "$GHCR_WEB_IMAGE"
+            append_kv_allow_empty DATABASE_URL_HML "$DATABASE_URL_HML"
+            append_kv_allow_empty GEMINI_API_KEY "$GEMINI_API_KEY"
+            append_kv_allow_empty GROQ_API_KEY "$GROQ_API_KEY"
+            append_kv_if_set AUTHENTICATION_API_KEY "$AUTHENTICATION_API_KEY"
+            append_kv_if_set RESEND_API_KEY "$RESEND_API_KEY"
+            append_kv_if_set FIREBASE_PROJECT_ID "$FIREBASE_PROJECT_ID"
+            append_kv_if_set CEREBRO_FIREBASE_ENABLED "$CEREBRO_FIREBASE_ENABLED"
+            append_kv_if_set CEREBRO_CORS_ALLOWED_ORIGINS "$CEREBRO_CORS_ALLOWED_ORIGINS"
+            append_kv_if_set CEREBRO_MAIL_INVITE_FROM_EMAIL "$CEREBRO_MAIL_INVITE_FROM_EMAIL"
+            append_kv_if_set CEREBRO_MAIL_INVITE_FROM_NAME "$CEREBRO_MAIL_INVITE_FROM_NAME"
+            append_kv_if_set CEREBRO_MAIL_INVITE_REGISTRATION_URL "$CEREBRO_MAIL_INVITE_REGISTRATION_URL"
+            append_kv_if_set CEREBRO_MAIL_INVITE_SUPPORT_EMAIL "$CEREBRO_MAIL_INVITE_SUPPORT_EMAIL"
+            append_kv_if_set WEBHOOK_GLOBAL_URL "$WEBHOOK_GLOBAL_URL"
+            append_kv_if_set GEMINI_CHAT_MODEL "$GEMINI_CHAT_MODEL"
             echo "=== garantir service account Firebase no servidor ==="
             mkdir -p /opt/axezap/secrets
             if [ -n "${FIREBASE_SERVICE_ACCOUNT_JSON_B64:-}" ]; then
@@ -358,7 +397,12 @@ jobs:
               ls -lah /opt/axezap/secrets/firebase.json || true
               file /opt/axezap/secrets/firebase.json || true
               echo "=== mounts /run dentro do container api ==="
-              docker exec -i cerebro-api sh -lc 'echo "FIREBASE_SERVICE_ACCOUNT_JSON_PATH=$FIREBASE_SERVICE_ACCOUNT_JSON_PATH"; ls -lah /run/firebase.json /run/google-calendar-sa.json 2>&1; file /run/firebase.json 2>&1; true' || true
+              docker exec -i cerebro-api sh -lc '
+                echo "FIREBASE_SERVICE_ACCOUNT_JSON_PATH=$FIREBASE_SERVICE_ACCOUNT_JSON_PATH"
+                echo "GEMINI_API_KEY defined=${GEMINI_API_KEY:+yes}"
+                ls -lah /run/firebase.json /run/google-calendar-sa.json 2>&1
+                file /run/firebase.json 2>&1 || true
+              ' || true
               exit 1
             fi
 
