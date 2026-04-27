@@ -154,7 +154,7 @@ services:
       # Só com CEREBRO_FIREBASE_ENABLED=true e o ficheiro presente no host; se a origem em falta, o Docker cria dir e a app dá "firebase.json (Is a directory)"
       # - ./secrets/...-firebase-adminsdk-....json:/run/firebase.json:ro
       - ${GOOGLE_CALENDAR_CREDENTIALS_FILE:-./bootstrap/src/main/resources/credentials.json}:/run/google-calendar-sa.json:ro
-      - ./secrets/gen-lang-client-0922152835-firebase-adminsdk-fbsvc-525d75aa1f.json:/run/gen-lang-client-0922152835-firebase-adminsdk-fbsvc-525d75aa1f.json:ro
+      - ./secrets/gen-lang-client-0922152835-firebase-adminsdk-fbsvc-525d75aa1f.json:/run/firebase.json:ro
 
   # Painel Next.js (produção = rewrites no servidor internos para a API; browser só fala com :3000)
   web:
