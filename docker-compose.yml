@@ -102,6 +102,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: cerebro-api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       cerebro_internal:
         aliases:
@@ -152,6 +154,9 @@ services:
       GROQ_STT_MODEL: ${GROQ_STT_MODEL:-whisper-large-v3}
       GROQ_STT_LANGUAGE: ${GROQ_STT_LANGUAGE:-pt}
       GROQ_STT_REQUEST_TIMEOUT_MS: ${GROQ_STT_REQUEST_TIMEOUT_MS:-2000}
+      # Datadog APM: agent no host. Sem agente, no .env: DD_TRACE_ENABLED=false
+      DD_TRACE_AGENT_URL: ${DD_TRACE_AGENT_URL:-http://host.docker.internal:8126}
+      DD_TRACE_ENABLED: ${DD_TRACE_ENABLED:-true}
     depends_on:
       postgres:
         condition: service_healthy

@@ -1,0 +1,23 @@
+# Copiar para o servidor Datadog Agent (não é usado pelo Docker Compose deste repositório).
+#
+# Local no droplet (agente instalado no host, via apt):
+#   /etc/datadog-agent/conf.d/redisdb.d/conf.yaml
+#
+# Depois: sudo systemctl restart datadog-agent
+#
+# Redis no stack (docker-compose.hml.yml):
+#   • Porta publicada: 6379 -> 6379 no host
+#   • Senha: cerebroredis (--requirepass)
+#
+# Se o check apontava para localhost sem password, ou o agente corre DENTRO de um
+# contentor, "localhost" não é o Redis do host — usar 127.0.0.1 no host OU o IP
+# do host visto pelo contentor (p.ex. 172.17.0.1) e garantir que a porta 6379 alcança.
+
+init_config:
+
+instances:
+  - host: 127.0.0.1
+    port: 6379
+    password: "cerebroredis"
+    # Opcional: evitar surpresas com IPv6
+    # collect_client_metrics: true

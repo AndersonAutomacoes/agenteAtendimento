@@ -84,6 +84,9 @@ services:
     image: ${GHCR_IMAGE:?GHCR_IMAGE_required_lowercase_ghcr}
     container_name: cerebro-api
     restart: always
+    # Permite que o javaagent (dd-java-agent) envie APM para o Datadog no host:8126, não "localhost" do container
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       cerebro_internal:
         aliases:
@@ -126,6 +129,9 @@ services:
       DD_SERVICE: axezap-hml
       DD_ENV: hml
       DD_VERSION: 1.0.0
+      # Já o Dockerfile; sem isto, ConnectException a localhost:8126 (o agente está no host, não no container)
+      DD_TRACE_AGENT_URL: ${DD_TRACE_AGENT_URL:-http://host.docker.internal:8126}
+      DD_TRACE_ENABLED: ${DD_TRACE_ENABLED:-true}
     labels:
       com.datadoghq.ad.logs: '[{"source": "java", "service": "axezap-hml"}]'
     healthcheck:
