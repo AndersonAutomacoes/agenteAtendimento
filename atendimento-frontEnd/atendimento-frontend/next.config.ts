@@ -151,6 +151,14 @@ const nextConfig: NextConfig = {
         source: "/api/v1/internal/tenants/:path*",
         destination: `${backend}/api/v1/internal/tenants/:path*`,
       },
+      {
+        source: "/api/v1/internal/plans/config",
+        destination: `${backend}/api/v1/internal/plans/config`,
+      },
+      {
+        source: "/api/v1/internal/plans/:path*",
+        destination: `${backend}/api/v1/internal/plans/:path*`,
+      },
     ];
   },
   ...(devAllowedOrigins.length > 0 ? { allowedDevOrigins: devAllowedOrigins } : {}),

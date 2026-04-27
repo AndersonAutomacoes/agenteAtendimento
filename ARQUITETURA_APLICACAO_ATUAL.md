@@ -8,7 +8,6 @@ A solucao esta organizada em dois blocos principais:
 - Frontend web em Next.js para operacao, monitoramento e configuracao.
 - Backend Java (Spring Boot + Apache Camel) com arquitetura hexagonal (ports and adapters), responsavel pela orquestracao de chat, agendamentos, CRM, analytics e integracoes externas.
 
-
 ## Diagrama (Entradas, Processamento e Saidas)
 
 ```mermaid
