@@ -1,8 +1,18 @@
 # Homologação (DigitalOcean): só a API a partir do GHCR.
 # GHCR_IMAGE: obrigatório, em minúsculas (requisito ghcr.io), ex. ghcr.io/org/repo:develop
-# Variáveis: .env em /opt/axezap (a pipeline actualiza GHCR_IMAGE, DATABASE_URL_HML, GROQ_API_KEY)
+# variáveis .env: /opt/axezap/.env
 #
-# Uso local: docker compose -f docker-compose.hml.yml up -d
+# --- PostgreSQL (OBRIGATÓRIO: host real, NÃO o nome "postgres" do docker-compose local) ---
+# O erro "UnknownHostException: postgres" = DATABASE_URL_HML ainda aponta para
+#   jdbc:postgresql://postgres:5432/...  (só resolve dentro da stack de desenvolvimento).
+# No GitHub: secret DATABASE_URL_HML = JDBC com host do DO Managed DB, p.ex.:
+#   jdbc:postgresql://<cluster>.b.db.ondigitalocean.com:25060/defaultdb?sslmode=require
+#   (ou user/pass em parâmetros / SPRING_DATASOURCE_USERNAME&PASSWORD; ver consola DO.)
+#
+# A pipeline grava no .env: GHCR_IMAGE, DATABASE_URL_HML, GROQ_API_KEY.
+# Podes acrescentar no servidor: GEMINI_API_KEY, Redis (SPRING_DATA_REDIS_HOST, ...), etc.
+#
+# Uso: cd /opt/axezap && docker compose -f docker-compose.hml.yml up -d
 
 name: axezap-hml
 
@@ -19,6 +29,8 @@ services:
       - hml
     ports:
       - "8080:8080"
+    env_file:
+      - .env
     environment:
       SPRING_DATASOURCE_URL: ${DATABASE_URL_HML}
       GROQ_API_KEY: ${GROQ_API_KEY}
