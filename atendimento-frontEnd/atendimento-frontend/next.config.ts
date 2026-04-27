@@ -167,6 +167,14 @@ const nextConfig: NextConfig = {
         source: "/api/v1/tenant/services/:path*",
         destination: `${backend}/api/v1/tenant/services/:path*`,
       },
+      {
+        source: "/api/v1/tenant/portal-users",
+        destination: `${backend}/api/v1/tenant/portal-users`,
+      },
+      {
+        source: "/api/v1/tenant/portal-users/:path*",
+        destination: `${backend}/api/v1/tenant/portal-users/:path*`,
+      },
 
     ];
   },
