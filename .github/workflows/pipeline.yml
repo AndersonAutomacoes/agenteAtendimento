@@ -233,32 +233,40 @@ jobs:
             else
               echo "AVISO: FIREBASE_SERVICE_ACCOUNT_JSON_B64 vazio; mantendo ficheiro existente em /opt/axezap/secrets/firebase.json (se houver)." >&2
             fi
-            # B64 inválido ou JSON em claro no segredo faria base64 -d falhar e, com set -e, abortar todo o deploy.
-            # Grava em ficheiro temporário e só substitui o destino se a decodificação produzir ficheiro não vazio.
+            # B64 inválido: inner if; mv/chmod a falhar (ex. destino é directório) mataria o job com set -e se não tratado.
             if [ -n "${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64:-}" ]; then
               TMP_CAL="/tmp/google-calendar-sa-$$.json"
               if printf '%s' "$GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64" | base64 -d > "$TMP_CAL" 2>/dev/null \
                 && [ -s "$TMP_CAL" ]
               then
                 mkdir -p /opt/axezap/secrets
-                mv -f "$TMP_CAL" /opt/axezap/secrets/google-calendar-sa.json
-                chmod 644 /opt/axezap/secrets/google-calendar-sa.json
-                echo "OK: /opt/axezap/secrets/google-calendar-sa.json via GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64."
+                if mv -f "$TMP_CAL" /opt/axezap/secrets/google-calendar-sa.json; then
+                  chmod 644 /opt/axezap/secrets/google-calendar-sa.json || true
+                  echo "OK: /opt/axezap/secrets/google-calendar-sa.json via GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64."
+                else
+                  echo "AVISO: mv para /opt/axezap/secrets/google-calendar-sa.json falhou (se path for directório, apague o directório e volte a correr, ou deixe o segredo B64 vazio e use ficheiro manual/SCP)." >&2
+                  rm -f "$TMP_CAL"
+                fi
               else
                 rm -f "$TMP_CAL"
-                echo "AVISO: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 não decodificou para JSON (use: base64 -w0 < ficheiro.json no Linux e coloque o resultado no segredo, ou deixe vazio e use o ficheiro do passo SCP / manual no servidor)." >&2
+                echo "AVISO: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 não decodificou (base64: base64 -w0 < ficheiro.json) ou ficheiro vazio; vazio o segredo para usar ficheiro já no servidor." >&2
               fi
             else
-              echo "INFO: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 vazio; a usar ficheiro copiado no deploy (segredo JSON) se existir."
+              echo "INFO: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 vazio; a usar ficheiro copiado no deploy ou manual no servidor, se existir."
             fi
+            # echo/cp com set -e abortam o deploy com permissão ou fs só a leitura
+            set +e
             if [ -f /opt/axezap/secrets/google-calendar-sa.json ] && [ -s /opt/axezap/secrets/google-calendar-sa.json ]; then
               echo "GOOGLE_CALENDAR_CREDENTIALS_FILE=./secrets/google-calendar-sa.json" >> .env
+              if [ $? -ne 0 ]; then echo "AVISO: append GOOGLE_CALENDAR_CREDENTIALS_FILE a .env falhou" >&2; fi
               echo "OK: .env define GOOGLE_CALENDAR_CREDENTIALS_FILE para o bind mount do docker-compose (Google Calendar SA)."
             fi
             if [ -f docker-compose.hml.yml ]; then
               cp -f docker-compose.hml.yml docker-compose.yml
+              if [ $? -ne 0 ]; then echo "AVISO: cp docker-compose.hml.yml falhou" >&2; fi
               echo "OK: docker-compose.yml = cópia de docker-compose.hml.yml (default docker compose up usa GHCR, não build local)"
             fi
+            set -e
             echo "=== docker login ghcr.io (stderr/stdout) ==="
             if [ -n "${GHCR_READ_TOKEN:-}" ]; then
               echo "$GHCR_READ_TOKEN" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
