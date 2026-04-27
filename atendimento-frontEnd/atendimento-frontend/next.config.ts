@@ -143,6 +143,14 @@ const nextConfig: NextConfig = {
         source: "/api/v1/crm/opportunities/:path*",
         destination: `${backend}/api/v1/crm/opportunities/:path*`,
       },
+      {
+        source: "/api/v1/internal/tenants",
+        destination: `${backend}/api/v1/internal/tenants`,
+      },
+      {
+        source: "/api/v1/internal/tenants/:path*",
+        destination: `${backend}/api/v1/internal/tenants/:path*`,
+      },
     ];
   },
   ...(devAllowedOrigins.length > 0 ? { allowedDevOrigins: devAllowedOrigins } : {}),
