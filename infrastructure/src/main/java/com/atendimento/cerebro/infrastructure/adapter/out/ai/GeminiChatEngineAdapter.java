@@ -17,6 +17,7 @@ import com.atendimento.cerebro.application.scheduling.SchedulingCreateAppointmen
 import com.atendimento.cerebro.application.scheduling.SchedulingSlotCapture;
 import com.atendimento.cerebro.application.scheduling.SchedulingEnforcedChoice;
 import com.atendimento.cerebro.application.scheduling.SchedulingExplicitTimeShortcut;
+import com.atendimento.cerebro.application.scheduling.SchedulingRescheduleIdExtractor;
 import com.atendimento.cerebro.application.scheduling.SchedulingToolContext;
 import com.atendimento.cerebro.application.scheduling.SchedulingUserReplyNormalizer;
 import com.atendimento.cerebro.domain.conversation.Message;
@@ -108,6 +109,12 @@ public class GeminiChatEngineAdapter {
 
     private static final Pattern SHORT_SCHEDULING_CONFIRM =
             Pattern.compile("^(sim|sí|ok|confirmado|confirmo|pode|isso|perfeito|fechado)[.!\\s]*$", Pattern.CASE_INSENSITIVE);
+    /** «Está certo.», «correto» após o assistente pedir confirmação de data; não coincidem com {@link #SHORT_SCHEDULING_CONFIRM}. */
+    private static final Pattern SHORT_DATE_OR_FLOW_AGREEMENT_PT =
+            Pattern.compile(
+                    "^(?i)(está|tá|ta)\\s+(correto|certo|certa)([.!…?\\s]*)$|"
+                            + "^(?i)(isso|exato|exatamente|isso\\s+mesmo|com certeza|certeza|uhum|aham|beleza)([.!…?\\s]*)$|"
+                            + "^(?i)correto([.!…?\\s]*)$|^(?i)certo([.!…?\\s]*)$");
     private static final Pattern GREETING_HEAD =
             Pattern.compile(
                     "^(oi|ola|bom dia|boa tarde|boa noite|hi|hello)([\\s!,.…?]|$)",
@@ -129,9 +136,6 @@ public class GeminiChatEngineAdapter {
 
     private static final Pattern CRM_CLIENT_NAME =
             Pattern.compile("Nome do cliente:\\s*([^\\.\\n]+)", Pattern.CASE_INSENSITIVE);
-    private static final Pattern RESCHEDULE_WITH_ID =
-            Pattern.compile("(?i)\\b(reagend\\w*|remarc\\w*|troc\\w*|mud\\w*)\\b[^\\n\\r]{0,80}?\\b(\\d{1,19})\\b");
-
     private final GoogleGenAiChatModel chatModel;
     private final String chatModelName;
     private final AppointmentSchedulingPort appointmentSchedulingPort;
@@ -516,8 +520,21 @@ public class GeminiChatEngineAdapter {
         c = stripRedundantSchedulingPrompts(c);
         if (SchedulingSlotCapture.peekInteractiveMainText().isPresent()) {
             c = stripHorarioListEchoFromAssistant(c, slots);
-            if (c.isBlank() || looksOnlyLikeVerifyingOrNoise(c)) {
-                c = "Seguem os horários na mensagem seguinte (lista numerada).";
+            String premium =
+                    SchedulingSlotCapture.buildPremiumFormattedSlotList(
+                            requestedDate, calendarZone, slots);
+            if (!premium.isBlank()) {
+                c =
+                        (c.isBlank() || looksOnlyLikeVerifyingOrNoise(c))
+                                ? premium
+                                : c + "\n\n" + premium;
+            } else if (c.isBlank() || looksOnlyLikeVerifyingOrNoise(c)) {
+                c =
+                        "Segue a disponibilidade (lista numerada) para "
+                                + (requestedDate != null
+                                        ? requestedDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+                                        : "a data pedida")
+                                + ".";
             }
             return c;
         }
@@ -859,7 +876,7 @@ public class GeminiChatEngineAdapter {
         if (request == null || request.conversationId() == null || request.conversationId().isBlank()) {
             return Optional.empty();
         }
-        Optional<Long> appointmentId = extractRescheduleExplicitAppointmentId(request);
+        Optional<Long> appointmentId = extractRescheduleExplicitAppointmentId(request, calendarZone);
         if (appointmentId.isEmpty()) {
             return Optional.empty();
         }
@@ -914,39 +931,19 @@ public class GeminiChatEngineAdapter {
         return String.format(Locale.ROOT, "%02d:%02d", t.getHour(), t.getMinute());
     }
 
-    private static Optional<Long> extractRescheduleExplicitAppointmentId(AICompletionRequest request) {
-        if (request == null) {
+    private static Optional<Long> extractRescheduleExplicitAppointmentId(
+            AICompletionRequest request, ZoneId calendarZone) {
+        if (request == null || calendarZone == null) {
             return Optional.empty();
         }
         String current = request.userMessage() != null ? request.userMessage().strip() : "";
-        Matcher m = RESCHEDULE_WITH_ID.matcher(current);
-        if (m.find()) {
-            try {
-                return Optional.of(Long.parseLong(m.group(2)));
-            } catch (NumberFormatException ignored) {
-                // ignore malformed id
-            }
-        }
-        List<Message> h = request.conversationHistory();
-        if (h == null || h.isEmpty()) {
+        if (current.isEmpty()) {
             return Optional.empty();
         }
-        int lowerBound = Math.max(0, h.size() - 10);
-        for (int i = h.size() - 1; i >= lowerBound; i--) {
-            Message msg = h.get(i);
-            if (msg.role() != MessageRole.USER || msg.content() == null || msg.content().isBlank()) {
-                continue;
-            }
-            Matcher hm = RESCHEDULE_WITH_ID.matcher(msg.content().strip());
-            if (hm.find()) {
-                try {
-                    return Optional.of(Long.parseLong(hm.group(2)));
-                } catch (NumberFormatException ignored) {
-                    // ignore malformed id
-                }
-            }
+        if (SchedulingUserReplyNormalizer.looksLikeNewAppointmentBookingRequest(current)) {
+            return Optional.empty();
         }
-        return Optional.empty();
+        return SchedulingRescheduleIdExtractor.extractFromUserText(current, calendarZone);
     }
 
     private static Optional<SchedulingEnforcedChoice> parseTodayTimeFallback(String userText, ZoneId calendarZone) {
@@ -1021,6 +1018,71 @@ public class GeminiChatEngineAdapter {
     }
 
     /**
+     * «Está certo.» / «sim» com data já dita no histórico (o modelo não chama a ferramenta) — o backfill de slots deve
+     * correr; não exige data no texto da mensagem actual.
+     */
+    static boolean isShortUserAgreementWithResolvableSchedulingDate(
+            AICompletionRequest request, ZoneId calendarZone) {
+        String msg = request.userMessage();
+        if (msg == null || msg.isBlank()) {
+            return false;
+        }
+        String stripped = msg.strip();
+        if (SchedulingAppointmentFallback.lastDateInTranscript(stripped, calendarZone).isPresent()) {
+            return false;
+        }
+        if (stripped.length() > 56) {
+            return false;
+        }
+        boolean shortAgree =
+                (stripped.length() <= 28 && SHORT_SCHEDULING_CONFIRM.matcher(stripped).matches())
+                        || SHORT_DATE_OR_FLOW_AGREEMENT_PT.matcher(stripped).matches();
+        if (!shortAgree) {
+            return false;
+        }
+        String blob = mergeRecentTranscriptForDate(request);
+        if (!transcriptSuggestsActiveScheduling(blob.toLowerCase(Locale.ROOT))) {
+            return false;
+        }
+        return SchedulingAppointmentFallback.lastDateInTranscript(blob, calendarZone).isPresent();
+    }
+
+    private static boolean isUserComplainingAboutMissingSlotList(AICompletionRequest request) {
+        String msg = request.userMessage();
+        if (msg == null || msg.isBlank()) {
+            return false;
+        }
+        String s = msg.strip();
+        if (s.length() > 120) {
+            return false;
+        }
+        String low = s.toLowerCase(Locale.ROOT);
+        if (!low.contains("lista")) {
+            return false;
+        }
+        if (!low.contains("não")
+                && !low.contains("nao")
+                && !low.contains("ninguém")
+                && !low.contains("ninguem")) {
+            return false;
+        }
+        if (!low.contains("envi")
+                && !low.contains("cheg")
+                && !low.contains("aparec")
+                && !low.contains("veio")
+                && !low.contains("receb")) {
+            return false;
+        }
+        String blob = mergeRecentTranscriptForDate(request);
+        String b = blob.toLowerCase(Locale.ROOT);
+        return b.contains("verific")
+                || b.contains("dispon")
+                || b.contains("horário")
+                || b.contains("horario")
+                || b.contains("agend");
+    }
+
+    /**
      * Se o modelo respondeu só com «a verificar…» sem invocar {@code check_availability}, não há slots nem botões.
      * Obtém horários directamente do calendário quando a mensagem é claramente um pedido de disponibilidade.
      */
@@ -1042,12 +1104,11 @@ public class GeminiChatEngineAdapter {
             return;
         }
         String stripped = msg.strip();
-        if (stripped.length() <= 28 && SHORT_SCHEDULING_CONFIRM.matcher(stripped).matches()) {
-            return;
-        }
         if (!isAvailabilityListingIntent(msg)
                 && !isSchedulingAvailabilityFollowUpNudge(request)
-                && !isConcreteDateInSchedulingFlow(request, calendarZone)) {
+                && !isConcreteDateInSchedulingFlow(request, calendarZone)
+                && !isShortUserAgreementWithResolvableSchedulingDate(request, calendarZone)
+                && !isUserComplainingAboutMissingSlotList(request)) {
             return;
         }
         Optional<LocalDate> day = SchedulingAppointmentFallback.lastDateInTranscript(msg, calendarZone);
@@ -1671,6 +1732,10 @@ public class GeminiChatEngineAdapter {
                 || lower.contains("qual data")
                 || lower.contains("para o dia")
                 || lower.contains("confirmar a data")
-                || lower.contains("confirme a data");
+                || lower.contains("confirme a data")
+                || lower.contains("confirm")
+                || lower.contains("correto")
+                || lower.contains("feira")
+                || lower.contains("troc");
     }
 }

@@ -1,5 +1,5 @@
 # Imagem da API Spring Boot (bootstrap) — build multi-stage
-FROM maven:3.9.9-eclipse-temurin-21-alpine AS build
+FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /app
 
 COPY pom.xml .
@@ -13,15 +13,27 @@ COPY bootstrap ./bootstrap
 RUN mvn -pl bootstrap -am clean package -DskipTests -B \
     && cp /app/bootstrap/target/bootstrap-*.jar /app/app.jar
 
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:21-jre-jammy
 WORKDIR /app
 
-RUN apk add --no-cache ffmpeg
-RUN addgroup -S spring && adduser -S spring -G spring
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /app/app.jar app.jar
+# DataDog APM: agent na raiz da imagem; versão/ambiente vêm de env no compose (DD_*)
+RUN curl -fsSL -o /dd-java-agent.jar "https://dtdg.co/latest-java-tracer"
+
+ENV JAVA_TOOL_OPTIONS="-javaagent:/dd-java-agent.jar"
+
+RUN groupadd --system spring && useradd --system --gid spring --no-create-home spring
+
+COPY --from=build /app/app.jar /app/app.jar
+
+RUN chown spring:spring /app/app.jar /dd-java-agent.jar
 
 USER spring:spring
 EXPOSE 8080
 
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+ENTRYPOINT ["sh", "-c", "exec java -jar /app/app.jar"]

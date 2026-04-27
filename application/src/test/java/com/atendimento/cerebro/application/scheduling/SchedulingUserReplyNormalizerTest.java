@@ -519,4 +519,36 @@ class SchedulingUserReplyNormalizerTest {
         assertThat(e.expandedUserMessage()).isEqualTo("ok");
         assertThat(e.enforcedChoice()).isEmpty();
     }
+
+    @Test
+    void hasRecentRescheduleUserIntentInHistory_ignoresNewBookingThenService() {
+        List<Message> hist =
+                List.of(
+                        Message.userMessage("Quero agendar para quarta-feira."),
+                        Message.assistantMessage("Para qual serviço?"),
+                        Message.userMessage("Troca de óleo."));
+        assertThat(SchedulingUserReplyNormalizer.hasRecentRescheduleUserIntentInHistory(hist, 12))
+                .isFalse();
+        assertThat(SchedulingUserReplyNormalizer.hasRecentNewAppointmentBookingRequestInHistory(hist, 12))
+                .isTrue();
+    }
+
+    @Test
+    void looksLikeTimeOrPreferencePhraseNotServiceName_detectsTimePreferenceAsNonService() {
+        assertThat(
+                        SchedulingExplicitTimeShortcut.looksLikeTimeOrPreferencePhraseNotServiceName(
+                                "O horário ideal seria 15 horas."))
+                .isTrue();
+        assertThat(SchedulingExplicitTimeShortcut.looksLikeTimeOrPreferencePhraseNotServiceName("Troca de Pastilhas"))
+                .isFalse();
+    }
+
+    @Test
+    void hasRecentRescheduleUserIntentInHistory_stillTrueAfterExplicitReagendar() {
+        List<Message> hist =
+                List.of(
+                        Message.userMessage("Gostaria de reagendar o de amanhã"),
+                        Message.assistantMessage("ok"));
+        assertThat(SchedulingUserReplyNormalizer.hasRecentRescheduleUserIntentInHistory(hist, 8)).isTrue();
+    }
 }

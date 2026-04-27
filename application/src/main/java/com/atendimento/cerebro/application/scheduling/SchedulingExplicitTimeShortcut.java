@@ -86,6 +86,13 @@ public final class SchedulingExplicitTimeShortcut {
             return Optional.empty();
         }
         String serviceHint = extractServiceHint(userMessage.strip());
+        if (appointmentService != null) {
+            Optional<String> catalogMention =
+                    appointmentService.resolveCatalogServiceMentionFromText(tenantId, userMessage.strip());
+            if (catalogMention.isPresent()) {
+                serviceHint = catalogMention.get().strip();
+            }
+        }
         if (!isPlausibleExtractedServiceHint(serviceHint)) {
             return Optional.empty();
         }
@@ -258,9 +265,7 @@ public final class SchedulingExplicitTimeShortcut {
         }
         int hour = Integer.parseInt(spoken.group(1));
         String period = spoken.group(2) != null ? spoken.group(2).toLowerCase(Locale.ROOT) : "";
-        if (period.startsWith("manh") && hour == 12) {
-            hour = 0;
-        } else if ((period.startsWith("tarde") || period.startsWith("noite")) && hour < 12) {
+        if ((period.startsWith("tarde") || period.startsWith("noite")) && hour < 12) {
             hour += 12;
         }
         if (hour < 0 || hour > 23) {
@@ -333,6 +338,9 @@ public final class SchedulingExplicitTimeShortcut {
             Matcher mat = AVAILABILITY_SERVICE_MARKDOWN.matcher(c);
             if (mat.find()) {
                 String cleaned = sanitizeServiceHintAfterStrip(mat.group(1));
+                if (looksLikeTimeOrPreferencePhraseNotServiceName(cleaned)) {
+                    continue;
+                }
                 if (looksLikeValidServiceName(cleaned)) {
                     return Optional.of(cleaned);
                 }
@@ -373,6 +381,43 @@ public final class SchedulingExplicitTimeShortcut {
     }
 
     /**
+     * Frase sobre preferência de <em>horário</em> (não o nome de um serviço do catálogo) — o modelo às vezes
+     * repete-a no parâmetro {@code service} do {@code create_appointment} (ex. «O horário ideal seria 15 horas.»).
+     */
+    public static boolean looksLikeTimeOrPreferencePhraseNotServiceName(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return true;
+        }
+        String t = raw.strip();
+        if (t.length() > 120) {
+            return true;
+        }
+        String lower = t.toLowerCase(Locale.ROOT);
+        if (HM.matcher(t).find() || SPOKEN_HOUR.matcher(t).find()) {
+            return true;
+        }
+        if (lower.contains("horário ideal") || lower.contains("horario ideal")) {
+            return true;
+        }
+        if (lower.contains("ideais") && (lower.contains("hor") || lower.contains("h "))) {
+            return true;
+        }
+        if (lower.matches("(?s).*\\bseria\\s+.*\\b(hora|horas|h\\b|às|as|manh[ãa]|tarde|noite)\\b.*")) {
+            return true;
+        }
+        if (lower.contains("o horário") && (lower.contains("seria") || lower.contains("seriam"))) {
+            return true;
+        }
+        return (lower.contains("horário") || lower.contains("horario"))
+                && (lower.contains("15 hora")
+                        || lower.contains("11 hora")
+                        || lower.contains("hora ideal")
+                        || lower.contains("às")
+                        || SPOKEN_HOUR.matcher(t).find()
+                        || HM.matcher(t).find());
+    }
+
+    /**
      * Nome de serviço adequado a {@code [selected_service:…]} no histórico (rejeita eco numérico «1» que não é
      * serviço).
      */
@@ -382,6 +427,9 @@ public final class SchedulingExplicitTimeShortcut {
         }
         String t = raw.strip();
         if (t.matches("\\d+")) {
+            return false;
+        }
+        if (looksLikeTimeOrPreferencePhraseNotServiceName(t)) {
             return false;
         }
         return looksLikeValidServiceName(t);

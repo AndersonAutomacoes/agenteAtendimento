@@ -143,6 +143,36 @@ class SchedulingExplicitTimeShortcutTest {
     }
 
     @Test
+    void tryExpand_longVoiceSentence_usesCatalogMatchInsteadOfTreatingFullTextAsService() {
+        String iso = "2026-04-27";
+        String line =
+                "Calendário (sim). Horários livres em "
+                        + iso
+                        + " (America/Sao_Paulo): 10:00, 11:00, 11:30";
+        when(appointmentService.resolveCatalogServiceMentionFromText(eq(TENANT), any()))
+                .thenReturn(Optional.of("Troca de Pastilhas"));
+        when(appointmentService.isServiceInTenantCatalog(eq(TENANT), eq("Troca de Pastilhas")))
+                .thenReturn(true);
+        when(scheduling.checkAvailability(eq(TENANT), eq(iso))).thenReturn(line);
+
+        Optional<SlotChoiceExpansion> r =
+                SchedulingExplicitTimeShortcut.tryExpand(
+                        TENANT,
+                        "Por favor, agende para amanhã, troca de pastilhas às 11 horas da manhã.",
+                        List.of(),
+                        ZONE,
+                        scheduling,
+                        appointmentService);
+
+        assertThat(r).isPresent();
+        assertThat(r.get().hardcodedAssistantReply()).hasValueSatisfying(
+                reply ->
+                        assertThat(reply)
+                                .contains("Troca de Pastilhas")
+                                .doesNotContain("Por favor, agende"));
+    }
+
+    @Test
     void sanitizeServiceHint_stripsPortugueseBookingBoilerplate() {
         assertThat(SchedulingExplicitTimeShortcut.sanitizeServiceHintAfterStrip("quero agendar uma revisão para"))
                 .isEqualTo("revisão");

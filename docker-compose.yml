@@ -29,6 +29,10 @@
 #
 # Webhook Evolution → cerebro-api: use http://api:8080/... ou http://cerebro-api:8080/...
 # (alias DNS no serviço api). Dentro do container evolution_api, localhost NÃO é o Spring.
+#
+# Homologação (GHCR / DigitalOcean): inicie só a API com
+#   docker compose --profile hml up -d axezap-api
+# (imagem, secrets e .env: ver deploy na pipeline e variáveis GHCR_IMAGE, DATABASE_URL_HML, GROQ_API_KEY)
 
 networks:
   cerebro_internal:
@@ -146,6 +150,31 @@ services:
       - ./secrets/gen-lang-client-0922152835-firebase-adminsdk-fbsvc-525d75aa1f.json:/run/firebase.json:ro
       # Google Calendar: mesmo JSON de service account que em bootstrap (ou copie para secrets/). Host: variável opcional.
       - ${GOOGLE_CALENDAR_CREDENTIALS_FILE:-./bootstrap/src/main/resources/credentials.json}:/run/google-calendar-sa.json:ro
+
+  axezap-api:
+    profiles:
+      - hml
+    image: ${GHCR_IMAGE:?set GHCR_IMAGE in .env}
+    container_name: axezap-hml
+    restart: always
+    networks:
+      - cerebro_internal
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: ${DATABASE_URL_HML}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      DD_SERVICE: axezap-hml
+      DD_ENV: hml
+      DD_VERSION: 1.0.0
+    labels:
+      com.datadoghq.ad.logs: '[{"source": "java", "service": "axezap-hml"}]'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
 
 volumes:
   cerebro_pgdata:

@@ -56,6 +56,31 @@ class GeminiChatEngineAdapterSchedulingIntentTest {
     }
 
     @Test
+    void shortUserAgreementWithResolvableDate_trueAfterAssistantAskedToConfirmDate() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage(
+                                "Para a troca de óleo, a quarta-feira seria 29 de abril de 2026, correto?"));
+        AICompletionRequest req =
+                new AICompletionRequest(tenant, hist, List.of(), "Está correto.", "", AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.isShortUserAgreementWithResolvableSchedulingDate(req, ZONE))
+                .isTrue();
+    }
+
+    @Test
+    void shortUserAgreementWithResolvableDate_trueForSimWithDateInHistory() {
+        TenantId tenant = new TenantId("tenant-1");
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage(
+                                "Só confirmando: 28/04/2026 para a revisão, está certo?"));
+        AICompletionRequest req = new AICompletionRequest(tenant, hist, List.of(), "Sim.", "", AiChatProvider.GEMINI);
+        assertThat(GeminiChatEngineAdapter.isShortUserAgreementWithResolvableSchedulingDate(req, ZONE))
+                .isTrue();
+    }
+
+    @Test
     void concreteDateInSchedulingFlow_trueWhenUserSendsOnlyDateAfterServiceAndPrompt() {
         TenantId tenant = new TenantId("tenant-1");
         List<Message> hist =

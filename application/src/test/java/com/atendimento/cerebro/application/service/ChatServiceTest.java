@@ -668,6 +668,31 @@ class ChatServiceTest {
     }
 
     @Test
+    void chat_shortConfirmation_afterSchedulingConfirmationQuestion_doesNotTriggerNumericSanityCheck() {
+        ConversationContext existing =
+                ConversationContext.builder()
+                        .tenantId(tenantId)
+                        .conversationId(conversationId)
+                        .messages(
+                                List.of(
+                                        Message.assistantMessage(
+                                                "Antes de concluir o agendamento, confirme se você realmente deseja "
+                                                        + "agendar a troca de pastilhas para o dia 27/04/2026, às 11:00.")))
+                        .build();
+        when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.empty());
+        when(conversationContextStore.load(tenantId, conversationId)).thenReturn(Optional.of(existing));
+        when(knowledgeBase.findTopThreeRelevantFragments(tenantId, "sim")).thenReturn(List.of());
+        when(aiEngine.complete(any(AICompletionRequest.class))).thenReturn(new AICompletionResponse("ok"));
+
+        var result =
+                chatService.chat(new ChatCommand(tenantId, conversationId, "sim", null, AiChatProvider.GEMINI));
+
+        verify(aiEngine).complete(any(AICompletionRequest.class));
+        assertThat(result.assistantMessage()).isEqualTo("ok");
+        assertThat(result.assistantMessage()).doesNotContain("número de uma opção");
+    }
+
+    @Test
     void chat_rescheduleIntent_doesNotUseExplicitTimeShortcutHardcodedPath() {
         ConversationContext existing =
                 ConversationContext.builder()

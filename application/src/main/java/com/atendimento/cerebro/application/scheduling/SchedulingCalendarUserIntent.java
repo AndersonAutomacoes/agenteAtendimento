@@ -56,8 +56,14 @@ public final class SchedulingCalendarUserIntent {
     }
 
     /**
-     * Extrai a última data dd/MM(yyyy) do texto, usando {@code defaultYear} quando o ano falta.
+     * Extrai a última data dd/MM(yyyy) do texto, ou em formato falado «27 do 4 de 2026», usando {@code
+     * defaultYear} para datas só com dia/mês.
      */
+    private static final Pattern COLOQUIAL_DAY_OF_MONTH_IN_YEAR =
+            Pattern.compile(
+                    "(?i)(?<!\\d)(\\d{1,2})\\s+do?\\s+(\\d{1,2})\\s+de\\s+([0-9]{2,4})\\b(?!\\s*/\\s*\\d)",
+                    Pattern.CASE_INSENSITIVE);
+
     public static Optional<LocalDate> lastBrazilianDateInText(String text, int defaultYear) {
         if (text == null || text.isBlank()) {
             return Optional.empty();
@@ -75,7 +81,78 @@ public final class SchedulingCalendarUserIntent {
                 // skip invalid
             }
         }
+        if (last != null) {
+            return Optional.of(last);
+        }
+        Matcher c = COLOQUIAL_DAY_OF_MONTH_IN_YEAR.matcher(text);
+        while (c.find()) {
+            int d = Integer.parseInt(c.group(1));
+            int month = Integer.parseInt(c.group(2));
+            int year = normalizeYear(c.group(3).strip());
+            try {
+                last = LocalDate.of(year, month, d);
+            } catch (Exception ignored) {
+                // skip invalid
+            }
+        }
+        if (last == null) {
+            last = lastCommaSeparatedDayMonthYearInText(text);
+        }
         return Optional.ofNullable(last);
+    }
+
+    /**
+     * STT: «70, 27, 4, 2026, 12 horas» (código + dia + mês + ano) ou «27, 4, 2026».
+     */
+    private static LocalDate lastCommaSeparatedDayMonthYearInText(String text) {
+        LocalDate best = null;
+        Matcher m4 =
+                Pattern.compile(
+                                "(?i)(?:^|[\\s,.;])(\\d{1,2})\\s*,\\s*(\\d{1,2})\\s*,\\s*(\\d{1,2})\\s*,\\s*([0-9]{4})")
+                        .matcher(text);
+        while (m4.find()) {
+            int maybeId = Integer.parseInt(m4.group(1));
+            int day = Integer.parseInt(m4.group(2));
+            int month = Integer.parseInt(m4.group(3));
+            int year = Integer.parseInt(m4.group(4));
+            if (year < 2000 || year > 2100) {
+                continue;
+            }
+            if (day >= 1
+                    && day <= 31
+                    && month >= 1
+                    && month <= 12
+                    && maybeId >= 1
+                    && maybeId <= 99) {
+                try {
+                    best = LocalDate.of(year, month, day);
+                } catch (Exception ignored) {
+                    // skip
+                }
+            }
+        }
+        if (best != null) {
+            return best;
+        }
+        Matcher m3 =
+                Pattern.compile("(?i)(?<!\\d)(\\d{1,2})\\s*,\\s*(\\d{1,2})\\s*,\\s*([0-9]{4})\\b")
+                        .matcher(text);
+        while (m3.find()) {
+            int day = Integer.parseInt(m3.group(1));
+            int month = Integer.parseInt(m3.group(2));
+            int year = Integer.parseInt(m3.group(3));
+            if (year < 2000 || year > 2100) {
+                continue;
+            }
+            if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+                try {
+                    best = LocalDate.of(year, month, day);
+                } catch (Exception ignored) {
+                    // skip
+                }
+            }
+        }
+        return best;
     }
 
     /** Próxima ocorrência (incluindo hoje) de dia da semana em pt-BR (ex.: «quinta-feira», «terça», «sabado»). */

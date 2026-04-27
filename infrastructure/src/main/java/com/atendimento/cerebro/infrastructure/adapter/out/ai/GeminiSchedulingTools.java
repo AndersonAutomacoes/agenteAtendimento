@@ -505,7 +505,30 @@ public class GeminiSchedulingTools {
                         inferred.get());
                 serviceResolved = inferred.get();
             }
-        } else if (serviceResolved.isEmpty()
+        }
+        if (!serviceResolved.isEmpty()
+                && !appointmentService.isServiceInTenantCatalog(tenantId, serviceResolved)
+                && looksLikeBookingConfirmation(latestUserMessage)) {
+            Optional<String> userMentioned =
+                    SchedulingExplicitTimeShortcut.recoverServiceHintFromUserHistory(conversationHistory);
+            if (userMentioned.isPresent()
+                    && appointmentService.isServiceInTenantCatalog(tenantId, userMentioned.get().strip())) {
+                LOG.info(
+                        "create_appointment: serviço corrigido a partir de menção do cliente no histórico (tenant={} "
+                                + "rejectedParam={} resolved={})",
+                        tenantId.value(),
+                        serviceResolved,
+                        userMentioned.get().strip());
+                serviceResolved = userMentioned.get().strip();
+            }
+        }
+        if (SchedulingExplicitTimeShortcut.looksLikeTimeOrPreferencePhraseNotServiceName(serviceResolved)) {
+            serviceResolved =
+                    SchedulingExplicitTimeShortcut.recoverServiceHintFromUserHistory(conversationHistory)
+                            .map(String::strip)
+                            .orElse("");
+        }
+        if (serviceResolved.isEmpty()
                 || !SchedulingServiceAttribution.isServiceAccountedByConversation(
                         serviceResolved, conversationHistory, latestUserMessage)) {
             LOG.warn(
@@ -602,10 +625,15 @@ public class GeminiSchedulingTools {
                             + "cancelar e ainda não houver id escolhido.")
     public String get_active_appointments() {
         toolInvocationCount.incrementAndGet();
+        boolean newBookingOngoing =
+                SchedulingUserReplyNormalizer.hasRecentNewAppointmentBookingRequestInHistory(
+                        conversationHistory, 12);
+        boolean rescheduleOnLatest =
+                SchedulingUserReplyNormalizer.looksLikeRescheduleOrTimeChangeIntent(latestUserMessage);
+        boolean recentRescheduleInHistory =
+                SchedulingUserReplyNormalizer.hasRecentRescheduleUserIntentInHistory(conversationHistory, 12);
         boolean rescheduleContext =
-                SchedulingUserReplyNormalizer.looksLikeRescheduleOrTimeChangeIntent(latestUserMessage)
-                        || SchedulingUserReplyNormalizer.hasRecentRescheduleUserIntentInHistory(
-                                conversationHistory, 12);
+                rescheduleOnLatest || (recentRescheduleInHistory && !newBookingOngoing);
         String listed =
                 appointmentService.getActiveAppointments(
                         tenantId, conversationId, calendarZone, rescheduleContext);

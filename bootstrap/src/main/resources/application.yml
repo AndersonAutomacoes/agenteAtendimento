@@ -151,6 +151,18 @@ cerebro:
 server:
   port: 8080
 
+management:
+  endpoints:
+    web:
+      base-path: /
+      path-mapping:
+        health: health
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
 # Camel expõe o REST DSL no Servlet dedicado (evita colisão com o DispatcherServlet do Spring MVC).
 camel:
   servlet:

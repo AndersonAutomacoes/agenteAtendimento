@@ -46,6 +46,7 @@ import com.atendimento.cerebro.domain.tenant.TenantConfiguration;
 import com.atendimento.cerebro.application.scheduling.SchedulingEnforcedChoice;
 import com.atendimento.cerebro.application.scheduling.SlotChoiceExpansion;
 import com.atendimento.cerebro.application.scheduling.SchedulingExplicitTimeShortcut;
+import com.atendimento.cerebro.application.scheduling.SchedulingRescheduleIdExtractor;
 import com.atendimento.cerebro.application.scheduling.SchedulingToolContext;
 import com.atendimento.cerebro.application.scheduling.SystemPromptPlaceholders;
 import com.atendimento.cerebro.application.scheduling.SchedulingCreateAppointmentResult;
@@ -99,9 +100,6 @@ public class ChatService implements ChatUseCase {
             Pattern.compile(
                     "^(sim|sí|confirmo|confirmado|pode|ok|isso|perfeito|fechado|pode\\s+ser|pode\\s+confirmar)\\b[.!\\s]*$",
                     Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-    private static final Pattern RESCHEDULE_WITH_ID =
-            Pattern.compile(
-                    "(?i)\\b(reagend\\w*|remarc\\w*|mud\\w*)\\b(?:\\s+o)?(?:\\s+agendamento)?(?:\\s+(?:id|c[oó]digo|n[uú]mero|numero|n°|#))?\\s*[:#-]?\\s*(\\d{1,19})\\b");
     private static final Pattern CLOCK_TIME = Pattern.compile("\\b([01]?\\d|2[0-3]):([0-5]\\d)\\b");
     private static final Pattern CLOCK_TIME_ONLY = Pattern.compile("^\\s*([01]?\\d|2[0-3]):([0-5]\\d)\\s*$");
 
@@ -581,7 +579,9 @@ public class ChatService implements ChatUseCase {
                                 tenantId, conversationId.value(), calendarZone, recentRescheduleRequest.get());
             }
             if (toCancelId.isEmpty()) {
-                toCancelId = findRecentRescheduleAppointmentIdFromHistory(historyForAi);
+                toCancelId =
+                        findRecentRescheduleAppointmentIdFromHistory(
+                                historyForAi, calendarZone, userText);
             }
             if (toCancelId.isEmpty() && recentRescheduleIntentInHistory) {
                 toCancelId =
@@ -922,6 +922,9 @@ public class ChatService implements ChatUseCase {
         if (SchedulingUserReplyNormalizer.parseLastDraftFromHistory(historyForAi).isPresent()) {
             return Optional.empty();
         }
+        if (lastAssistantAskedForSchedulingConfirmation(historyForAi)) {
+            return Optional.empty();
+        }
         boolean expectsNumericChoice =
                 SchedulingUserReplyNormalizer.shouldInterpretNumericChoiceAsServiceSelection(historyForAi)
                         || SchedulingUserReplyNormalizer.lastAssistantSuggestedAppointmentCancellation(historyForAi)
@@ -961,6 +964,28 @@ public class ChatService implements ChatUseCase {
         return false;
     }
 
+    private static boolean lastAssistantAskedForSchedulingConfirmation(List<Message> history) {
+        if (history == null || history.isEmpty()) {
+            return false;
+        }
+        for (int i = history.size() - 1; i >= 0; i--) {
+            Message m = history.get(i);
+            if (m.role() != MessageRole.ASSISTANT || m.content() == null || m.content().isBlank()) {
+                continue;
+            }
+            String c = m.content().toLowerCase(Locale.ROOT);
+            if (c.contains(SchedulingUserReplyNormalizer.SERVICE_OPTION_MAP_APPENDIX_TOKEN.toLowerCase(Locale.ROOT))
+                    || c.contains(CancelOptionMap.APPENDIX_PREFIX.toLowerCase(Locale.ROOT))) {
+                return false;
+            }
+            return c.contains("posso confirmar o agendamento")
+                    || c.contains("antes de concluir o agendamento")
+                    || c.contains("deseja confirmar o agendamento")
+                    || c.contains("quer confirmar o agendamento");
+        }
+        return false;
+    }
+
     private static Optional<SchedulingEnforcedChoice> maybeRecoverEnforcedChoiceFromHistoryOnConfirmation(
             boolean schedulingTools,
             String userText,
@@ -983,8 +1008,13 @@ public class ChatService implements ChatUseCase {
         return SHORT_CONFIRMATION.matcher(userText.strip()).matches();
     }
 
-    private static Optional<Long> findRecentRescheduleAppointmentIdFromHistory(List<Message> history) {
-        if (history == null || history.isEmpty()) {
+    private static Optional<Long> findRecentRescheduleAppointmentIdFromHistory(
+            List<Message> history, ZoneId calendarZone, String currentUserText) {
+        if (history == null || history.isEmpty() || calendarZone == null) {
+            return Optional.empty();
+        }
+        if (currentUserText != null
+                && SchedulingUserReplyNormalizer.looksLikeNewAppointmentBookingRequest(currentUserText)) {
             return Optional.empty();
         }
         int lowerBound = Math.max(0, history.size() - 12);
@@ -997,14 +1027,10 @@ public class ChatService implements ChatUseCase {
             if (content == null || content.isBlank()) {
                 continue;
             }
-            Matcher matcher = RESCHEDULE_WITH_ID.matcher(content.strip());
-            if (!matcher.find()) {
-                continue;
-            }
-            try {
-                return Optional.of(Long.parseLong(matcher.group(2)));
-            } catch (NumberFormatException ignored) {
-                // ignore malformed IDs and continue scanning
+            Optional<Long> from =
+                    SchedulingRescheduleIdExtractor.extractFromUserText(content.strip(), calendarZone);
+            if (from.isPresent()) {
+                return from;
             }
         }
         return Optional.empty();
@@ -1029,7 +1055,8 @@ public class ChatService implements ChatUseCase {
         if (explicit.isEmpty()) {
             return Optional.empty();
         }
-        Optional<Long> appointmentId = findRecentRescheduleAppointmentIdFromHistory(historyForAi);
+        Optional<Long> appointmentId =
+                findRecentRescheduleAppointmentIdFromHistory(historyForAi, calendarZone, userText);
         if (appointmentId.isEmpty()) {
             appointmentId =
                     appointmentService.getSingleActiveAppointmentId(tenantId, conversationId, calendarZone);
@@ -1098,8 +1125,8 @@ public class ChatService implements ChatUseCase {
         if (!schedulingTools || userText == null || userText.isBlank()) {
             return Optional.empty();
         }
-        Matcher idMatcher = RESCHEDULE_WITH_ID.matcher(userText.strip());
-        if (!idMatcher.find()) {
+        Optional<Long> idOpt = SchedulingRescheduleIdExtractor.extractFromUserText(userText.strip(), calendarZone);
+        if (idOpt.isEmpty()) {
             return Optional.empty();
         }
         Optional<SchedulingEnforcedChoice> explicit =
@@ -1118,12 +1145,7 @@ public class ChatService implements ChatUseCase {
         if (sameDayWithClock) {
             return Optional.empty();
         }
-        long appointmentId;
-        try {
-            appointmentId = Long.parseLong(idMatcher.group(2));
-        } catch (NumberFormatException ignored) {
-            return Optional.empty();
-        }
+        long appointmentId = idOpt.get();
         String zoneId = calendarZone != null ? calendarZone.getId() : ZoneId.systemDefault().getId();
         Optional<TenantAppointmentListItem> active =
                 tenantAppointmentQuery.findByIdForTenantAndConversation(
@@ -1245,14 +1267,19 @@ public class ChatService implements ChatUseCase {
             return Optional.empty();
         }
         String normalized = userText.strip();
-        boolean hasExplicitRescheduleId = RESCHEDULE_WITH_ID.matcher(normalized).find();
+        boolean hasExplicitRescheduleId =
+                SchedulingRescheduleIdExtractor.extractFromUserText(normalized, calendarZone).isPresent();
         boolean hasExplicitDateTime =
                 SchedulingExplicitTimeShortcut.tryParseExplicitDateAndTimeInUserText(normalized, calendarZone)
                                 .isPresent()
                         || parseTodayTimeFallback(userText, calendarZone).isPresent();
+        boolean newBookingMentionedRecently =
+                SchedulingUserReplyNormalizer.hasRecentNewAppointmentBookingRequestInHistory(
+                        historyForAi, 12);
         boolean listIntentInRescheduleFlow =
                 SchedulingUserReplyNormalizer.looksLikeListActiveAppointmentsIntent(normalized)
-                        && SchedulingUserReplyNormalizer.hasRecentRescheduleUserIntentInHistory(historyForAi, 12);
+                        && SchedulingUserReplyNormalizer.hasRecentRescheduleUserIntentInHistory(historyForAi, 12)
+                        && !newBookingMentionedRecently;
         boolean shouldAutoListForReschedule =
                 rescheduleIntent && !hasExplicitRescheduleId && !hasExplicitDateTime;
         if (!listIntentInRescheduleFlow && !shouldAutoListForReschedule) {
@@ -1282,16 +1309,12 @@ public class ChatService implements ChatUseCase {
                 || conversationId.isBlank()) {
             return Optional.empty();
         }
-        Matcher idMatcher = RESCHEDULE_WITH_ID.matcher(userText.strip());
-        if (!idMatcher.find()) {
+        Optional<Long> idForReschedule =
+                SchedulingRescheduleIdExtractor.extractFromUserText(userText.strip(), calendarZone);
+        if (idForReschedule.isEmpty()) {
             return Optional.empty();
         }
-        long appointmentId;
-        try {
-            appointmentId = Long.parseLong(idMatcher.group(2));
-        } catch (NumberFormatException ignored) {
-            return Optional.empty();
-        }
+        long appointmentId = idForReschedule.get();
         String zoneId = calendarZone != null ? calendarZone.getId() : ZoneId.systemDefault().getId();
         Optional<TenantAppointmentListItem> target =
                 tenantAppointmentQuery.findByIdForTenantAndConversation(

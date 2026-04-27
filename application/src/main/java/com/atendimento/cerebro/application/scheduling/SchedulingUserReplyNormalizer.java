@@ -808,6 +808,9 @@ public final class SchedulingUserReplyNormalizer {
 
     /**
      * Nas últimas {@code maxUserMessages} mensagens do utilizador, houve pedido explícito de reagendar/remarcar.
+     * Mensagens que são só {@linkplain #looksLikeNewAppointmentBookingRequest(String) um pedido de novo
+     * agendamento} (ex. «quero agendar para quarta-feira») são ignoradas, para o fluxo de marcação de um novo
+     * atendimento não manter o contexto de reagendamento.
      */
     public static boolean hasRecentRescheduleUserIntentInHistory(List<Message> history, int maxUserMessages) {
         if (history == null || history.isEmpty() || maxUserMessages <= 0) {
@@ -827,7 +830,39 @@ public final class SchedulingUserReplyNormalizer {
             if (c == null || c.isBlank()) {
                 continue;
             }
+            if (looksLikeNewAppointmentBookingRequest(c) && !looksLikeRescheduleOrTimeChangeIntent(c)) {
+                continue;
+            }
             if (looksLikeRescheduleOrTimeChangeIntent(c)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Pelo menos numa das últimas {@code maxUserMessages} mensagens de utilizador, o cliente pediu um <em>novo</em>
+     * agendamento (ex. «gostaria de agendar»), sem sinais conflitantes de reagendamento nessa linha.
+     */
+    public static boolean hasRecentNewAppointmentBookingRequestInHistory(List<Message> history, int maxUserMessages) {
+        if (history == null || history.isEmpty() || maxUserMessages <= 0) {
+            return false;
+        }
+        int userSeen = 0;
+        for (int i = history.size() - 1; i >= 0; i--) {
+            Message m = history.get(i);
+            if (m.role() != MessageRole.USER) {
+                continue;
+            }
+            userSeen++;
+            if (userSeen > maxUserMessages) {
+                break;
+            }
+            String c = m.content();
+            if (c == null || c.isBlank()) {
+                continue;
+            }
+            if (looksLikeNewAppointmentBookingRequest(c) && !looksLikeRescheduleOrTimeChangeIntent(c)) {
                 return true;
             }
         }
@@ -885,7 +920,9 @@ public final class SchedulingUserReplyNormalizer {
             return false;
         }
         String n = Normalizer.normalize(userMessage.strip(), Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
-        if (Pattern.compile("\\b(reagendar|reagendamento|remarcar)\\b").matcher(n).find()) {
+        if (Pattern.compile("\\b(reagend\\w*|remarcar|remarca(ção|cao|co))\\b", Pattern.CASE_INSENSITIVE)
+                .matcher(n)
+                .find()) {
             return true;
         }
         boolean changeVerb = Pattern.compile("\\b(trocar|alterar|mudar)\\b").matcher(n).find();
@@ -899,6 +936,41 @@ public final class SchedulingUserReplyNormalizer {
             return true;
         }
         return changeVerb && Pattern.compile("\\b(às|as)\\s+\\d").matcher(n).find();
+    }
+
+    /**
+     * Pedido de <em>novo</em> agendamento (sem menção a reagendamento) — usado para não reutilizar ID de
+     * reagendamento de turnos anteriores no histórico (ex. STT «Realize o agendamento…» + áudio de outro fluxo).
+     */
+    public static boolean looksLikeNewAppointmentBookingRequest(String userMessage) {
+        if (userMessage == null || userMessage.isBlank()) {
+            return false;
+        }
+        if (looksLikeRescheduleOrTimeChangeIntent(userMessage.strip())) {
+            return false;
+        }
+        String n = Normalizer.normalize(userMessage.strip(), Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
+        if (n.contains("reagend") || n.contains("remarc")) {
+            return false;
+        }
+        if (n.contains("realize o agendamento")
+                || n.contains("realiz o agendamento")
+                || n.contains("realize a marca")
+                || n.contains("realize a marcação")
+                || (n.contains("realize") && n.contains("agendamento") && !n.contains("reagend"))
+                || n.contains("gostaria de agendar")
+                || n.contains("quero agendar")
+                || n.contains("desejo agendar")) {
+            return true;
+        }
+        if (Pattern.compile(
+                        "\\b(por\\s+favor,?\\s*agende|agende (?:para|o)|fazer o agendamento|fazer um agendamento|"
+                                + "marcar (?:um |o )?hor[aá]rio|marcar (?:para|o))")
+                .matcher(n)
+                .find()) {
+            return true;
+        }
+        return false;
     }
 
     /**

@@ -346,6 +346,12 @@ public class AppointmentService {
         if (service.isEmpty()) {
             return "O serviço mencionado não é atendido. Estes são os serviços disponíveis:\n" + block;
         }
+        if (SchedulingExplicitTimeShortcut.looksLikeTimeOrPreferencePhraseNotServiceName(service)) {
+            return "O pedido de confirmação foi interpretado com um trecho que parece descrever horário, não o nome de um "
+                    + "serviço. Se o serviço desejado não constar da lista abaixo, neste atendimento ainda não o "
+                    + "oferecemos. Serviços disponíveis agora:\n"
+                    + block;
+        }
         return "O serviço \""
                 + service
                 + "\" não é atendido. Estes são os serviços disponíveis:\n"
@@ -493,10 +499,7 @@ public class AppointmentService {
                     .append("\n");
         }
         sb.append("\n")
-                .append(
-                        forReschedule
-                                ? LIST_APPOINTMENTS_RESCHEDULE_HINT_FOOTER_PT
-                                : LIST_APPOINTMENTS_CANCEL_HINT_FOOTER_PT)
+                .append(LIST_APPOINTMENTS_RESCHEDULE_HINT_FOOTER_PT)
                 .append("\n");
         sb.append(CancelOptionMap.buildAppendix(optionToAppointmentId));
         return sb.toString();
