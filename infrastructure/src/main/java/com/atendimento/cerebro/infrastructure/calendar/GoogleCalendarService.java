@@ -77,13 +77,17 @@ public class GoogleCalendarService {
         String cfgCal = props.getCalendarId();
         LOG.info(
                 "GoogleCalendarService inicializado: mock=false; cerebro.google.calendar.calendar-id definido={} valor={}; "
-                        + "credentialsClasspath={}; serviceAccountJsonPath={}",
+                        + "credentialsClasspath={}; serviceAccountJsonPath={}; secondaryServiceAccountJsonPath={}",
                 cfgCal != null && !cfgCal.isBlank(),
                 cfgCal == null || cfgCal.isBlank() ? "<vazio>" : cfgCal,
                 props.getCredentialsClasspath(),
                 props.getServiceAccountJsonPath() == null || props.getServiceAccountJsonPath().isBlank()
                         ? "<vazio>"
-                        : props.getServiceAccountJsonPath());
+                        : props.getServiceAccountJsonPath(),
+                props.getSecondaryServiceAccountJsonPath() == null
+                                || props.getSecondaryServiceAccountJsonPath().isBlank()
+                        ? "<vazio>"
+                        : props.getSecondaryServiceAccountJsonPath());
     }
 
     /**
@@ -435,17 +439,42 @@ public class GoogleCalendarService {
                 LOG.debug("Google Calendar: credenciais a partir do ficheiro {}", p.toAbsolutePath());
                 return Files.readAllBytes(p);
             }
-            LOG.warn(
-                    "cerebro.google.calendar.service-account-json-path não é ficheiro válido ({}). A usar classpath:{}",
-                    p.toAbsolutePath(),
-                    props.getCredentialsClasspath());
+            if (Files.exists(p) && Files.isDirectory(p)) {
+                LOG.warn(
+                        "cerebro.google.calendar.service-account-json-path aponta para um directório ({}). "
+                                + "Isto acontece frequentemente com bind mount em Docker se o ficheiro de origem no host não existir. "
+                                + "Crie o JSON no host ou ajuste GOOGLE_CALENDAR_CREDENTIALS_FILE.",
+                        p.toAbsolutePath());
+            } else {
+                LOG.warn(
+                        "cerebro.google.calendar.service-account-json-path não é ficheiro válido ({}).",
+                        p.toAbsolutePath());
+            }
+        }
+        String secondary = props.getSecondaryServiceAccountJsonPath();
+        if (secondary != null && !secondary.isBlank()) {
+            Path p2 = Path.of(secondary.strip());
+            if (Files.isRegularFile(p2)) {
+                LOG.info(
+                        "Google Calendar: credenciais a partir de secondary-service-account-json-path (fallback) {}",
+                        p2.toAbsolutePath());
+                return Files.readAllBytes(p2);
+            }
+            if (Files.exists(p2) && Files.isDirectory(p2)) {
+                LOG.warn(
+                        "cerebro.google.calendar.secondary-service-account-json-path aponta para directório: {}",
+                        p2.toAbsolutePath());
+            }
         }
         String cp = props.getCredentialsClasspath() != null ? props.getCredentialsClasspath() : "credentials.json";
         ClassPathResource res = new ClassPathResource(cp);
         if (!res.exists()) {
             throw new IllegalStateException(
-                    "Credenciais Google Calendar não encontradas: nem ficheiro em service-account-json-path nem classpath:"
-                            + cp);
+                    "Credenciais Google Calendar não encontradas: configure um ficheiro JSON válido em "
+                            + "cerebro.google.calendar.service-account-json-path ou secondary-service-account-json-path, "
+                            + "ou coloque "
+                            + cp
+                            + " no classpath, ou ative CEREBRO_GOOGLE_CALENDAR_MOCK=true.");
         }
         LOG.debug("Google Calendar: credenciais a partir do classpath {}", cp);
         try (InputStream in = res.getInputStream()) {

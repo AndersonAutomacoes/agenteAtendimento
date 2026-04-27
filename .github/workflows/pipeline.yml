@@ -113,6 +113,7 @@ jobs:
           port: 22
           script: |
             mkdir -p /opt/axezap/docker/postgres
+            mkdir -p /opt/axezap/secrets
             chmod 755 /opt/axezap
 
       - name: Copy docker-compose to server
@@ -139,6 +140,39 @@ jobs:
           strip_components: 0
           overwrite: true
 
+      # O Docker usa GOOGLE_CALENDAR_CREDENTIALS_FILE = caminho no host (não o JSON). Este passo grava o JSON a partir do
+      # segredo (conteúdo do ficheiro .json) em disco no runner e copia para o VPS. Alternativa: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 no passo "Remote pull and up".
+      - name: Gravar JSON Google Calendar a partir do segredo (opcional)
+        id: calendar_json_file
+        run: |
+          mkdir -p .deploy-tmp
+          if [ -z "$CAL_RAW" ]; then
+            echo "has_file=false" >> "$GITHUB_OUTPUT"
+            echo "Sem secret GOOGLE_CALENDAR_CREDENTIALS_FILE (conteúdo JSON); a usar B64 no servidor se definido."
+            exit 0
+          fi
+          printf '%s' "$CAL_RAW" > .deploy-tmp/google-calendar-sa.json
+          if [ ! -s .deploy-tmp/google-calendar-sa.json ]; then
+            echo "has_file=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "has_file=true" >> "$GITHUB_OUTPUT"
+        env:
+          # Nome do segredo: JSON completo (texto) da service account. Não confundir com a env do compose, que é um path.
+          CAL_RAW: ${{ secrets.GOOGLE_CALENDAR_CREDENTIALS_FILE }}
+
+      - name: Copiar google-calendar-sa.json para o servidor
+        if: steps.calendar_json_file.outputs.has_file == 'true'
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_IP_HML }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          source: ".deploy-tmp/google-calendar-sa.json"
+          target: "/opt/axezap/secrets/"
+          overwrite: true
+
       - name: Remote pull and up
         uses: appleboy/ssh-action@v1.0.3
         env:
@@ -149,6 +183,8 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           FIREBASE_SERVICE_ACCOUNT_JSON_B64: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON_B64 }}
+          # Opcional: mesmo padrão do Firebase — JSON em base64 (preenchido no GitHub) gravado no servidor; sobrescreve ficheiro do passo scp.
+          GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64: ${{ secrets.GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 }}
         with:
           host: ${{ secrets.SERVER_IP_HML }}
           username: ${{ secrets.SERVER_USER }}
@@ -156,7 +192,7 @@ jobs:
           port: 22
           command_timeout: 30m
           script_stop: true
-          envs: GHCR_IMAGE,GHCR_WEB_IMAGE,GHCR_READ_TOKEN,DATABASE_URL_HML,GROQ_API_KEY,GEMINI_API_KEY,FIREBASE_SERVICE_ACCOUNT_JSON_B64
+          envs: GHCR_IMAGE,GHCR_WEB_IMAGE,GHCR_READ_TOKEN,DATABASE_URL_HML,GROQ_API_KEY,GEMINI_API_KEY,FIREBASE_SERVICE_ACCOUNT_JSON_B64,GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64
           script: |
             set -e
             mkdir -p /opt/axezap
@@ -177,7 +213,7 @@ jobs:
             umask 026
             touch .env
             # Remove reescritas anteriores; SPRING_DATASOURCE_URL: cópia com host "postgres" em ambientes antigos
-            awk '/^(GHCR_IMAGE|GHCR_WEB_IMAGE|DATABASE_URL_HML|GROQ_API_KEY|GEMINI_API_KEY|SPRING_DATASOURCE_URL)=/{next}1' .env > .env.tmp
+            awk '/^(GHCR_IMAGE|GHCR_WEB_IMAGE|DATABASE_URL_HML|GROQ_API_KEY|GEMINI_API_KEY|SPRING_DATASOURCE_URL|GOOGLE_CALENDAR_CREDENTIALS_FILE)=/{next}1' .env > .env.tmp
             mv .env.tmp .env
             {
               echo "GHCR_IMAGE=$GHCR_IMAGE"
@@ -196,6 +232,17 @@ jobs:
               echo "OK: /opt/axezap/secrets/firebase.json atualizado via secret base64."
             else
               echo "AVISO: FIREBASE_SERVICE_ACCOUNT_JSON_B64 vazio; mantendo ficheiro existente em /opt/axezap/secrets/firebase.json (se houver)." >&2
+            fi
+            if [ -n "${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64:-}" ]; then
+              printf '%s' "$GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64" | base64 -d > /opt/axezap/secrets/google-calendar-sa.json
+              chmod 644 /opt/axezap/secrets/google-calendar-sa.json
+              echo "OK: /opt/axezap/secrets/google-calendar-sa.json via GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64."
+            else
+              echo "INFO: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 vazio; a usar ficheiro copiado no deploy (segredo JSON) se existir."
+            fi
+            if [ -f /opt/axezap/secrets/google-calendar-sa.json ] && [ -s /opt/axezap/secrets/google-calendar-sa.json ]; then
+              echo "GOOGLE_CALENDAR_CREDENTIALS_FILE=./secrets/google-calendar-sa.json" >> .env
+              echo "OK: .env define GOOGLE_CALENDAR_CREDENTIALS_FILE para o bind mount do docker-compose (Google Calendar SA)."
             fi
             if [ -f docker-compose.hml.yml ]; then
               cp -f docker-compose.hml.yml docker-compose.yml

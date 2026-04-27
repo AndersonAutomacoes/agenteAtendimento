@@ -12,6 +12,12 @@ public class CerebroGoogleCalendarProperties {
     private String serviceAccountJsonPath = "";
 
     /**
+     * Se {@link #serviceAccountJsonPath} não for um ficheiro válido (ex. volume Docker a apontar para origem inexistente),
+     * tentar este caminho (ex. {@code /run/firebase.json} com a mesma service account e Calendar API ativada no GCP).
+     */
+    private String secondaryServiceAccountJsonPath = "";
+
+    /**
      * ID do calendário Google (ex.: e-mail ou ID do calendário partilhado). Se vazio, usa {@code client_email} do JSON
      * da service account.
      */
@@ -39,6 +45,14 @@ public class CerebroGoogleCalendarProperties {
 
     public void setServiceAccountJsonPath(String serviceAccountJsonPath) {
         this.serviceAccountJsonPath = serviceAccountJsonPath;
+    }
+
+    public String getSecondaryServiceAccountJsonPath() {
+        return secondaryServiceAccountJsonPath;
+    }
+
+    public void setSecondaryServiceAccountJsonPath(String secondaryServiceAccountJsonPath) {
+        this.secondaryServiceAccountJsonPath = secondaryServiceAccountJsonPath;
     }
 
     public String getCalendarId() {
