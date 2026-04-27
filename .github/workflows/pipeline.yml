@@ -130,10 +130,12 @@ jobs:
             export GHCR_IMAGE
             echo "=== GHCR_IMAGE (minúsculas) ==="
             echo "$GHCR_IMAGE"
-            echo "=== merge .env (awk; evita exit 1 do grep sem linhas) ==="
+            echo "=== merge .env (remove chaves reescritas + SPRING_DATASOURCE_URL) ==="
+            echo "    Isto apaga referências a postgres do .env (env_file); o JDBC vem de DATABASE_URL_HML (secret) → SPRING_DATASOURCE_URL no compose"
             umask 026
             touch .env
-            awk '/^(GHCR_IMAGE|DATABASE_URL_HML|GROQ_API_KEY)=/{next}1' .env > .env.tmp
+            # Remove também SPRING_DATASOURCE_URL: cópia local (jdbc:...@postgres) sobrevivia e o Flyway ainda usava o host "postgres"
+            awk '/^(GHCR_IMAGE|DATABASE_URL_HML|GROQ_API_KEY|SPRING_DATASOURCE_URL)=/{next}1' .env > .env.tmp
             mv .env.tmp .env
             {
               echo "GHCR_IMAGE=$GHCR_IMAGE"

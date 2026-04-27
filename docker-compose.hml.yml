@@ -1,39 +1,104 @@
-# Homologação (DigitalOcean): só a API a partir do GHCR.
-# GHCR_IMAGE: obrigatório, em minúsculas (requisito ghcr.io), ex. ghcr.io/org/repo:develop
-# variáveis .env: /opt/axezap/.env
+# Homologação: mesma stack que docker-compose.yml (Postgres, Redis, Evolution, API),
+# mas a API vem de imagem publicada no GHCR (sem --build no servidor).
+# Deixar a cópia do repositório (ou ficheiros) em /opt/axezap: .env, secrets/, docker-compose.hml.yml
 #
-# --- PostgreSQL (OBRIGATÓRIO: host real, NÃO o nome "postgres" do docker-compose local) ---
-# O erro "UnknownHostException: postgres" = DATABASE_URL_HML ainda aponta para
-#   jdbc:postgresql://postgres:5432/...  (só resolve dentro da stack de desenvolvimento).
-# No GitHub: secret DATABASE_URL_HML = JDBC com host do DO Managed DB, p.ex.:
-#   jdbc:postgresql://<cluster>.b.db.ondigitalocean.com:25060/defaultdb?sslmode=require
-#   (ou user/pass em parâmetros / SPRING_DATASOURCE_USERNAME&PASSWORD; ver consola DO.)
-#
-# A pipeline grava no .env: GHCR_IMAGE, DATABASE_URL_HML, GROQ_API_KEY.
-# Podes acrescentar no servidor: GEMINI_API_KEY, Redis (SPRING_DATA_REDIS_HOST, ...), etc.
-#
-# Uso: cd /opt/axezap && docker compose -f docker-compose.hml.yml up -d
+# Uso: cd /opt/axezap && docker compose -f docker-compose.hml.yml pull && docker compose -f docker-compose.hml.yml up -d
+# GHCR_IMAGE (minúsculas) vem do deploy na pipeline + .env; as restantes variáveis como em .env local.
 
 name: axezap-hml
 
 networks:
-  hml:
+  cerebro_internal:
     driver: bridge
 
 services:
-  axezap-api:
-    image: ${GHCR_IMAGE:?GHCR_IMAGE_required_lowercase_ghcr}
-    container_name: axezap-hml
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: cerebro-postgres
+    networks:
+      - cerebro_internal
+    environment:
+      POSTGRES_USER: cerebro
+      POSTGRES_PASSWORD: cerebro
+      POSTGRES_DB: cerebro
+    ports:
+      - "5433:5432"
+    volumes:
+      - cerebro_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cerebro -d cerebro"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: cerebro-redis
+    networks:
+      - cerebro_internal
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--requirepass", "cerebroredis"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "cerebroredis", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  evolution-api:
+    container_name: evolution_api
+    image: evoapicloud/evolution-api:v2.3.6
     restart: always
     networks:
-      - hml
+      - cerebro_internal
     ports:
-      - "8080:8080"
+      - "8083:8080"
     env_file:
       - .env
+    volumes:
+      - evolution_instances:/evolution/instances
+
+  api:
+    image: ${GHCR_IMAGE:?GHCR_IMAGE_required_lowercase_ghcr}
+    container_name: cerebro-api
+    restart: always
+    networks:
+      cerebro_internal:
+        aliases:
+          - cerebro-api
+    ports:
+      - "8080:8080"
     environment:
-      SPRING_DATASOURCE_URL: ${DATABASE_URL_HML}
-      GROQ_API_KEY: ${GROQ_API_KEY}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/cerebro
+      SPRING_DATASOURCE_USERNAME: cerebro
+      SPRING_DATASOURCE_PASSWORD: cerebro
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: cerebroredis
+      SPRING_AI_VECTORSTORE_PGVECTOR_INITIALIZE_SCHEMA: "true"
+      SPRING_AI_VECTORSTORE_PGVECTOR_DIMENSIONS: "768"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?set GEMINI_API_KEY in .env (Gemini chat + embeddings)}
+      SPRING_AI_GOOGLE_GENAI_API_KEY: ${GEMINI_API_KEY}
+      SPRING_AI_GOOGLE_GENAI_EMBEDDING_API_KEY: ${GEMINI_API_KEY}
+      SPRING_AI_MODEL_EMBEDDING_TEXT: google-genai
+      CEREBRO_WHATSAPP_EVOLUTION_BASE_URL: http://evolution-api:8080
+      CEREBRO_FIREBASE_ENABLED: ${CEREBRO_FIREBASE_ENABLED:-true}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_SERVICE_ACCOUNT_JSON_PATH: ${FIREBASE_SERVICE_ACCOUNT_JSON_PATH:-/run/firebase.json}
+      CEREBRO_GOOGLE_CALENDAR_MOCK: ${CEREBRO_GOOGLE_CALENDAR_MOCK:-false}
+      GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_PATH: ${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_PATH:-/run/google-calendar-sa.json}
+      CEREBRO_MAIL_INVITE_ENABLED: "true"
+      CEREBRO_MAIL_INVITE_PROVIDER: ${CEREBRO_MAIL_INVITE_PROVIDER:-resend}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      CEREBRO_MAIL_INVITE_FROM_EMAIL: ${CEREBRO_MAIL_INVITE_FROM_EMAIL:-}
+      CEREBRO_MAIL_INVITE_FROM_NAME: ${CEREBRO_MAIL_INVITE_FROM_NAME:-}
+      CEREBRO_MAIL_INVITE_REGISTRATION_URL: ${CEREBRO_MAIL_INVITE_REGISTRATION_URL:-}
+      CEREBRO_MAIL_INVITE_SUPPORT_EMAIL: ${CEREBRO_MAIL_INVITE_SUPPORT_EMAIL:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_API_URL: ${GROQ_API_URL:-https://api.groq.com/openai/v1/audio/transcriptions}
+      GROQ_STT_MODEL: ${GROQ_STT_MODEL:-whisper-large-v3}
+      GROQ_STT_LANGUAGE: ${GROQ_STT_LANGUAGE:-pt}
+      GROQ_STT_REQUEST_TIMEOUT_MS: ${GROQ_STT_REQUEST_TIMEOUT_MS:-2000}
       DD_SERVICE: axezap-hml
       DD_ENV: hml
       DD_VERSION: 1.0.0
@@ -45,3 +110,17 @@ services:
       timeout: 5s
       retries: 5
       start_period: 90s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      evolution-api:
+        condition: service_started
+    volumes:
+      - ./secrets/gen-lang-client-0922152835-firebase-adminsdk-fbsvc-525d75aa1f.json:/run/firebase.json:ro
+      - ${GOOGLE_CALENDAR_CREDENTIALS_FILE:-./bootstrap/src/main/resources/credentials.json}:/run/google-calendar-sa.json:ro
+
+volumes:
+  cerebro_pgdata:
+  evolution_instances:

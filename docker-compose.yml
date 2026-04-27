@@ -30,7 +30,7 @@
 # Webhook Evolution → cerebro-api: use http://api:8080/... ou http://cerebro-api:8080/...
 # (alias DNS no serviço api). Dentro do container evolution_api, localhost NÃO é o Spring.
 #
-# Homologação: ver docker-compose.hml.yml (só API via GHCR, sem a stack local).
+# Homologação: ver docker-compose.hml.yml (mesma stack; a API vem de imagem GHCR no servidor).
 
 networks:
   cerebro_internal:
