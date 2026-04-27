@@ -148,6 +148,7 @@ jobs:
           DATABASE_URL_HML: ${{ secrets.DATABASE_URL_HML }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FIREBASE_SERVICE_ACCOUNT_JSON_B64: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON_B64 }}
         with:
           host: ${{ secrets.SERVER_IP_HML }}
           username: ${{ secrets.SERVER_USER }}
@@ -155,7 +156,7 @@ jobs:
           port: 22
           command_timeout: 30m
           script_stop: true
-          envs: GHCR_IMAGE,GHCR_WEB_IMAGE,GHCR_READ_TOKEN,DATABASE_URL_HML,GROQ_API_KEY,GEMINI_API_KEY
+          envs: GHCR_IMAGE,GHCR_WEB_IMAGE,GHCR_READ_TOKEN,DATABASE_URL_HML,GROQ_API_KEY,GEMINI_API_KEY,FIREBASE_SERVICE_ACCOUNT_JSON_B64
           script: |
             set -e
             mkdir -p /opt/axezap
@@ -185,6 +186,15 @@ jobs:
               echo "GROQ_API_KEY=$GROQ_API_KEY"
               echo "GEMINI_API_KEY=$GEMINI_API_KEY"
             } >> .env
+            echo "=== garantir service account Firebase no servidor ==="
+            mkdir -p /opt/axezap/secrets
+            if [ -n "${FIREBASE_SERVICE_ACCOUNT_JSON_B64:-}" ]; then
+              printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON_B64" | base64 -d > /opt/axezap/secrets/firebase.json
+              chmod 600 /opt/axezap/secrets/firebase.json
+              echo "OK: /opt/axezap/secrets/firebase.json atualizado via secret base64."
+            else
+              echo "AVISO: FIREBASE_SERVICE_ACCOUNT_JSON_B64 vazio; mantendo ficheiro existente em /opt/axezap/secrets/firebase.json (se houver)." >&2
+            fi
             if [ -f docker-compose.hml.yml ]; then
               cp -f docker-compose.hml.yml docker-compose.yml
               echo "OK: docker-compose.yml = cópia de docker-compose.hml.yml (default docker compose up usa GHCR, não build local)"
