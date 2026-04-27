@@ -16,6 +16,11 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    show-sql: false
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/cerebro}
     username: ${SPRING_DATASOURCE_USERNAME:cerebro}
@@ -60,6 +65,16 @@ spring:
         distance-type: COSINE_DISTANCE    
 
 cerebro:
+  # Schema-per-tenant (PostgreSQL search_path + Hibernate SCHEMA). false = comportamento actual (tudo em public).
+  multitenancy:
+    enabled: ${CEREBRO_MULTITENANCY_ENABLED:false}
+    header-name: ${CEREBRO_MULTITENANCY_HEADER:X-AxeZap-Tenant}
+    default-schema: public
+    # tenantId lógico → nome do schema físico (ex.: oficina legada continua em public).
+    tenant-schemas:
+      "oficina": public
+      "oficina_ssa_01": oficina_ssa_01
+      "oficina_ssa_02": oficina_ssa_02
   firebase:
     # true = inicializa o SDK (conta de serviço / ADC obrigatórios). false = não arranca o Firebase (Docker/local sem credenciais).
     # Em produção com Auth: CEREBRO_FIREBASE_ENABLED=true + GOOGLE_APPLICATION_CREDENTIALS ou FIREBASE_SERVICE_ACCOUNT_JSON_PATH.
@@ -150,6 +165,8 @@ cerebro:
     # "sender" do webhook Evolution (telefone da linha/instância). Alinhe com os dígitos reais do Evolution Manager.
     tenants:
       "557196248348": "oficina"
+    # Evolution: nome da instância (campo instance / instanceName no JSON) → tenantId
+    instance-tenants: {}
 
 server:
   port: 8080

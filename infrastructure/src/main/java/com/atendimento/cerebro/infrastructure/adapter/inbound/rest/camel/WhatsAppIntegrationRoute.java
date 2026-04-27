@@ -12,7 +12,10 @@ import com.atendimento.cerebro.application.port.out.ConversationBotStatePort;
 import com.atendimento.cerebro.application.port.out.InboundWhatsAppDeduperPort;
 import com.atendimento.cerebro.application.port.out.IntentDetectionPort;
 import com.atendimento.cerebro.application.port.out.WhatsAppOutboundPort;
-import com.atendimento.cerebro.application.port.out.WhatsAppTenantLookupPort;
+import com.atendimento.cerebro.infrastructure.config.CerebroMultitenancyProperties;
+import com.atendimento.cerebro.infrastructure.multitenancy.TenantContext;
+import com.atendimento.cerebro.infrastructure.multitenancy.TenantContextInterceptor;
+import com.atendimento.cerebro.infrastructure.multitenancy.WebhookTenantResolver;
 import com.atendimento.cerebro.application.service.LeadScoringService;
 import com.atendimento.cerebro.infrastructure.analytics.ChatAnalyticsAfterTurnNotifier;
 import com.atendimento.cerebro.infrastructure.analytics.PrimaryIntentTurnNotifier;
@@ -83,7 +86,9 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
 
     private final ChatUseCase chatUseCase;
     private final AudioTranscriptionPort audioTranscriptionPort;
-    private final WhatsAppTenantLookupPort tenantLookup;
+    private final WebhookTenantResolver webhookTenantResolver;
+    private final TenantContextInterceptor tenantContextInterceptor;
+    private final CerebroMultitenancyProperties multitenancyProperties;
     private final WhatsAppWebhookParser webhookParser;
     private final WhatsAppOutboundPort whatsAppOutboundPort;
     private final InboundWhatsAppDeduperPort inboundWhatsAppDeduper;
@@ -101,7 +106,9 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
     public WhatsAppIntegrationRoute(
             ChatUseCase chatUseCase,
             AudioTranscriptionPort audioTranscriptionPort,
-            WhatsAppTenantLookupPort tenantLookup,
+            WebhookTenantResolver webhookTenantResolver,
+            TenantContextInterceptor tenantContextInterceptor,
+            CerebroMultitenancyProperties multitenancyProperties,
             WhatsAppWebhookParser webhookParser,
             WhatsAppOutboundPort whatsAppOutboundPort,
             InboundWhatsAppDeduperPort inboundWhatsAppDeduper,
@@ -117,7 +124,9 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
             @Value("${chat.circuit.timeout-ms:15000}") int circuitTimeoutMs) {
         this.chatUseCase = chatUseCase;
         this.audioTranscriptionPort = audioTranscriptionPort;
-        this.tenantLookup = tenantLookup;
+        this.webhookTenantResolver = webhookTenantResolver;
+        this.tenantContextInterceptor = tenantContextInterceptor;
+        this.multitenancyProperties = multitenancyProperties;
         this.webhookParser = webhookParser;
         this.whatsAppOutboundPort = whatsAppOutboundPort;
         this.inboundWhatsAppDeduper = inboundWhatsAppDeduper;
@@ -138,6 +147,10 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
         // @formatter:off
         from(WHATSAPP_WEBHOOK_SEDA)
                 .routeId("whatsappWebhook")
+                .onCompletion()
+                .process(exchange -> TenantContext.clear())
+                .end()
+                .process(tenantContextInterceptor)
                 .process(this::analisarPedido)
                 .choice()
                     .when(simple("${exchangeProperty." + PROP_DECISION + "} == '" + DECISION_CHAT + "'"))
@@ -169,6 +182,8 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
     }
 
     private void analisarPedido(Exchange exchange) {
+        String headerHint = exchange.getProperty(TenantContextInterceptor.EXCHANGE_PROP_TENANT_HEADER_HINT, String.class);
+        Optional<String> headerOpt = Optional.ofNullable(headerHint).filter(s -> !s.isBlank());
         String raw = bodyAsUtf8String(exchange);
         if (raw.isBlank()) {
             exchange.setProperty(PROP_DECISION, DECISION_IGNORE);
@@ -186,6 +201,9 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
             exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
             return;
         }
+        String evolutionInstanceName = extractEvolutionInstanceName(root);
+        Optional<String> instanceOpt =
+                Optional.ofNullable(evolutionInstanceName).filter(s -> !s.isBlank());
         WhatsAppWebhookParser.Incoming parsed = webhookParser.parse(root);
         if (parsed instanceof WhatsAppWebhookParser.Incoming.Ignored) {
             exchange.setProperty(PROP_DECISION, DECISION_IGNORE);
@@ -207,18 +225,19 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
                 exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
                 return;
             }
-            var tenant = tenantLookup.findTenantIdByWhatsAppNumber(digits);
-            if (tenant.isEmpty()
-                    && tm.evolutionLineDigits() != null
-                    && !tm.evolutionLineDigits().isBlank()) {
-                tenant = tenantLookup.findTenantIdByWhatsAppNumber(tm.evolutionLineDigits());
-            }
+            var tenant =
+                    webhookTenantResolver.resolve(
+                            headerOpt,
+                            instanceOpt,
+                            digits,
+                            Optional.ofNullable(tm.evolutionLineDigits()).filter(s -> !s.isBlank()));
             if (tenant.isEmpty()) {
                 exchange.setProperty(PROP_DECISION, DECISION_NOT_FOUND);
                 exchange.getIn().setBody(new IngestErrorResponse("número WhatsApp sem tenant associado"));
                 exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.NOT_FOUND.value());
                 return;
             }
+            applyTenantContext(tenant.get());
             if (tm.providerMessageId() != null && !tm.providerMessageId().isBlank()) {
                 if (!inboundWhatsAppDeduper.tryClaimInboundMessage(
                         tenant.get().value(), tm.providerMessageId().strip())) {
@@ -248,18 +267,19 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
                 exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
                 return;
             }
-            var tenant = tenantLookup.findTenantIdByWhatsAppNumber(digits);
-            if (tenant.isEmpty()
-                    && am.evolutionLineDigits() != null
-                    && !am.evolutionLineDigits().isBlank()) {
-                tenant = tenantLookup.findTenantIdByWhatsAppNumber(am.evolutionLineDigits());
-            }
+            var tenant =
+                    webhookTenantResolver.resolve(
+                            headerOpt,
+                            instanceOpt,
+                            digits,
+                            Optional.ofNullable(am.evolutionLineDigits()).filter(s -> !s.isBlank()));
             if (tenant.isEmpty()) {
                 exchange.setProperty(PROP_DECISION, DECISION_NOT_FOUND);
                 exchange.getIn().setBody(new IngestErrorResponse("número WhatsApp sem tenant associado"));
                 exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.NOT_FOUND.value());
                 return;
             }
+            applyTenantContext(tenant.get());
             if (am.providerMessageId() != null && !am.providerMessageId().isBlank()) {
                 if (!inboundWhatsAppDeduper.tryClaimInboundMessage(
                         tenant.get().value(), am.providerMessageId().strip())) {
@@ -521,6 +541,11 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
      */
     private void executarChatDepoisPrepararSucesso(Exchange exchange) {
         ChatCommand command = exchange.getIn().getBody(ChatCommand.class);
+        String phoneRaw = exchange.getProperty(PROP_PHONE_RAW, String.class);
+        LOG.info(
+                "[Tenant: {}] Processando mensagem do cliente {}",
+                command.tenantId().value(),
+                phoneRaw != null ? phoneRaw : "?");
         LOG.info(
                 "[AXEZAP-STT] Encaminhando transcrição para ChatService | tenant={} conversation={}",
                 command.tenantId().value(),
@@ -714,5 +739,39 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
             return s;
         }
         return s.substring(0, maxLen) + "...";
+    }
+
+    private void applyTenantContext(TenantId tenantId) {
+        if (!multitenancyProperties.isEnabled()) {
+            return;
+        }
+        String schema = multitenancyProperties.resolveSchema(tenantId.value());
+        TenantContext.set(tenantId.value(), schema);
+    }
+
+    private static String extractEvolutionInstanceName(JsonNode root) {
+        if (root == null || root.isNull() || root.isMissingNode()) {
+            return null;
+        }
+        String[] candidates = {
+            textOrNull(root, "instance"),
+            textOrNull(root, "instanceName"),
+            textOrNull(root.path("data"), "instance"),
+            textOrNull(root.path("data"), "instanceName")
+        };
+        for (String c : candidates) {
+            if (c != null && !c.isBlank()) {
+                return c.strip();
+            }
+        }
+        return null;
+    }
+
+    private static String textOrNull(JsonNode node, String field) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        String t = node.path(field).asText("").strip();
+        return t.isEmpty() ? null : t;
     }
 }
