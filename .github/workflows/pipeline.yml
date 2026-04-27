@@ -225,13 +225,17 @@ jobs:
             echo "=== garantir service account Firebase no servidor ==="
             mkdir -p /opt/axezap/secrets
             if [ -n "${FIREBASE_SERVICE_ACCOUNT_JSON_B64:-}" ]; then
-              printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON_B64" | base64 -d > /opt/axezap/secrets/firebase.json
-              # O processo Java no container roda como utilizador não-root ("spring"),
-              # então o bind mount precisa de permissão de leitura para "others".
-              chmod 644 /opt/axezap/secrets/firebase.json
-              echo "OK: /opt/axezap/secrets/firebase.json atualizado via secret base64."
+              FB_TMP="/opt/axezap/secrets/.firebase.json.tmp.$$"
+              if printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON_B64" | base64 -d > "$FB_TMP" 2>/dev/null && [ -s "$FB_TMP" ]; then
+                mv -f "$FB_TMP" /opt/axezap/secrets/firebase.json
+                chmod 644 /opt/axezap/secrets/firebase.json
+                echo "OK: /opt/axezap/secrets/firebase.json atualizado via secret base64."
+              else
+                rm -f "$FB_TMP"
+                echo "AVISO: FIREBASE_SERVICE_ACCOUNT_JSON_B64 não decodificou (base64 inválido ou vazio); na verificação seguinte usar-se-á placeholder se Firebase estiver desligado no .env." >&2
+              fi
             else
-              echo "AVISO: FIREBASE_SERVICE_ACCOUNT_JSON_B64 vazio; mantendo ficheiro existente em /opt/axezap/secrets/firebase.json (se houver)." >&2
+              echo "AVISO: FIREBASE_SERVICE_ACCOUNT_JSON_B64 vazio no GitHub; sem decode neste passo (ficheiro existente ou placeholder abaixo)." >&2
             fi
             # Imediatamente +e: o VPS pode ter pipefail no perfil; set +e sozinho não o desliga.
             set +e
@@ -267,11 +271,25 @@ jobs:
               echo "OK: docker-compose.yml = cópia de docker-compose.hml.yml (default docker compose up usa GHCR, não build local)"
             fi
             set -e
-            echo "=== verificar ficheiros de secrets antes do compose (evita mount como directório vazio) ==="
-            if [ ! -f /opt/axezap/secrets/firebase.json ] || [ -d /opt/axezap/secrets/firebase.json ]; then
-              echo "ERRO: /opt/axezap/secrets/firebase.json tem de existir e ser um ficheiro regular (defina FIREBASE_SERVICE_ACCOUNT_JSON_B64 na pipeline ou copie o JSON para o servidor)." >&2
-              ls -la /opt/axezap/secrets 2>/dev/null || true
-              exit 1
+            echo "=== firebase.json para bind Docker (HML: sem secret B64 usa placeholder se Auth desligado) ==="
+            mkdir -p /opt/axezap/secrets
+            NEED_REAL_FIREBASE=false
+            if grep -qE '^[[:space:]]*CEREBRO_FIREBASE_ENABLED[[:space:]]*=[[:space:]]*(true|True|TRUE|1)[[:space:]]*$' /opt/axezap/.env 2>/dev/null; then
+              NEED_REAL_FIREBASE=true
+              echo "INFO: .env tem CEREBRO_FIREBASE_ENABLED=true — é obrigatório JSON real (secret B64 ou ficheiro no servidor)."
+            fi
+            if [ -d /opt/axezap/secrets/firebase.json ]; then
+              echo "AVISO: firebase.json era um directório; a remover (origem típica: primeiro deploy sem ficheiro)."
+              rm -rf /opt/axezap/secrets/firebase.json
+            fi
+            if [ ! -f /opt/axezap/secrets/firebase.json ]; then
+              if [ "$NEED_REAL_FIREBASE" = true ]; then
+                echo "ERRO: Firebase ativo no .env mas não há firebase.json. Adicione o secret FIREBASE_SERVICE_ACCOUNT_JSON_B64 no repositório (base64 -w0 < serviceAccount.json) ou copie o JSON para /opt/axezap/secrets/firebase.json no VPS." >&2
+                ls -la /opt/axezap/secrets 2>/dev/null || true
+                exit 1
+              fi
+              echo "INFO: a criar firebase.json placeholder — Spring não inicia o Admin SDK com CEREBRO_FIREBASE_ENABLED=false (defeito do compose HML). Para portal Auth: B64 no GitHub + CEREBRO_FIREBASE_ENABLED=true no .env do servidor."
+              printf '%s\n' '{"type":"service_account","project_id":"hml-mount-placeholder","private_key_id":"stub","private_key":"-----BEGIN PRIVATE KEY-----\nSTUB\n-----END PRIVATE KEY-----\n","client_email":"stub@hml-mount-placeholder.iam.gserviceaccount.com"}' > /opt/axezap/secrets/firebase.json
             fi
             chmod 644 /opt/axezap/secrets/firebase.json
             if [ -e /opt/axezap/secrets/google-calendar-sa.json ] && [ ! -f /opt/axezap/secrets/google-calendar-sa.json ]; then

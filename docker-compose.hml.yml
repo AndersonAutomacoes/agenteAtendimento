@@ -154,7 +154,7 @@ services:
       evolution-api:
         condition: service_started
     volumes:
-      # Só com CEREBRO_FIREBASE_ENABLED=true e o ficheiro presente no host; se a origem em falta, o Docker cria dir e a app dá "firebase.json (Is a directory)"
+      # Bind: precisa de ficheiro regular no host. Sem JSON real, a pipeline cria placeholder se CEREBRO_FIREBASE_ENABLED≠true no .env.
       # - ./secrets/...-firebase-adminsdk-....json:/run/firebase.json:ro
       - ${GOOGLE_CALENDAR_CREDENTIALS_FILE:-./bootstrap/src/main/resources/credentials.json}:/run/google-calendar-sa.json:ro
       - ./secrets/firebase.json:/run/firebase.json:ro
