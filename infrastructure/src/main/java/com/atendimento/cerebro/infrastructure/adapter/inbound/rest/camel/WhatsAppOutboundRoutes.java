@@ -13,6 +13,7 @@ import com.atendimento.cerebro.domain.tenant.TenantConfiguration;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import com.atendimento.cerebro.domain.tenant.WhatsAppProviderType;
 import com.atendimento.cerebro.infrastructure.adapter.out.whatsapp.EvolutionOutboundHttp;
+import com.atendimento.cerebro.infrastructure.whatsapp.EvolutionCredentials;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -58,6 +59,12 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
     private final String evolutionBaseUrlOverride;
 
     /**
+     * Se não vazio, substitui {@link TenantConfiguration#whatsappApiKey()} no header {@code apikey} (alinhado a
+     * {@code AUTHENTICATION_API_KEY} na Evolution).
+     */
+    private final String evolutionApiKeyGlobal;
+
+    /**
      * Se {@code true}, chama {@code /message/sendButtons} (botões raramente visíveis no WhatsApp via Baileys). Se {@code
      * false}, envia só {@code sendText} com lista formatada (omissão recomendada).
      */
@@ -80,6 +87,7 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
             EvolutionOutboundHttp evolutionOutboundHttp,
             @Value("${cerebro.whatsapp.meta.graph-api-version:v21.0}") String metaGraphApiVersion,
             @Value("${cerebro.whatsapp.evolution.base-url-override:}") String evolutionBaseUrlOverride,
+            @Value("${cerebro.whatsapp.evolution.api-key:}") String evolutionApiKeyGlobal,
             @Value("${cerebro.whatsapp.evolution.send-interactive-buttons:false}")
                     boolean evolutionSendInteractiveButtons,
             @Value("${cerebro.whatsapp.evolution.mirror-slots-as-plain-text:false}")
@@ -92,6 +100,7 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         this.evolutionOutboundHttp = evolutionOutboundHttp;
         this.metaGraphApiVersion = metaGraphApiVersion;
         this.evolutionBaseUrlOverride = evolutionBaseUrlOverride != null ? evolutionBaseUrlOverride : "";
+        this.evolutionApiKeyGlobal = evolutionApiKeyGlobal != null ? evolutionApiKeyGlobal : "";
         this.evolutionSendInteractiveButtons = evolutionSendInteractiveButtons;
         this.evolutionMirrorSlotsAsPlainText = evolutionMirrorSlotsAsPlainText;
         this.schedulingCalendarZone =
@@ -158,7 +167,7 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         TenantConfiguration config =
                 tenantConfigurationStore.findByTenantId(tenantId).orElseGet(() -> TenantConfiguration.defaults(tenantId));
 
-        WhatsAppProviderType effective = effectiveProvider(config);
+        WhatsAppProviderType effective = effectiveProvider(config, evolutionApiKeyGlobal, evolutionBaseUrlOverride);
         exchange.getMessage().setHeader(WhatsAppOutboundHeaders.PROVIDER, effective.name());
         exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_TENANT_CONFIG, config);
         exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_TO, to != null ? to : "");
@@ -248,16 +257,31 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
     }
 
     public static WhatsAppProviderType effectiveProvider(TenantConfiguration c) {
+        return effectiveProvider(c, "", "");
+    }
+
+    /**
+     * @param evolutionApiKeyGlobal chave global (ex. {@code CEREBRO_WHATSAPP_EVOLUTION_API_KEY})
+     * @param evolutionBaseUrlOverride base URL global (ex. {@code CEREBRO_WHATSAPP_EVOLUTION_BASE_URL})
+     */
+    public static WhatsAppProviderType effectiveProvider(
+            TenantConfiguration c, String evolutionApiKeyGlobal, String evolutionBaseUrlOverride) {
+        String gk = evolutionApiKeyGlobal != null ? evolutionApiKeyGlobal : "";
+        String gb = evolutionBaseUrlOverride != null ? evolutionBaseUrlOverride : "";
         return switch (c.whatsappProviderType()) {
             case META -> (c.whatsappApiKey() != null && !c.whatsappApiKey().isBlank())
                             && (c.whatsappInstanceId() != null && !c.whatsappInstanceId().isBlank())
                     ? WhatsAppProviderType.META
                     : WhatsAppProviderType.SIMULATED;
-            case EVOLUTION -> (c.whatsappApiKey() != null && !c.whatsappApiKey().isBlank())
-                            && (c.whatsappInstanceId() != null && !c.whatsappInstanceId().isBlank())
-                            && (c.whatsappBaseUrl() != null && !c.whatsappBaseUrl().isBlank())
-                    ? WhatsAppProviderType.EVOLUTION
-                    : WhatsAppProviderType.SIMULATED;
+            case EVOLUTION -> {
+                String key = EvolutionCredentials.resolveApiKey(gk, c.whatsappApiKey());
+                String base = EvolutionCredentials.resolveBaseUrl(gb, c.whatsappBaseUrl());
+                yield (key != null && !key.isBlank())
+                                && (c.whatsappInstanceId() != null && !c.whatsappInstanceId().isBlank())
+                                && (base != null && !base.isBlank())
+                        ? WhatsAppProviderType.EVOLUTION
+                        : WhatsAppProviderType.SIMULATED;
+            }
             case SIMULATED -> WhatsAppProviderType.SIMULATED;
         };
     }
@@ -311,10 +335,9 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         TenantConfiguration cfg = exchange.getProperty(WhatsAppOutboundHeaders.PROP_WA_TENANT_CONFIG, TenantConfiguration.class);
         String to = exchange.getProperty(WhatsAppOutboundHeaders.PROP_WA_TO, String.class);
         String digits = onlyDigits(to);
-        String baseRaw =
-                evolutionBaseUrlOverride.isBlank() ? cfg.whatsappBaseUrl() : evolutionBaseUrlOverride;
+        String baseRaw = EvolutionCredentials.resolveBaseUrl(evolutionBaseUrlOverride, cfg.whatsappBaseUrl());
         String base = trimTrailingSlash(baseRaw);
-        String apiKey = cfg.whatsappApiKey();
+        String apiKey = EvolutionCredentials.resolveApiKey(evolutionApiKeyGlobal, cfg.whatsappApiKey());
         String instanceId = cfg.whatsappInstanceId();
 
         Object raw = exchange.getProperty(WhatsAppOutboundHeaders.PROP_WA_INTERACTIVE);

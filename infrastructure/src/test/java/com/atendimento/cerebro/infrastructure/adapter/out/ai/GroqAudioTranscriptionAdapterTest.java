@@ -174,6 +174,6 @@ class GroqAudioTranscriptionAdapterTest {
                     @Override
                     public void upsert(com.atendimento.cerebro.domain.tenant.TenantConfiguration configuration) {}
                 };
-        return new GroqAudioTranscriptionAdapter(properties, new ObjectMapper(), store, "");
+        return new GroqAudioTranscriptionAdapter(properties, new ObjectMapper(), store, "", "");
     }
 }

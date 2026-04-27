@@ -82,6 +82,64 @@ class WhatsAppOutboundRoutesEffectiveProviderTest {
     }
 
     @Test
+    void evolution_globalApiKeyFillsMissingTenantKey() {
+        assertThat(
+                        WhatsAppOutboundRoutes.effectiveProvider(
+                                new TenantConfiguration(
+                                        TID,
+                                        "",
+                                        WhatsAppProviderType.EVOLUTION,
+                                        null,
+                                        "agenteAtendimento",
+                                        "https://h",
+                                        ProfileLevel.BASIC,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        30,
+                                        true,
+                                        null,
+                                        null,
+                                        null),
+                                "global-key",
+                                ""))
+                .isEqualTo(WhatsAppProviderType.EVOLUTION);
+    }
+
+    @Test
+    void evolution_globalBaseUrlOverrideFillsMissingTenantBaseUrl() {
+        assertThat(
+                        WhatsAppOutboundRoutes.effectiveProvider(
+                                new TenantConfiguration(
+                                        TID,
+                                        "",
+                                        WhatsAppProviderType.EVOLUTION,
+                                        "k",
+                                        "agenteAtendimento",
+                                        null,
+                                        ProfileLevel.BASIC,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        30,
+                                        true,
+                                        null,
+                                        null,
+                                        null),
+                                "",
+                                "http://evolution-api:8080"))
+                .isEqualTo(WhatsAppProviderType.EVOLUTION);
+    }
+
+    @Test
     void simulated_staysSimulated() {
         assertThat(
                         WhatsAppOutboundRoutes.effectiveProvider(

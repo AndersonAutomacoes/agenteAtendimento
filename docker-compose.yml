@@ -87,6 +87,8 @@ services:
       CACHE_REDIS_ENABLED: "true"
       CACHE_REDIS_URI: redis://:cerebroredis@redis:6379/6
       CACHE_REDIS_PREFIX_KEY: evolution
+      # Sem isto, a Evolution regista mensagens mas não chama o webhook HTTP (só QRCODE etc. no .env)
+      WEBHOOK_EVENTS_MESSAGES_UPSERT: "true"
     env_file:
       - .env
     volumes:
@@ -129,6 +131,8 @@ services:
       SPRING_AI_MODEL_EMBEDDING_TEXT: google-genai
       # Evolution: dentro do container não use localhost:8083; serviço Compose escuta na 8080.
       CEREBRO_WHATSAPP_EVOLUTION_BASE_URL: http://evolution-api:8080
+      # Mesma chave que AUTHENTICATION_API_KEY no .env da Evolution (header apikey); evita 401 se o portal tiver chave antiga.
+      CEREBRO_WHATSAPP_EVOLUTION_API_KEY: ${AUTHENTICATION_API_KEY:-}
       # Local: por defeito false (sem credenciais no container). Para portal Auth: no .env use
       # CEREBRO_FIREBASE_ENABLED=true + FIREBASE_PROJECT_ID + montar o JSON (ver .env.example).
       CEREBRO_FIREBASE_ENABLED: ${CEREBRO_FIREBASE_ENABLED:-true}

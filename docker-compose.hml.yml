@@ -71,6 +71,7 @@ services:
       CACHE_REDIS_ENABLED: "true"
       CACHE_REDIS_URI: redis://:cerebroredis@redis:6379/6
       CACHE_REDIS_PREFIX_KEY: evolution
+      WEBHOOK_EVENTS_MESSAGES_UPSERT: "true"
     env_file:
       - .env
     volumes:
@@ -109,6 +110,7 @@ services:
       SPRING_AI_GOOGLE_GENAI_EMBEDDING_API_KEY: ${GEMINI_API_KEY:-}
       SPRING_AI_MODEL_EMBEDDING_TEXT: google-genai
       CEREBRO_WHATSAPP_EVOLUTION_BASE_URL: http://evolution-api:8080
+      CEREBRO_WHATSAPP_EVOLUTION_API_KEY: ${AUTHENTICATION_API_KEY:-}
       # HML: por defeito false (sem account JSON no droplet o mount pode virar "Is a directory"). Ativar e montar o JSON: ver volumes abaixo
       CEREBRO_FIREBASE_ENABLED: ${CEREBRO_FIREBASE_ENABLED:-false}
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}

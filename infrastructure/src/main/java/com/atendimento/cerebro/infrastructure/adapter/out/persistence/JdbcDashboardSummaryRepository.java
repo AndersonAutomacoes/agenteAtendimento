@@ -9,6 +9,7 @@ import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort
 import com.atendimento.cerebro.domain.tenant.TenantConfiguration;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import com.atendimento.cerebro.domain.tenant.WhatsAppProviderType;
+import com.atendimento.cerebro.infrastructure.whatsapp.EvolutionCredentials;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -22,6 +23,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,11 +35,18 @@ public class JdbcDashboardSummaryRepository implements DashboardSummaryPort {
 
     private final JdbcClient jdbcClient;
     private final TenantConfigurationStorePort tenantConfigurationStore;
+    private final String evolutionApiKeyGlobal;
+    private final String evolutionBaseUrlOverride;
 
     public JdbcDashboardSummaryRepository(
-            JdbcClient jdbcClient, TenantConfigurationStorePort tenantConfigurationStore) {
+            JdbcClient jdbcClient,
+            TenantConfigurationStorePort tenantConfigurationStore,
+            @Value("${cerebro.whatsapp.evolution.api-key:}") String evolutionApiKeyGlobal,
+            @Value("${cerebro.whatsapp.evolution.base-url-override:}") String evolutionBaseUrlOverride) {
         this.jdbcClient = jdbcClient;
         this.tenantConfigurationStore = tenantConfigurationStore;
+        this.evolutionApiKeyGlobal = evolutionApiKeyGlobal != null ? evolutionApiKeyGlobal : "";
+        this.evolutionBaseUrlOverride = evolutionBaseUrlOverride != null ? evolutionBaseUrlOverride : "";
     }
 
     @Override
@@ -51,7 +60,10 @@ public class JdbcDashboardSummaryRepository implements DashboardSummaryPort {
         long messagesToday = countUserMessagesToday(tenant, startOfTodayUtc(now), now);
         Double aiRate = computeAiRate(tenant, w.start(), w.endInclusive());
         String instanceStatus =
-                deriveInstanceStatus(tenantConfigurationStore.findByTenantId(tenantId).orElse(null));
+                deriveInstanceStatus(
+                        tenantConfigurationStore.findByTenantId(tenantId).orElse(null),
+                        evolutionApiKeyGlobal,
+                        evolutionBaseUrlOverride);
         List<DashboardSeriesPoint> series = loadSeries(tenant, range, w, now);
         List<DashboardRecentInteraction> recent = loadRecent(tenant);
 
@@ -66,7 +78,10 @@ public class JdbcDashboardSummaryRepository implements DashboardSummaryPort {
         long userMessagesInRange = countUserMessagesHalfOpen(tenant, start, end);
         Double aiRate = computeAiRateHalfOpen(tenant, start, end);
         String instanceStatus =
-                deriveInstanceStatus(tenantConfigurationStore.findByTenantId(tenantId).orElse(null));
+                deriveInstanceStatus(
+                        tenantConfigurationStore.findByTenantId(tenantId).orElse(null),
+                        evolutionApiKeyGlobal,
+                        evolutionBaseUrlOverride);
         List<DashboardSeriesPoint> series = loadSeriesForExplicitWindow(tenant, start, end);
         List<DashboardRecentInteraction> recent = loadRecent(tenant);
         return new DashboardSummary(
@@ -414,7 +429,8 @@ public class JdbcDashboardSummaryRepository implements DashboardSummaryPort {
         return d.atStartOfDay(ZoneOffset.UTC).toInstant();
     }
 
-    static String deriveInstanceStatus(TenantConfiguration c) {
+    static String deriveInstanceStatus(
+            TenantConfiguration c, String evolutionApiKeyGlobal, String evolutionBaseUrlOverride) {
         if (c == null) {
             return "INCOMPLETE";
         }
@@ -427,9 +443,9 @@ public class JdbcDashboardSummaryRepository implements DashboardSummaryPort {
                     : "INCOMPLETE";
         }
         if (c.whatsappProviderType() == WhatsAppProviderType.EVOLUTION) {
-            return nonBlank(c.whatsappBaseUrl()) && nonBlank(c.whatsappInstanceId()) && nonBlank(c.whatsappApiKey())
-                    ? "CONFIGURED"
-                    : "INCOMPLETE";
+            String key = EvolutionCredentials.resolveApiKey(evolutionApiKeyGlobal, c.whatsappApiKey());
+            String base = EvolutionCredentials.resolveBaseUrl(evolutionBaseUrlOverride, c.whatsappBaseUrl());
+            return nonBlank(base) && nonBlank(c.whatsappInstanceId()) && nonBlank(key) ? "CONFIGURED" : "INCOMPLETE";
         }
         return "INCOMPLETE";
     }

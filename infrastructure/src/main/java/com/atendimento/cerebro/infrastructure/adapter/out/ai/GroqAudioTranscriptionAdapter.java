@@ -6,6 +6,7 @@ import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import com.atendimento.cerebro.domain.tenant.WhatsAppProviderType;
 import com.atendimento.cerebro.infrastructure.config.GroqSttProperties;
+import com.atendimento.cerebro.infrastructure.whatsapp.EvolutionCredentials;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -48,17 +49,21 @@ public class GroqAudioTranscriptionAdapter implements AudioTranscriptionPort {
     private final HttpClient httpClient;
     private final TenantConfigurationStorePort tenantConfigurationStore;
     private final String evolutionBaseUrlOverride;
+    private final String evolutionApiKeyGlobal;
 
     public GroqAudioTranscriptionAdapter(
             GroqSttProperties props,
             ObjectMapper objectMapper,
             TenantConfigurationStorePort tenantConfigurationStore,
             @org.springframework.beans.factory.annotation.Value("${cerebro.whatsapp.evolution.base-url-override:}")
-                    String evolutionBaseUrlOverride) {
+                    String evolutionBaseUrlOverride,
+            @org.springframework.beans.factory.annotation.Value("${cerebro.whatsapp.evolution.api-key:}")
+                    String evolutionApiKeyGlobal) {
         this.props = props;
         this.objectMapper = objectMapper;
         this.tenantConfigurationStore = tenantConfigurationStore;
         this.evolutionBaseUrlOverride = evolutionBaseUrlOverride != null ? evolutionBaseUrlOverride : "";
+        this.evolutionApiKeyGlobal = evolutionApiKeyGlobal != null ? evolutionApiKeyGlobal : "";
         this.httpClient = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
     }
 
@@ -422,14 +427,14 @@ public class GroqAudioTranscriptionAdapter implements AudioTranscriptionPort {
             return Optional.empty();
         }
         var cfg = cfgOpt.get();
+        String apiKey = EvolutionCredentials.resolveApiKey(evolutionApiKeyGlobal, cfg.whatsappApiKey());
         if (cfg.whatsappProviderType() != WhatsAppProviderType.EVOLUTION
-                || cfg.whatsappApiKey() == null
-                || cfg.whatsappApiKey().isBlank()
+                || apiKey.isBlank()
                 || cfg.whatsappInstanceId() == null
                 || cfg.whatsappInstanceId().isBlank()) {
             return Optional.empty();
         }
-        String baseRaw = evolutionBaseUrlOverride.isBlank() ? cfg.whatsappBaseUrl() : evolutionBaseUrlOverride;
+        String baseRaw = EvolutionCredentials.resolveBaseUrl(evolutionBaseUrlOverride, cfg.whatsappBaseUrl());
         String base = trimTrailingSlash(baseRaw);
         if (base.isBlank()) {
             return Optional.empty();
@@ -446,7 +451,7 @@ public class GroqAudioTranscriptionAdapter implements AudioTranscriptionPort {
                         .uri(URI.create(endpoint))
                         .timeout(resolveDownloadTimeout())
                         .header("Content-Type", "application/json")
-                        .header("apikey", cfg.whatsappApiKey().strip())
+                        .header("apikey", apiKey)
                         .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                         .build();
                 HttpResponse<String> res = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
