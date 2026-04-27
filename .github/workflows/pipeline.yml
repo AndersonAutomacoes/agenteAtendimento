@@ -149,6 +149,9 @@ jobs:
             else
               echo "AVISO: GHCR_READ_TOKEN vazio; sem login (pull de imagem privada pode falhar)" >&2
             fi
+            echo "=== docker compose down --remove-orphans (liberta portas, remove órfãos p.ex. axezap-hml) ==="
+            docker compose -f docker-compose.hml.yml down --remove-orphans 2>&1 || true
+            docker rm -f axezap-hml 2>/dev/null || true
             echo "=== docker compose -f docker-compose.hml.yml pull (stderr/stdout) ==="
             docker compose -f docker-compose.hml.yml pull
             echo "=== docker compose -f docker-compose.hml.yml up -d --force-recreate (stderr/stdout) ==="
