@@ -263,7 +263,17 @@ jobs:
             append_kv_if_set WEBHOOK_GLOBAL_URL "$WEBHOOK_GLOBAL_URL"
             append_kv_if_set GEMINI_CHAT_MODEL "$GEMINI_CHAT_MODEL"
             echo "=== garantir service account Firebase no servidor ==="
-            mkdir -p /opt/axezap/secrets
+            # mkdir -p falha sob set -e se `secrets` for ficheiro (não pasta). Remover primeiro.
+            if [ -e /opt/axezap/secrets ] && [ ! -d /opt/axezap/secrets ]; then
+              echo "AVISO: /opt/axezap/secrets existe mas não é directorio — a remover antes de criar a pasta." >&2
+              rm -rf /opt/axezap/secrets
+            fi
+            if ! mkdir -p /opt/axezap/secrets; then
+              echo "ERRO: mkdir -p /opt/axezap/secrets falhou (perms ou path corrupto):" >&2
+              ls -la /opt/axezap 2>&1 >&2 || true
+              ls -lad /opt/axezap/secrets 2>&1 >&2 || true
+              exit 1
+            fi
             # Se firebase.json for directório (mount Docker sem ficheiro no host), mv do decode falha e, com set -e, mata o deploy antes de qualquer AVISO.
             if [ -d /opt/axezap/secrets/firebase.json ]; then
               echo "AVISO: removendo directório /opt/axezap/secrets/firebase.json antes de gravar o JSON (origem típica: mount sem ficheiro)." >&2
