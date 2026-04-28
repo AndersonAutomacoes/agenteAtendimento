@@ -263,27 +263,30 @@ jobs:
             append_kv_if_set WEBHOOK_GLOBAL_URL "$WEBHOOK_GLOBAL_URL"
             append_kv_if_set GEMINI_CHAT_MODEL "$GEMINI_CHAT_MODEL"
             echo "=== garantir service account Firebase no servidor ==="
+            # Todo o bloco secrets/Firebase/Calendar até ao compose usava set -e até aqui: um falhanço oculto matava o job só com exit 1.
+            set +e
+            set +o pipefail 2>/dev/null || true
             # mkdir -p falha sob set -e se `secrets` for ficheiro (não pasta). Remover primeiro.
-            # Um `rm -rf` que falha também mata o script sob set -e sem echo útil — tratar explicitamente.
             if [ -e /opt/axezap/secrets ] && [ ! -d /opt/axezap/secrets ]; then
               echo "AVISO: /opt/axezap/secrets existe mas não é directorio — a remover antes de criar a pasta." >&2
-              if ! rm -rf -- /opt/axezap/secrets; then
+              if ! rm -rf /opt/axezap/secrets; then
                 echo "ERRO: falha ao remover /opt/axezap/secrets (EBUSY, perm ou path inválido)." >&2
                 ls -la /opt/axezap >&2 || true
                 ls -la /opt/axezap/secrets >&2 || true
                 exit 1
               fi
             fi
-            if ! mkdir -p -- /opt/axezap/secrets; then
+            if ! mkdir -p /opt/axezap/secrets; then
               echo "ERRO: mkdir -p /opt/axezap/secrets falhou (perms ou path corrupto):" >&2
               ls -la /opt/axezap >&2 || true
-              ls -lad /opt/axezap/secrets >&2 || true
+              ls -ld /opt/axezap/secrets >&2 || true
               exit 1
             fi
-            # Se firebase.json for directório (mount Docker sem ficheiro no host), mv do decode falha e, com set -e, mata o deploy antes de qualquer AVISO.
+            echo "OK: /opt/axezap/secrets existe e é utilizável."
+            # Se firebase.json for directório (mount Docker sem ficheiro no host), mv do decode falha sem aviso se set -e.
             if [ -d /opt/axezap/secrets/firebase.json ]; then
               echo "AVISO: removendo directório /opt/axezap/secrets/firebase.json antes de gravar o JSON (origem típica: mount sem ficheiro)." >&2
-              rm -rf -- /opt/axezap/secrets/firebase.json || {
+              rm -rf /opt/axezap/secrets/firebase.json || {
                 echo "ERRO: não foi possível remover directório firebase.json (EBUSY?)." >&2
                 ls -la /opt/axezap/secrets >&2 || true
                 exit 1
@@ -306,9 +309,6 @@ jobs:
             else
               echo "AVISO: FIREBASE_SERVICE_ACCOUNT_JSON_B64 vazio no GitHub; sem decode neste passo (ficheiro existente ou placeholder abaixo)." >&2
             fi
-            # Imediatamente +e: o VPS pode ter pipefail no perfil; set +e sozinho não o desliga.
-            set +e
-            set +o pipefail 2>/dev/null || true
             mkdir -p /opt/axezap/secrets
             # Bind mount sem ficheiro no host → Docker pode criar directório com este nome; remover antes de gravar JSON.
             if [ -d /opt/axezap/secrets/google-calendar-sa.json ]; then
