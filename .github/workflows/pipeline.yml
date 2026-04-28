@@ -320,7 +320,8 @@ jobs:
                   rm -f "$TMP_CAL"
                 fi
               else
-                rm -f "$TMP_CAL"
+                echo "TMP_CAL: removido"
+                #rm -f "$TMP_CAL"
               fi
             else
               echo "INFO: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 vazio; a usar ficheiro copiado no deploy ou manual no servidor, se existir."
