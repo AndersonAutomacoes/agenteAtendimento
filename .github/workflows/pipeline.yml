@@ -305,33 +305,9 @@ jobs:
             echo "Google Calendar Service Account JSON B64 não vazio"
               DECODED_OK=false
               echo "TMP_CAL: $TMP_CAL"
-              if printf '%s' "${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64:-}" | base64 -d > "$TMP_CAL" 2>/dev/null \
-                && [ -s "$TMP_CAL" ]
-              then
-                echo "GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 decodificado como base64."
-                DECODED_OK=true
-                echo "DECODED_OK: $DECODED_OK"
-                echo "OK: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 decodificado como base64."
-              else
-                echo "DECODED_OK: $DECODED_OK"
-                rm -f "$TMP_CAL"
-                echo "TMP_CAL removido"
-                # Segredo com JSON em claro (erro comum: colar o .json no secret com nome B64).
-                if printf '%s' "${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64:-}" | grep -qE '^[[:space:]]*\{'; then
-                  echo "GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 em texto: $GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64"
-                  echo "Segredo com JSON em claro (erro comum: colar o .json no secret com nome B64)."
-                  if printf '%s' "${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64:-}" > "$TMP_CAL" && [ -s "$TMP_CAL" ]; then
-                    DECODED_OK=true
-                    echo "DECODED_OK: $DECODED_OK"
-                    echo "OK: segredo reconhecido como JSON em texto (não base64); a gravar em google-calendar-sa.json."
-                  fi
-                else
-                  echo "AVISO: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 não decodificou como base64 nem começa com JSON {. Use base64 ou JSON em texto no secret ou ficheiro no servidor."
-                  echo "AVISO: (detalhe) calendar B64 decode." >&2
-                fi
-              fi
+              echo "DECODED_OK: $DECODED_OK"
               if [ "$DECODED_OK" = true ]; then
-                echo "DECODED_OK: $DECODED_OK"
+                echo "DECODED_OK: ok"
                 echo "TMP_CAL: $TMP_CAL"
                 if mv -f "$TMP_CAL" /opt/axezap/secrets/google-calendar-sa.json; then
                   echo "TMP_CAL movido para /opt/axezap/secrets/google-calendar-sa.json"
