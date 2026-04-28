@@ -291,7 +291,6 @@ jobs:
                 docker compose -f docker-compose.hml.yml down --remove-orphans 2>&1 || true
               fi
               sleep 3
-            fi
             # Se firebase.json for directório (mount Docker sem ficheiro no host), mv do decode falha sem aviso se set -e.
             if [ -d /opt/axezap/secrets/firebase.json ]; then
               echo "AVISO: removendo directório /opt/axezap/secrets/firebase.json antes de gravar o JSON (origem típica: mount sem ficheiro)."
