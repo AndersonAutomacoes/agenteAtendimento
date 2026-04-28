@@ -303,7 +303,7 @@ jobs:
             echo "Google Calendar Service Account JSON B64: $GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64"
             if [ -n "${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64:-}" ]; then
             echo "Google Calendar Service Account JSON B64 não vazio"
-              TMP_CAL="/tmp/google-calendar-sa-$$.json"
+              #TMP_CAL="/tmp/google-calendar-sa-$$.json"
               DECODED_OK=false
               if printf '%s' "${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64:-}" | base64 -d > "$TMP_CAL" 2>/dev/null \
                 && [ -s "$TMP_CAL" ]
