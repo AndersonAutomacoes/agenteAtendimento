@@ -155,9 +155,12 @@ services:
       evolution-api:
         condition: service_started
     volumes:
-      # Bind: precisa de ficheiro regular no host. Sem JSON real, a pipeline cria placeholder se CEREBRO_FIREBASE_ENABLED≠true no .env.
-      # - ./secrets/...-firebase-adminsdk-....json:/run/firebase.json:ro
-      - ${GOOGLE_CALENDAR_CREDENTIALS_FILE:- ./secrets/google-calendar-sa.json}:/run/google-calendar-sa.json:ro
+      # Bind explícito: sem espaço em ${VAR:-default}; senão Compose pode interpretar como volume nomeado inexistente.
+      # Sem o ficheiro no host é preciso criar ./secrets/google-calendar-sa.json (pipeline) ou remover GOOGLE_CALENDAR_CREDENTIALS_FILE do .env.
+      - type: bind
+        source: ${GOOGLE_CALENDAR_CREDENTIALS_FILE:-./secrets/google-calendar-sa.json}
+        target: /run/google-calendar-sa.json
+        read_only: true
       - ./secrets/firebase.json:/run/firebase.json:ro
 
   # Painel Next.js (produção = rewrites no servidor internos para a API; browser só fala com :3000)
