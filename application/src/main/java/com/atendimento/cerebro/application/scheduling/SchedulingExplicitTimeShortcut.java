@@ -335,6 +335,9 @@ public final class SchedulingExplicitTimeShortcut {
             if (c == null || c.isBlank()) {
                 continue;
             }
+            if (SchedulingUserReplyNormalizer.isSupersededByLaterBookingOrCancellation(history, i)) {
+                continue;
+            }
             Matcher mat = AVAILABILITY_SERVICE_MARKDOWN.matcher(c);
             if (mat.find()) {
                 String cleaned = sanitizeServiceHintAfterStrip(mat.group(1));

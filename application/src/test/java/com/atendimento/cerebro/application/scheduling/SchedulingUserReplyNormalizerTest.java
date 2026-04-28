@@ -551,4 +551,40 @@ class SchedulingUserReplyNormalizerTest {
                         Message.assistantMessage("ok"));
         assertThat(SchedulingUserReplyNormalizer.hasRecentRescheduleUserIntentInHistory(hist, 8)).isTrue();
     }
+
+    @Test
+    void lastAssistantSuggestedAppointmentCancellation_findsListBehindNoiseAssistantMessage() {
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage(
+                                "Segue o seu agendamento ativo:\n\n1) X — 01/05/2026\n" + "[cancel_option_map:1=99]"),
+                        Message.assistantMessage("Não consegui processar seu áudio, poderia digitar?"));
+        assertThat(SchedulingUserReplyNormalizer.lastAssistantSuggestedAppointmentCancellation(hist)).isTrue();
+    }
+
+    @Test
+    void shouldInterpretNumericChoiceAsServiceSelection_falseWhenCancellationListIsRecent() {
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage("[service_option_map:1=Alinhamento]\nEscolha o serviço."),
+                        Message.assistantMessage("Segue o seu agendamento ativo:\n\n[cancel_option_map:1=42]"));
+        assertThat(SchedulingUserReplyNormalizer.shouldInterpretNumericChoiceAsServiceSelection(hist)).isFalse();
+    }
+
+    @Test
+    void parseLastSelectedServiceFromHistory_ignoresServiceAfterCancellationCard() {
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage("Confirma?\n\n[selected_service:Balanceamento Dinâmico]"),
+                        Message.assistantMessage("*Cancelamento confirmado*\n\nO agendamento de *X* foi cancelado."));
+        assertThat(SchedulingUserReplyNormalizer.parseLastSelectedServiceFromHistory(hist)).isEmpty();
+    }
+
+    @Test
+    void assistantMessageIndicatesSuccessfulCancellation_detectsWhatsappCancelCard() {
+        assertThat(
+                        SchedulingUserReplyNormalizer.assistantMessageIndicatesSuccessfulCancellation(
+                                "*Cancelamento confirmado*\n\nOlá!"))
+                .isTrue();
+    }
 }

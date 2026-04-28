@@ -212,6 +212,9 @@ public final class SchedulingUserReplyNormalizer {
             if (last != null
                     && !last.isBlank()
                     && SchedulingExplicitTimeShortcut.isPlausibleServiceNameForSelectedServiceToken(last)) {
+                if (isSupersededByLaterBookingOrCancellation(history, i)) {
+                    continue;
+                }
                 return Optional.of(last);
             }
         }
@@ -298,6 +301,9 @@ public final class SchedulingUserReplyNormalizer {
      * ({@code [service_option_map:…]}) é mais recente do que a última lista de horários ({@code [slot_options:…]}).
      */
     public static boolean shouldInterpretNumericChoiceAsServiceSelection(List<Message> history) {
+        if (lastAssistantSuggestedAppointmentCancellation(history)) {
+            return false;
+        }
         return serviceOptionMapIsAuthoritativeOverSlotList(history);
     }
 
@@ -526,9 +532,26 @@ public final class SchedulingUserReplyNormalizer {
         return -1;
     }
 
-    private static boolean isStaleSlotStateSupersededByCompletedBooking(List<Message> history, int slotListIdx) {
+    /**
+     * Rascunhos de marcação / listas de horários / serviço escolhido na mensagem {@code assistantMessageIndex} deixam
+     * de valer após um agendamento concluído ou um cancelamento confirmado mais recente no histórico (inclui o card
+     * WhatsApp {@code *Cancelamento confirmado*}).
+     */
+    public static boolean isSupersededByLaterBookingOrCancellation(
+            List<Message> history, int assistantMessageIndex) {
+        if (history == null || assistantMessageIndex < 0) {
+            return false;
+        }
         int completedIdx = indexOfLastBotAssistantWithCompletedBooking(history);
-        return completedIdx > slotListIdx;
+        if (completedIdx > assistantMessageIndex) {
+            return true;
+        }
+        int cancelledIdx = indexOfLastAssistantSuccessfulCancellation(history);
+        return cancelledIdx > assistantMessageIndex;
+    }
+
+    private static boolean isStaleSlotStateSupersededByCompletedBooking(List<Message> history, int slotListIdx) {
+        return isSupersededByLaterBookingOrCancellation(history, slotListIdx);
     }
 
     /** Indica se a mensagem do assistente já reflecte um agendamento criado (card, texto de sucesso da ferramenta). */
@@ -1167,8 +1190,9 @@ public final class SchedulingUserReplyNormalizer {
     }
 
     /**
-     * A última mensagem do assistente no histórico parece a lista devolvida por {@code get_active_appointments}
-     * (evita que «1» seja interpretado como escolha de horário de {@code check_availability}).
+     * O histórico contém recentemente a lista devolvida por {@code get_active_appointments} (pode haver mensagens do
+     * assistente posteriores à lista, ex. «processando áudio» ou erro de STT — percorre mensagens do assistente para trás
+     * até encontrar a lista ou esgotar).
      */
     public static boolean lastAssistantSuggestedAppointmentCancellation(List<Message> history) {
         if (history == null || history.isEmpty()) {
@@ -1181,13 +1205,13 @@ public final class SchedulingUserReplyNormalizer {
             }
             String c = m.content();
             if (c == null || c.isBlank()) {
-                return false;
+                continue;
             }
             if (c.contains(CancelOptionMap.APPENDIX_PREFIX)) {
                 return true;
             }
             String lower = c.toLowerCase(Locale.ROOT);
-            return lower.contains("agendamentos agendado")
+            if (lower.contains("agendamentos agendado")
                     || lower.contains("agendamentos ativos")
                     || lower.contains("agendamentos activos")
                     || lower.contains("*agendamentos*")
@@ -1197,7 +1221,9 @@ public final class SchedulingUserReplyNormalizer {
                     || lower.contains("opcoes entre os servicos agendados")
                     || lower.contains("pergunte qual deseja cancelar")
                     || lower.contains("serviços agendados")
-                    || lower.contains("servicos agendados");
+                    || lower.contains("servicos agendados")) {
+                return true;
+            }
         }
         return false;
     }
@@ -1210,8 +1236,12 @@ public final class SchedulingUserReplyNormalizer {
         if (content == null || content.isBlank()) {
             return false;
         }
-        return content.contains(AppointmentService.CANCELLATION_SUCCESS_MESSAGE_PREFIX)
-                || content.contains(AppointmentService.CANCELLATION_ALREADY_CANCELLED_MESSAGE_PREFIX);
+        if (content.contains(AppointmentService.CANCELLATION_SUCCESS_MESSAGE_PREFIX)
+                || content.contains(AppointmentService.CANCELLATION_ALREADY_CANCELLED_MESSAGE_PREFIX)) {
+            return true;
+        }
+        String unbold = content.replace("*", "");
+        return unbold.contains("Cancelamento confirmado");
     }
 
     /**
