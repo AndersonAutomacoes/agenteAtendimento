@@ -302,19 +302,27 @@ jobs:
             #fi
             echo "Google Calendar Service Account JSON B64: $GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64"
             if [ -n "${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64:-}" ]; then
+            echo "Google Calendar Service Account JSON B64 não vazio"
               TMP_CAL="/tmp/google-calendar-sa-$$.json"
               DECODED_OK=false
               if printf '%s' "${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64:-}" | base64 -d > "$TMP_CAL" 2>/dev/null \
                 && [ -s "$TMP_CAL" ]
               then
+                echo "GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 decodificado como base64."
                 DECODED_OK=true
+                echo "DECODED_OK: $DECODED_OK"
                 echo "OK: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 decodificado como base64."
               else
+                echo "DECODED_OK: $DECODED_OK"
                 rm -f "$TMP_CAL"
+                echo "TMP_CAL removido"
                 # Segredo com JSON em claro (erro comum: colar o .json no secret com nome B64).
                 if printf '%s' "${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64:-}" | grep -qE '^[[:space:]]*\{'; then
+                  echo "GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 em texto: $GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64"
+                  echo "Segredo com JSON em claro (erro comum: colar o .json no secret com nome B64)."
                   if printf '%s' "${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64:-}" > "$TMP_CAL" && [ -s "$TMP_CAL" ]; then
                     DECODED_OK=true
+                    echo "DECODED_OK: $DECODED_OK"
                     echo "OK: segredo reconhecido como JSON em texto (não base64); a gravar em google-calendar-sa.json."
                   fi
                 else
@@ -323,10 +331,14 @@ jobs:
                 fi
               fi
               if [ "$DECODED_OK" = true ]; then
+                echo "DECODED_OK: $DECODED_OK"
+                echo "TMP_CAL: $TMP_CAL"
                 if mv -f "$TMP_CAL" /opt/axezap/secrets/google-calendar-sa.json; then
+                  echo "TMP_CAL movido para /opt/axezap/secrets/google-calendar-sa.json"
                   chmod 644 /opt/axezap/secrets/google-calendar-sa.json || true
                   echo "OK: /opt/axezap/secrets/google-calendar-sa.json actualizado."
                 else
+                  echo "DECODED_OK: $DECODED_OK"
                   echo "AVISO: mv para /opt/axezap/secrets/google-calendar-sa.json falhou."
                   echo "AVISO: mv google-calendar falhou (stderr)." >&2
                   rm -f "$TMP_CAL"
@@ -343,6 +355,7 @@ jobs:
               echo "OK: .env define GOOGLE_CALENDAR_CREDENTIALS_FILE para o bind mount do docker-compose (Google Calendar SA)."
             fi
             if [ -f docker-compose.hml.yml ]; then
+              echo "Docker Compose HML existe"
               cp -f docker-compose.hml.yml docker-compose.yml
               if [ $? -ne 0 ]; then echo "AVISO: cp docker-compose.hml.yml falhou" >&2; fi
               echo "OK: docker-compose.yml = cópia de docker-compose.hml.yml (default docker compose up usa GHCR, não build local)"
