@@ -283,12 +283,22 @@ jobs:
               exit 1
             fi
             echo "OK: /opt/axezap/secrets existe e é utilizável."
+            # Pastas com nome firebase.json/google-calendar-sa.json (bug de bind Docker) ficam ocupadas até parar stacks.
+            if [ -d /opt/axezap/secrets/firebase.json ] || [ -d /opt/axezap/secrets/google-calendar-sa.json ]; then
+              echo "=== compose down para libertar mounts em /opt/axezap/secrets (firebase/calendar como directorio)"
+              if [ -f docker-compose.hml.yml ]; then
+                docker compose -f docker-compose.hml.yml down --remove-orphans 2>&1 || true
+              fi
+              sleep 3
+            fi
             # Se firebase.json for directório (mount Docker sem ficheiro no host), mv do decode falha sem aviso se set -e.
             if [ -d /opt/axezap/secrets/firebase.json ]; then
-              echo "AVISO: removendo directório /opt/axezap/secrets/firebase.json antes de gravar o JSON (origem típica: mount sem ficheiro)." >&2
+              echo "AVISO: removendo directório /opt/axezap/secrets/firebase.json antes de gravar o JSON (origem típica: mount sem ficheiro)."
               rm -rf /opt/axezap/secrets/firebase.json || {
-                echo "ERRO: não foi possível remover directório firebase.json (EBUSY?)." >&2
+                echo "ERRO: não foi possível remover directório firebase.json (apos compose down?). saida:" >&2
+                echo "ERRO: não foi possível remover directório firebase.json (apos compose down?)." 
                 ls -la /opt/axezap/secrets >&2 || true
+                ls -la /opt/axezap/secrets || true
                 exit 1
               }
             fi
