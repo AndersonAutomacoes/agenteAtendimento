@@ -228,20 +228,20 @@ jobs:
             umask 026
             touch .env
             append_kv_allow_empty() {
-              local k="$1"
-              local v="$2"
-              printf '%s=' "$k" >> .env
-              if [ -n "$v" ]; then
-                printf '%q' "$v" >> .env
+              _kv_k="$1"
+              _kv_v="$2"
+              printf '%s=' "$_kv_k" >> .env
+              if [ -n "$_kv_v" ]; then
+                printf '%q' "$_kv_v" >> .env
               fi
               printf '\n' >> .env
             }
             append_kv_if_set() {
-              local k="$1"
-              local v="$2"
-              [ -n "$v" ] || return 0
-              printf '%s=' "$k" >> .env
-              printf '%q' "$v" >> .env
+              _kv_k="$1"
+              _kv_v="$2"
+              [ -n "$_kv_v" ] || return 0
+              printf '%s=' "$_kv_k" >> .env
+              printf '%q' "$_kv_v" >> .env
               printf '\n' >> .env
             }
             awk '/^(GHCR_IMAGE|GHCR_WEB_IMAGE|DATABASE_URL_HML|GROQ_API_KEY|GEMINI_API_KEY|GEMINI_CHAT_MODEL|AUTHENTICATION_API_KEY|RESEND_API_KEY|FIREBASE_PROJECT_ID|CEREBRO_FIREBASE_ENABLED|CEREBRO_CORS_ALLOWED_ORIGINS|CEREBRO_MAIL_INVITE_FROM_EMAIL|CEREBRO_MAIL_INVITE_FROM_NAME|CEREBRO_MAIL_INVITE_REGISTRATION_URL|CEREBRO_MAIL_INVITE_SUPPORT_EMAIL|WEBHOOK_GLOBAL_URL|SPRING_DATASOURCE_URL|GOOGLE_CALENDAR_CREDENTIALS_FILE)=/{next}1' .env > .env.tmp
@@ -264,20 +264,30 @@ jobs:
             append_kv_if_set GEMINI_CHAT_MODEL "$GEMINI_CHAT_MODEL"
             echo "=== garantir service account Firebase no servidor ==="
             # mkdir -p falha sob set -e se `secrets` for ficheiro (não pasta). Remover primeiro.
+            # Um `rm -rf` que falha também mata o script sob set -e sem echo útil — tratar explicitamente.
             if [ -e /opt/axezap/secrets ] && [ ! -d /opt/axezap/secrets ]; then
               echo "AVISO: /opt/axezap/secrets existe mas não é directorio — a remover antes de criar a pasta." >&2
-              rm -rf /opt/axezap/secrets
+              if ! rm -rf -- /opt/axezap/secrets; then
+                echo "ERRO: falha ao remover /opt/axezap/secrets (EBUSY, perm ou path inválido)." >&2
+                ls -la /opt/axezap >&2 || true
+                ls -la /opt/axezap/secrets >&2 || true
+                exit 1
+              fi
             fi
-            if ! mkdir -p /opt/axezap/secrets; then
+            if ! mkdir -p -- /opt/axezap/secrets; then
               echo "ERRO: mkdir -p /opt/axezap/secrets falhou (perms ou path corrupto):" >&2
-              ls -la /opt/axezap 2>&1 >&2 || true
-              ls -lad /opt/axezap/secrets 2>&1 >&2 || true
+              ls -la /opt/axezap >&2 || true
+              ls -lad /opt/axezap/secrets >&2 || true
               exit 1
             fi
             # Se firebase.json for directório (mount Docker sem ficheiro no host), mv do decode falha e, com set -e, mata o deploy antes de qualquer AVISO.
             if [ -d /opt/axezap/secrets/firebase.json ]; then
               echo "AVISO: removendo directório /opt/axezap/secrets/firebase.json antes de gravar o JSON (origem típica: mount sem ficheiro)." >&2
-              rm -rf /opt/axezap/secrets/firebase.json
+              rm -rf -- /opt/axezap/secrets/firebase.json || {
+                echo "ERRO: não foi possível remover directório firebase.json (EBUSY?)." >&2
+                ls -la /opt/axezap/secrets >&2 || true
+                exit 1
+              }
             fi
             if [ -n "${FIREBASE_SERVICE_ACCOUNT_JSON_B64:-}" ]; then
               FB_TMP="/opt/axezap/secrets/.firebase.json.tmp.$$"
