@@ -306,23 +306,6 @@ jobs:
               DECODED_OK=false
               echo "TMP_CAL: $TMP_CAL"
               echo "DECODED_OK: $DECODED_OK"
-              if [ "$DECODED_OK" = true ]; then
-                echo "DECODED_OK: ok"
-                echo "TMP_CAL: $TMP_CAL"
-                if mv -f "$TMP_CAL" /opt/axezap/secrets/google-calendar-sa.json; then
-                  echo "TMP_CAL movido para /opt/axezap/secrets/google-calendar-sa.json"
-                  chmod 644 /opt/axezap/secrets/google-calendar-sa.json || true
-                  echo "OK: /opt/axezap/secrets/google-calendar-sa.json actualizado."
-                else
-                  echo "DECODED_OK: $DECODED_OK"
-                  echo "AVISO: mv para /opt/axezap/secrets/google-calendar-sa.json falhou."
-                  echo "AVISO: mv google-calendar falhou (stderr)." >&2
-                  rm -f "$TMP_CAL"
-                fi
-              else
-                echo "TMP_CAL: removido"
-                #rm -f "$TMP_CAL"
-              fi
             else
               echo "INFO: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 vazio; a usar ficheiro copiado no deploy ou manual no servidor, se existir."
             fi
