@@ -287,8 +287,6 @@ jobs:
             echo "OK: /opt/axezap/secrets existe e é utilizável."
             echo "(stdout) passo seguinte: decodificar B64 Firebase/Google Calendar (temp apenas em /tmp; evitar escrever .tmp dentro de secrets/ por permissoes)."
             # Pastas com nome firebase.json/google-calendar-sa.json (bug de bind Docker) ficam ocupadas até parar stacks.
-            if [ -d /opt/axezap/secrets/firebase.json ] || [ -d /opt/axezap/secrets/google-calendar-sa.json ]; then
-              echo "=== compose down para libertar mounts em /opt/axezap/secrets (firebase/calendar como directorio)"
               if [ -f docker-compose.hml.yml ]; then
                 docker compose -f docker-compose.hml.yml down --remove-orphans 2>&1 || true
               fi
