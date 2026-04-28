@@ -266,6 +266,8 @@ jobs:
             # Todo o bloco secrets/Firebase/Calendar até ao compose usava set -e até aqui: um falhanço oculto matava o job só com exit 1.
             set +e
             set +o pipefail 2>/dev/null || true
+            # drone-SSH ou perfil pode levar nounset (-u): segredos ausentes não podem partir o script.
+            set +u 2>/dev/null || true
             # mkdir -p falha sob set -e se `secrets` for ficheiro (não pasta). Remover primeiro.
             if [ -e /opt/axezap/secrets ] && [ ! -d /opt/axezap/secrets ]; then
               echo "AVISO: /opt/axezap/secrets existe mas não é directorio — a remover antes de criar a pasta." >&2
@@ -283,6 +285,7 @@ jobs:
               exit 1
             fi
             echo "OK: /opt/axezap/secrets existe e é utilizável."
+            echo "(stdout) passo seguinte: decodificar B64 Firebase/Google Calendar (temp apenas em /tmp; evitar escrever .tmp dentro de secrets/ por permissoes)."
             # Pastas com nome firebase.json/google-calendar-sa.json (bug de bind Docker) ficam ocupadas até parar stacks.
             if [ -d /opt/axezap/secrets/firebase.json ] || [ -d /opt/axezap/secrets/google-calendar-sa.json ]; then
               echo "=== compose down para libertar mounts em /opt/axezap/secrets (firebase/calendar como directorio)"
@@ -303,21 +306,23 @@ jobs:
               }
             fi
             if [ -n "${FIREBASE_SERVICE_ACCOUNT_JSON_B64:-}" ]; then
-              FB_TMP="/opt/axezap/secrets/.firebase.json.tmp.$$"
-              if printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON_B64" | base64 -d > "$FB_TMP" 2>/dev/null && [ -s "$FB_TMP" ]; then
+              FB_TMP="/tmp/firebase-sa-deploy-$$.json.tmp"
+              if printf '%s' "${FIREBASE_SERVICE_ACCOUNT_JSON_B64:-}" | base64 -d > "$FB_TMP" 2>/dev/null && [ -s "$FB_TMP" ]; then
                 if mv -f "$FB_TMP" /opt/axezap/secrets/firebase.json; then
                   chmod 644 /opt/axezap/secrets/firebase.json || true
                   echo "OK: /opt/axezap/secrets/firebase.json atualizado via secret base64."
                 else
                   rm -f "$FB_TMP"
-                  echo "AVISO: mv para firebase.json falhou (verificar permissões ou se o path não é directório); manter ficheiro existente no servidor se aplicável." >&2
+                  echo "AVISO: mv para firebase.json falhou (verificar permissões ou se o path não é directório); manter ficheiro existente no servidor se aplicável."
+                  echo "AVISO: mv para firebase.json falhou (detalhe em stderr)." >&2
                 fi
               else
                 rm -f "$FB_TMP"
-                echo "AVISO: FIREBASE_SERVICE_ACCOUNT_JSON_B64 não decodificou (base64 inválido ou vazio); na verificação seguinte usar-se-á placeholder se Firebase estiver desligado no .env." >&2
+                echo "AVISO: FIREBASE_SERVICE_ACCOUNT_JSON_B64 não decodificou (base64 inválido ou vazio); na verificação seguinte usar-se-á placeholder se Firebase estiver desligado no .env."
+                echo "AVISO: FIREBASE B64 decode falhou (stderr)." >&2
               fi
             else
-              echo "AVISO: FIREBASE_SERVICE_ACCOUNT_JSON_B64 vazio no GitHub; sem decode neste passo (ficheiro existente ou placeholder abaixo)." >&2
+              echo "AVISO: FIREBASE_SERVICE_ACCOUNT_JSON_B64 vazio no GitHub; sem decode neste passo (ficheiro existente ou placeholder abaixo)."
             fi
             mkdir -p /opt/axezap/secrets
             # Bind mount sem ficheiro no host → Docker pode criar directório com este nome; remover antes de gravar JSON.
@@ -328,7 +333,7 @@ jobs:
             if [ -n "${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64:-}" ]; then
               TMP_CAL="/tmp/google-calendar-sa-$$.json"
               DECODED_OK=false
-              if printf '%s' "$GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64" | base64 -d > "$TMP_CAL" 2>/dev/null \
+              if printf '%s' "${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64:-}" | base64 -d > "$TMP_CAL" 2>/dev/null \
                 && [ -s "$TMP_CAL" ]
               then
                 DECODED_OK=true
@@ -336,13 +341,14 @@ jobs:
               else
                 rm -f "$TMP_CAL"
                 # Segredo com JSON em claro (erro comum: colar o .json no secret com nome B64).
-                if printf '%s' "$GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64" | grep -qE '^[[:space:]]*\{'; then
-                  if printf '%s' "$GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64" > "$TMP_CAL" && [ -s "$TMP_CAL" ]; then
+                if printf '%s' "${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64:-}" | grep -qE '^[[:space:]]*\{'; then
+                  if printf '%s' "${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64:-}" > "$TMP_CAL" && [ -s "$TMP_CAL" ]; then
                     DECODED_OK=true
                     echo "OK: segredo reconhecido como JSON em texto (não base64); a gravar em google-calendar-sa.json."
                   fi
                 else
-                  echo "AVISO: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 não decodificou como base64 nem começa com JSON {. Use: base64 -w0 < ficheiro.json no Linux, ou cole o JSON em claro neste secret, ou deixe vazio e use ficheiro no servidor / secret GOOGLE_CALENDAR_CREDENTIALS_FILE (SCP)." >&2
+                  echo "AVISO: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 não decodificou como base64 nem começa com JSON {. Use base64 ou JSON em texto no secret ou ficheiro no servidor."
+                  echo "AVISO: (detalhe) calendar B64 decode." >&2
                 fi
               fi
               if [ "$DECODED_OK" = true ]; then
@@ -350,7 +356,8 @@ jobs:
                   chmod 644 /opt/axezap/secrets/google-calendar-sa.json || true
                   echo "OK: /opt/axezap/secrets/google-calendar-sa.json actualizado."
                 else
-                  echo "AVISO: mv para /opt/axezap/secrets/google-calendar-sa.json falhou." >&2
+                  echo "AVISO: mv para /opt/axezap/secrets/google-calendar-sa.json falhou."
+                  echo "AVISO: mv google-calendar falhou (stderr)." >&2
                   rm -f "$TMP_CAL"
                 fi
               else
