@@ -264,12 +264,21 @@ jobs:
             append_kv_if_set GEMINI_CHAT_MODEL "$GEMINI_CHAT_MODEL"
             echo "=== garantir service account Firebase no servidor ==="
             mkdir -p /opt/axezap/secrets
+            # Se firebase.json for directório (mount Docker sem ficheiro no host), mv do decode falha e, com set -e, mata o deploy antes de qualquer AVISO.
+            if [ -d /opt/axezap/secrets/firebase.json ]; then
+              echo "AVISO: removendo directório /opt/axezap/secrets/firebase.json antes de gravar o JSON (origem típica: mount sem ficheiro)." >&2
+              rm -rf /opt/axezap/secrets/firebase.json
+            fi
             if [ -n "${FIREBASE_SERVICE_ACCOUNT_JSON_B64:-}" ]; then
               FB_TMP="/opt/axezap/secrets/.firebase.json.tmp.$$"
               if printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON_B64" | base64 -d > "$FB_TMP" 2>/dev/null && [ -s "$FB_TMP" ]; then
-                mv -f "$FB_TMP" /opt/axezap/secrets/firebase.json
-                chmod 644 /opt/axezap/secrets/firebase.json
-                echo "OK: /opt/axezap/secrets/firebase.json atualizado via secret base64."
+                if mv -f "$FB_TMP" /opt/axezap/secrets/firebase.json; then
+                  chmod 644 /opt/axezap/secrets/firebase.json || true
+                  echo "OK: /opt/axezap/secrets/firebase.json atualizado via secret base64."
+                else
+                  rm -f "$FB_TMP"
+                  echo "AVISO: mv para firebase.json falhou (verificar permissões ou se o path não é directório); manter ficheiro existente no servidor se aplicável." >&2
+                fi
               else
                 rm -f "$FB_TMP"
                 echo "AVISO: FIREBASE_SERVICE_ACCOUNT_JSON_B64 não decodificou (base64 inválido ou vazio); na verificação seguinte usar-se-á placeholder se Firebase estiver desligado no .env." >&2
