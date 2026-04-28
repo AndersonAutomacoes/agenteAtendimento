@@ -141,7 +141,8 @@ jobs:
           overwrite: true
 
       # O Docker usa GOOGLE_CALENDAR_CREDENTIALS_FILE = caminho no host (não o JSON). Este passo grava o JSON a partir do
-      # segredo (conteúdo do ficheiro .json) em disco no runner e copia para o VPS. Alternativa: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 no passo "Remote pull and up".
+      # segredo (conteúdo do ficheiro .json) em disco no runner e copia para o VPS. No "Remote pull and up", o segredo
+      # GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 aceita base64 (base64 -w0 < ficheiro.json) ou JSON em texto se o base64 falhar.
       - name: Gravar JSON Google Calendar a partir do segredo (opcional)
         id: calendar_json_file
         run: |
@@ -279,22 +280,42 @@ jobs:
             # Imediatamente +e: o VPS pode ter pipefail no perfil; set +e sozinho não o desliga.
             set +e
             set +o pipefail 2>/dev/null || true
+            mkdir -p /opt/axezap/secrets
+            # Bind mount sem ficheiro no host → Docker pode criar directório com este nome; remover antes de gravar JSON.
+            if [ -d /opt/axezap/secrets/google-calendar-sa.json ]; then
+              echo "AVISO: removendo directório /opt/axezap/secrets/google-calendar-sa.json (origem típica: mount sem ficheiro real)."
+              rm -rf /opt/axezap/secrets/google-calendar-sa.json
+            fi
             if [ -n "${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64:-}" ]; then
               TMP_CAL="/tmp/google-calendar-sa-$$.json"
+              DECODED_OK=false
               if printf '%s' "$GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64" | base64 -d > "$TMP_CAL" 2>/dev/null \
                 && [ -s "$TMP_CAL" ]
               then
-                mkdir -p /opt/axezap/secrets
+                DECODED_OK=true
+                echo "OK: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 decodificado como base64."
+              else
+                rm -f "$TMP_CAL"
+                # Segredo com JSON em claro (erro comum: colar o .json no secret com nome B64).
+                if printf '%s' "$GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64" | grep -qE '^[[:space:]]*\{'; then
+                  if printf '%s' "$GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64" > "$TMP_CAL" && [ -s "$TMP_CAL" ]; then
+                    DECODED_OK=true
+                    echo "OK: segredo reconhecido como JSON em texto (não base64); a gravar em google-calendar-sa.json."
+                  fi
+                else
+                  echo "AVISO: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 não decodificou como base64 nem começa com JSON {. Use: base64 -w0 < ficheiro.json no Linux, ou cole o JSON em claro neste secret, ou deixe vazio e use ficheiro no servidor / secret GOOGLE_CALENDAR_CREDENTIALS_FILE (SCP)." >&2
+                fi
+              fi
+              if [ "$DECODED_OK" = true ]; then
                 if mv -f "$TMP_CAL" /opt/axezap/secrets/google-calendar-sa.json; then
                   chmod 644 /opt/axezap/secrets/google-calendar-sa.json || true
-                  echo "OK: /opt/axezap/secrets/google-calendar-sa.json via GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64."
+                  echo "OK: /opt/axezap/secrets/google-calendar-sa.json actualizado."
                 else
-                  echo "AVISO: mv para /opt/axezap/secrets/google-calendar-sa.json falhou (se path for directório, apague o directório e volte a correr, ou deixe o segredo B64 vazio e use ficheiro manual/SCP)." >&2
+                  echo "AVISO: mv para /opt/axezap/secrets/google-calendar-sa.json falhou." >&2
                   rm -f "$TMP_CAL"
                 fi
               else
                 rm -f "$TMP_CAL"
-                echo "AVISO: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 não decodificou (base64: base64 -w0 < ficheiro.json) ou ficheiro vazio; vazio o segredo para usar ficheiro já no servidor." >&2
               fi
             else
               echo "INFO: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 vazio; a usar ficheiro copiado no deploy ou manual no servidor, se existir."
