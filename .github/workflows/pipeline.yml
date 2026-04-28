@@ -292,17 +292,7 @@ jobs:
                 echo "Docker Compose Foi desligado"
               fi
               sleep 3
-            # Se firebase.json for directório (mount Docker sem ficheiro no host), mv do decode falha sem aviso se set -e.
-            if [ -d /opt/axezap/secrets/firebase.json ]; then
-              echo "AVISO: removendo directório /opt/axezap/secrets/firebase.json antes de gravar o JSON (origem típica: mount sem ficheiro)."
-              rm -rf /opt/axezap/secrets/firebase.json || {
-                echo "ERRO: não foi possível remover directório firebase.json (apos compose down?). saida:" >&2
-                echo "ERRO: não foi possível remover directório firebase.json (apos compose down?)." 
-                ls -la /opt/axezap/secrets >&2 || true
-                ls -la /opt/axezap/secrets || true
-                exit 1
-              }
-            fi
+              echo "Firebase Service Account JSON B64: $FIREBASE_SERVICE_ACCOUNT_JSON_B64"
             if [ -n "${FIREBASE_SERVICE_ACCOUNT_JSON_B64:-}" ]; then
               FB_TMP="/tmp/firebase-sa-deploy-$$.json.tmp"
               if printf '%s' "${FIREBASE_SERVICE_ACCOUNT_JSON_B64:-}" | base64 -d > "$FB_TMP" 2>/dev/null && [ -s "$FB_TMP" ]; then
