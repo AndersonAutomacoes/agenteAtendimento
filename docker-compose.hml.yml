@@ -112,6 +112,8 @@ services:
       SPRING_AI_MODEL_EMBEDDING_TEXT: google-genai
       CEREBRO_WHATSAPP_EVOLUTION_BASE_URL: http://evolution-api:8080
       CEREBRO_WHATSAPP_EVOLUTION_API_KEY: ${AUTHENTICATION_API_KEY:-}
+      # Base que o provisioning grava no webhook da instância (Evolution → POST no Cerebro). Rede Docker: http://cerebro-api:8080
+      CEREBRO_WHATSAPP_EVOLUTION_WEBHOOK_PUBLIC_BASE_URL: ${CEREBRO_WHATSAPP_EVOLUTION_WEBHOOK_PUBLIC_BASE_URL:-}
       # Auth do portal (/v1/auth/me): quando false OU ausente como "true", o Spring NÃO regista Firebase Admin SDK —
       # o verifier de fallback devolve sempre falha nos Bearer tokens → log «FirebaseTokenVerifier não configurado».
       # No .env na VPS (/opt/axezap/.env): CEREBRO_FIREBASE_ENABLED=true, FIREBASE_PROJECT_ID=<mesmo NEXT_PUBLIC_FIREBASE_*>,
