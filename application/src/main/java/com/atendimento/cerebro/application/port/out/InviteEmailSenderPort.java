@@ -12,5 +12,9 @@ public interface InviteEmailSenderPort {
             String establishmentName,
             String inviteCode,
             int maxUses,
-            Instant expiresAt) {}
+            Instant expiresAt,
+            /** Conteúdo para {@code img} src ou só base64; {@code null} omite QR. */
+            String whatsappPairingQrDataUriOrPlainBase64,
+            /** Linha opcional HTML/texto plano extra (avisos provisioning, etc.). */
+            String whatsappPairingNotePlain) {}
 }

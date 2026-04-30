@@ -77,6 +77,24 @@ public class EvolutionOutboundHttp {
         return res;
     }
 
+    /**
+     * GET com header {@code apikey}; usado pelos endpoints administrativos da Evolution (estado, connect, etc.).
+     */
+    @Retry(name = "evolutionApi")
+    public HttpResponse<String> getJsonResponse(String url, String apiKey) throws IOException, InterruptedException {
+        HttpRequest req =
+                HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .timeout(REQUEST)
+                        .header("Accept", "application/json")
+                        .header("apikey", apiKey)
+                        .GET()
+                        .build();
+        HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+        LOG.debug("Evolution HTTP GET {} url={} response={}", res.statusCode(), url, truncate(res.body(), 800));
+        return res;
+    }
+
     private static String truncate(String s, int max) {
         if (s == null) {
             return "";

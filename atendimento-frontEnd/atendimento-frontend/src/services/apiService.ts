@@ -393,6 +393,8 @@ export type InternalTenantCreatePayload = {
   establishmentName: string;
   customerEmail: string;
   profileLevel: ProfileLevel;
+  /** Cria instância Evolution + webhook + QR no e-mail de convite (requer variáveis no backend). */
+  provisionEvolution?: boolean;
 };
 
 export type InternalTenantCreateResponse = {
@@ -400,6 +402,8 @@ export type InternalTenantCreateResponse = {
   profileLevel: ProfileLevel;
   inviteCode: string;
   message: string;
+  evolutionInstanceName?: string | null;
+  provisioningWarning?: string | null;
 };
 
 export type InternalTenantListItem = {
@@ -1401,6 +1405,59 @@ export async function postInternalTenantCreate(
     profileLevel,
     inviteCode: String(o.inviteCode ?? ""),
     message: String(o.message ?? ""),
+    evolutionInstanceName:
+      typeof o.evolutionInstanceName === "string" ? o.evolutionInstanceName : null,
+    provisioningWarning:
+      typeof o.provisioningWarning === "string" ? o.provisioningWarning : null,
+  };
+}
+
+export type EvolutionPairingResponse = {
+  tenantId: string;
+  evolutionInstanceId: string;
+  qrcodePlainBase64: string;
+  qrcodeDataUri: string;
+};
+
+function tenantEvolutionPairingUrl(tenantId: string): string {
+  const base = getApiBaseUrl();
+  const q = new URLSearchParams({ tenantId }).toString();
+  if (base) {
+    return `${base}/api/v1/tenant/whatsapp/evolution/pairing?${q}`;
+  }
+  return `/api/v1/tenant/whatsapp/evolution/pairing?${q}`;
+}
+
+export async function postTenantEvolutionPairingQr(
+  tenantId: string,
+): Promise<EvolutionPairingResponse> {
+  const res = await fetch(tenantEvolutionPairingUrl(tenantId.trim()), {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: "{}",
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(apiI18nKey("errors.serverUnavailable"));
+  }
+  if (!res.ok) {
+    throw new Error(
+      httpErrorUserMessage(res.status, json, "errors.loadSettingsFailed"),
+    );
+  }
+  const o = json as Record<string, unknown>;
+  return {
+    tenantId: String(o.tenantId ?? ""),
+    evolutionInstanceId: String(o.evolutionInstanceId ?? ""),
+    qrcodePlainBase64: String(o.qrcodePlainBase64 ?? ""),
+    qrcodeDataUri: String(o.qrcodeDataUri ?? ""),
   };
 }
 

@@ -4,6 +4,7 @@ import com.atendimento.cerebro.application.ai.AiChatProvider;
 import com.atendimento.cerebro.application.dto.ChatCommand;
 import com.atendimento.cerebro.application.dto.ChatResult;
 import com.atendimento.cerebro.application.port.out.AudioTranscriptionPort;
+import com.atendimento.cerebro.application.port.out.EvolutionInstanceMappingStorePort;
 import com.atendimento.cerebro.application.port.in.ChatUseCase;
 import com.atendimento.cerebro.application.port.out.ChatMessageRepository;
 import com.atendimento.cerebro.application.port.out.CrmCustomerStorePort;
@@ -91,6 +92,7 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
     private final CerebroMultitenancyProperties multitenancyProperties;
     private final WhatsAppWebhookParser webhookParser;
     private final WhatsAppOutboundPort whatsAppOutboundPort;
+    private final EvolutionInstanceMappingStorePort evolutionInstanceMappingStore;
     private final InboundWhatsAppDeduperPort inboundWhatsAppDeduper;
     private final ChatMessageRepository chatMessageRepository;
     private final ConversationContextStorePort conversationContextStore;
@@ -111,6 +113,7 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
             CerebroMultitenancyProperties multitenancyProperties,
             WhatsAppWebhookParser webhookParser,
             WhatsAppOutboundPort whatsAppOutboundPort,
+            EvolutionInstanceMappingStorePort evolutionInstanceMappingStore,
             InboundWhatsAppDeduperPort inboundWhatsAppDeduper,
             ChatMessageRepository chatMessageRepository,
             ConversationContextStorePort conversationContextStore,
@@ -129,6 +132,7 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
         this.multitenancyProperties = multitenancyProperties;
         this.webhookParser = webhookParser;
         this.whatsAppOutboundPort = whatsAppOutboundPort;
+        this.evolutionInstanceMappingStore = evolutionInstanceMappingStore;
         this.inboundWhatsAppDeduper = inboundWhatsAppDeduper;
         this.chatMessageRepository = chatMessageRepository;
         this.conversationContextStore = conversationContextStore;
@@ -204,6 +208,9 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
         String evolutionInstanceName = extractEvolutionInstanceName(root);
         Optional<String> instanceOpt =
                 Optional.ofNullable(evolutionInstanceName).filter(s -> !s.isBlank());
+        if (acknowledgeEvolutionLifecycleEvent(exchange, root, evolutionInstanceName)) {
+            return;
+        }
         WhatsAppWebhookParser.Incoming parsed = webhookParser.parse(root);
         if (parsed instanceof WhatsAppWebhookParser.Incoming.Ignored) {
             exchange.setProperty(PROP_DECISION, DECISION_IGNORE);
@@ -747,6 +754,47 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
         }
         String schema = multitenancyProperties.resolveSchema(tenantId.value());
         TenantContext.set(tenantId.value(), schema);
+    }
+
+    /**
+     * ACK rápido a {@code CONNECTION_UPDATE} / {@code QRCODE_UPDATED} Evolution: atualiza estado do pareamento sem
+     * passar pelo chat.
+     */
+    private boolean acknowledgeEvolutionLifecycleEvent(Exchange exchange, JsonNode root, String evolutionInstanceName) {
+        JsonNode evtNode = root.get("event");
+        if (evtNode == null || !evtNode.isTextual()) {
+            return false;
+        }
+        String norm =
+                evtNode.asText("")
+                        .trim()
+                        .replace('.', '_')
+                        .replace('-', '_')
+                        .toUpperCase(Locale.ROOT);
+        if (!"CONNECTION_UPDATE".equals(norm) && !"QRCODE_UPDATED".equals(norm)) {
+            return false;
+        }
+        if (evolutionInstanceName != null && !evolutionInstanceName.isBlank()) {
+            String persisted = summarizeEvolutionConnectionHint(norm, root);
+            evolutionInstanceMappingStore.updateConnectionState(evolutionInstanceName.strip(), persisted);
+        }
+        exchange.setProperty(PROP_DECISION, DECISION_IGNORE);
+        exchange.getIn().setBody(new WhatsAppWebhookResponse("ignored"));
+        exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.OK.value());
+        return true;
+    }
+
+    private static String summarizeEvolutionConnectionHint(String normalizedEvent, JsonNode root) {
+        JsonNode data = root.path("data");
+        JsonNode state = data.get("state");
+        if (state != null && state.isTextual()) {
+            return normalizedEvent + ":" + state.asText("");
+        }
+        String compact = abbreviateForLog(data.isMissingNode() ? "" : data.toString(), 200);
+        if (!compact.isEmpty()) {
+            return normalizedEvent + ":" + compact;
+        }
+        return normalizedEvent;
     }
 
     private static String extractEvolutionInstanceName(JsonNode root) {

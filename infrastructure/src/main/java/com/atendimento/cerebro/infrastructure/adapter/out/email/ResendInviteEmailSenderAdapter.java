@@ -121,6 +121,7 @@ public class ResendInviteEmailSenderAdapter implements InviteEmailSenderPort {
                 + "</ol>"
                 + "<p>Este codigo permite ate " + command.maxUses() + " uso(s). " + escapeHtml(expiresText) + "</p>"
                 + "<p>Por seguranca, nao compartilhe este codigo com terceiros.</p>"
+                + whatsappQrBlock(command)
                 + supportLine
                 + "<p style=\"margin-top:24px;color:#6b7280;font-size:12px;\">Gestão de atendimento por AxeZap AI</p>"
                 + "</td></tr></table></body></html>";
@@ -147,6 +148,7 @@ public class ResendInviteEmailSenderAdapter implements InviteEmailSenderPort {
                 + "Uso maximo do codigo: " + command.maxUses() + "\n"
                 + expiresText + "\n"
                 + "Nao compartilhe este codigo com terceiros."
+                + whatsappQrTextBlock(command)
                 + supportLine
                 + "\n\nGestão de atendimento por AxeZap AI";
     }
@@ -157,5 +159,48 @@ public class ResendInviteEmailSenderAdapter implements InviteEmailSenderPort {
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;");
+    }
+
+    private static String whatsappQrBlock(InviteEmailCommand command) {
+        String src = qrSrc(command.whatsappPairingQrDataUriOrPlainBase64());
+        StringBuilder sb = new StringBuilder();
+        if (src != null) {
+            sb.append("<h3 style=\"margin-top:24px;\">Conectar WhatsApp (Evolution)</h3>")
+                    .append("<p>No telefone abra WhatsApp &gt; Aparelhos conectados &gt; "
+                            + "Conectar um aparelho e leia este codigo QR.</p>")
+                    .append("<p><img alt=\"QR WhatsApp\" style=\"max-width:280px;border:8px solid #f3f4f6;"
+                            + "border-radius:12px;\" src=\"")
+                    .append(src)
+                    .append("\" /></p>");
+        }
+        if (command.whatsappPairingNotePlain() != null && !command.whatsappPairingNotePlain().isBlank()) {
+            sb.append("<p>")
+                    .append(escapeHtml(command.whatsappPairingNotePlain().strip()))
+                    .append("</p>");
+        }
+        return sb.toString();
+    }
+
+    private static String whatsappQrTextBlock(InviteEmailCommand command) {
+        StringBuilder sb = new StringBuilder();
+        if (qrSrc(command.whatsappPairingQrDataUriOrPlainBase64()) != null) {
+            sb.append("\n\nConectar WhatsApp: abra o e-mail em HTML ou use configuracoes do portal ")
+                    .append("para ler o QR. No telefone use Aparelhos conectados &gt; Conectar um aparelho.\n");
+        }
+        if (command.whatsappPairingNotePlain() != null && !command.whatsappPairingNotePlain().isBlank()) {
+            sb.append("\n").append(command.whatsappPairingNotePlain().strip()).append("\n");
+        }
+        return sb.toString();
+    }
+
+    private static String qrSrc(String whatsappPairingQrDataUriOrPlainBase64) {
+        if (whatsappPairingQrDataUriOrPlainBase64 == null || whatsappPairingQrDataUriOrPlainBase64.isBlank()) {
+            return null;
+        }
+        String s = whatsappPairingQrDataUriOrPlainBase64.strip();
+        if (s.startsWith("data:image")) {
+            return s.replace("\"", "");
+        }
+        return "data:image/png;base64," + s.strip().replace("\"", "");
     }
 }

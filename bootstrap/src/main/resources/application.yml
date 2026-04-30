@@ -156,6 +156,8 @@ cerebro:
       base-url-override: ${CEREBRO_WHATSAPP_EVOLUTION_BASE_URL:}
       # Opcional: mesma chave que AUTHENTICATION_API_KEY no serviço Evolution. Tem prioridade sobre tenant_configuration.whatsapp_api_key (evita HTTP 401).
       api-key: ${CEREBRO_WHATSAPP_EVOLUTION_API_KEY:}
+      # URL HTTPS pública onde a Evolution faz POST ao webhook (path /api/v1/whatsapp/webhook). Obrigatório para provisioning automático por tenant (ngrok/production).
+      webhook-public-base-url: ${CEREBRO_WHATSAPP_EVOLUTION_WEBHOOK_PUBLIC_BASE_URL:}
       # sendButtons (Baileys) costuma devolver 201 mas o cliente não mostra botões; false = lista só em texto formatado.
       send-interactive-buttons: ${CEREBRO_WHATSAPP_EVOLUTION_SEND_INTERACTIVE_BUTTONS:false}
       # Só aplicável se send-interactive-buttons=true: duplica horários em texto após sendButtons.

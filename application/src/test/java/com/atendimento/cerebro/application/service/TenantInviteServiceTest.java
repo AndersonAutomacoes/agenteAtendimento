@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 class TenantInviteServiceTest {
@@ -55,5 +56,24 @@ class TenantInviteServiceTest {
                                         "Oficina Centro"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("inviteEmail inválido");
+    }
+
+    @Test
+    void createInviteAndSendEmail_withQr_forwardsQrFields() {
+        ArgumentCaptor<InviteEmailSenderPort.InviteEmailCommand> captor =
+                ArgumentCaptor.forClass(InviteEmailSenderPort.InviteEmailCommand.class);
+        tenantInviteService.createInviteAndSendEmail(
+                new TenantId("tenant-a"),
+                5,
+                null,
+                "cliente@empresa.com",
+                "Oficina Centro",
+                "data:image/png;base64,BBB",
+                "Provisioning ok");
+
+        verify(inviteEmailSenderPort).sendInviteEmail(captor.capture());
+        InviteEmailSenderPort.InviteEmailCommand cmd = captor.getValue();
+        assertThat(cmd.whatsappPairingQrDataUriOrPlainBase64()).contains("BBB");
+        assertThat(cmd.whatsappPairingNotePlain()).isEqualTo("Provisioning ok");
     }
 }

@@ -31,11 +31,14 @@ import com.atendimento.cerebro.application.service.ConversationCategoryAnalytics
 import com.atendimento.cerebro.application.service.ConversationPrimaryIntentService;
 import com.atendimento.cerebro.application.service.IngestionService;
 import com.atendimento.cerebro.application.port.out.FirebaseCustomClaimsPort;
+import com.atendimento.cerebro.application.port.out.EvolutionInstanceAdminPort;
+import com.atendimento.cerebro.application.port.out.EvolutionInstanceMappingStorePort;
 import com.atendimento.cerebro.application.port.out.PortalUserStorePort;
 import com.atendimento.cerebro.application.port.out.TenantInviteStorePort;
 import com.atendimento.cerebro.application.port.out.WhatsAppTextOutboundPort;
 import com.atendimento.cerebro.application.service.AppointmentReminderNotificationService;
 import com.atendimento.cerebro.application.service.PortalRegistrationService;
+import com.atendimento.cerebro.application.service.EvolutionTenantProvisioningService;
 import com.atendimento.cerebro.application.service.TenantInviteService;
 import com.atendimento.cerebro.application.service.TenantSettingsService;
 import com.atendimento.cerebro.infrastructure.config.AnalyticsCategorizationProperties;
@@ -144,6 +147,23 @@ public class ApplicationConfiguration {
             TenantInviteStorePort tenantInviteStore,
             InviteEmailSenderPort inviteEmailSenderPort) {
         return new TenantInviteService(tenantInviteStore, inviteEmailSenderPort);
+    }
+
+    @Bean
+    public EvolutionTenantProvisioningService evolutionTenantProvisioningService(
+            EvolutionInstanceAdminPort evolutionInstanceAdminPort,
+            EvolutionInstanceMappingStorePort evolutionInstanceMappingStorePort,
+            TenantConfigurationStorePort tenantConfigurationStorePort,
+            @Value("${cerebro.whatsapp.evolution.base-url-override:}") String evolutionBaseUrl,
+            @Value("${cerebro.whatsapp.evolution.api-key:}") String evolutionApiKey,
+            @Value("${cerebro.whatsapp.evolution.webhook-public-base-url:}") String webhookPublicBaseUrl) {
+        return new EvolutionTenantProvisioningService(
+                evolutionInstanceAdminPort,
+                evolutionInstanceMappingStorePort,
+                tenantConfigurationStorePort,
+                evolutionBaseUrl,
+                evolutionApiKey,
+                webhookPublicBaseUrl);
     }
 
     @Bean

@@ -54,6 +54,11 @@ export default function InternalTenantsPage() {
   const [busy, setBusy] = React.useState(false);
   const [inviteCode, setInviteCode] = React.useState("");
   const [resultTenantId, setResultTenantId] = React.useState("");
+  const [provisionEvolution, setProvisionEvolution] = React.useState(false);
+  const [lastEvolutionInstance, setLastEvolutionInstance] = React.useState<string | null>(null);
+  const [lastProvisioningWarning, setLastProvisioningWarning] = React.useState<string | null>(
+    null,
+  );
   const [search, setSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<"all" | "active" | "inactive">("all");
   const [tenants, setTenants] = React.useState<InternalTenantListItem[]>([]);
@@ -161,14 +166,19 @@ export default function InternalTenantsPage() {
     }
     setBusy(true);
     try {
+      setLastEvolutionInstance(null);
+      setLastProvisioningWarning(null);
       const res = await postInternalTenantCreate({
         tenantId: tenantId.trim(),
         establishmentName,
         customerEmail,
         profileLevel,
+        ...(provisionEvolution ? { provisionEvolution: true } : {}),
       });
       setInviteCode(res.inviteCode);
       setResultTenantId(res.tenantId);
+      setLastEvolutionInstance(res.evolutionInstanceName ?? null);
+      setLastProvisioningWarning(res.provisioningWarning ?? null);
       toast.success(t("createdOk"));
       await refreshList();
     } catch (e) {
@@ -405,9 +415,25 @@ export default function InternalTenantsPage() {
             >
               <option value="BASIC">BASIC</option>
               <option value="PRO">PRO</option>
-              <option value="ULTRA">ULTRA</option>
+              <option value="ULTRA">ULTRA</option            >
               <option value="COMERCIAL">COMERCIAL</option>
             </select>
+          </div>
+          <div className="flex items-start gap-2 rounded-xl border border-border/60 bg-card/40 p-3">
+            <input
+              id="provisionEvo"
+              type="checkbox"
+              className="mt-1 h-4 w-4 shrink-0"
+              checked={provisionEvolution}
+              onChange={(e) => setProvisionEvolution(e.target.checked)}
+              disabled={busy}
+            />
+            <div>
+              <Label htmlFor="provisionEvo" className="cursor-pointer font-normal">
+                {t("provisionEvolutionLabel")}
+              </Label>
+              <p className="text-xs text-muted-foreground">{t("provisionEvolutionHint")}</p>
+            </div>
           </div>
           <Button type="button" onClick={() => void submit()} disabled={busy}>
             {busy ? t("creating") : t("create")}
@@ -442,6 +468,17 @@ export default function InternalTenantsPage() {
             <p className="text-sm text-muted-foreground">
               {t("resultTenant")} <span className="font-medium">{resultTenantId}</span>
             </p>
+            {lastEvolutionInstance ? (
+              <p className="text-sm text-muted-foreground">
+                Evolution:{" "}
+                <span className="font-medium text-foreground">{lastEvolutionInstance}</span>
+              </p>
+            ) : null}
+            {lastProvisioningWarning ? (
+              <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                {lastProvisioningWarning}
+              </p>
+            ) : null}
             <div className="flex items-center gap-2">
               <code className="flex-1 rounded-md bg-muted px-2 py-1">{inviteCode}</code>
               <Button

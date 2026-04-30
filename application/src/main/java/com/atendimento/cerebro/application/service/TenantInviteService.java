@@ -44,6 +44,19 @@ public class TenantInviteService {
             Instant expiresAt,
             String inviteEmail,
             String establishmentName) {
+        return createInviteAndSendEmail(
+                tenantId, maxUses, expiresAt, inviteEmail, establishmentName, null, null);
+    }
+
+    /** Idêntico a {@link #createInviteAndSendEmail}, com QR WhatsApp opcional no e-mail. */
+    public String createInviteAndSendEmail(
+            TenantId tenantId,
+            int maxUses,
+            Instant expiresAt,
+            String inviteEmail,
+            String establishmentName,
+            String whatsappPairingQrDataUriOrPlainBase64,
+            String whatsappPairingNotePlain) {
         String normalizedInviteEmail = normalizeInviteEmail(inviteEmail);
         String plain = createInvite(tenantId, maxUses, expiresAt);
         inviteEmailSenderPort.sendInviteEmail(
@@ -53,7 +66,9 @@ public class TenantInviteService {
                         establishmentName,
                         plain,
                         maxUses < 1 ? 1 : maxUses,
-                        expiresAt));
+                        expiresAt,
+                        whatsappPairingQrDataUriOrPlainBase64,
+                        whatsappPairingNotePlain));
         return plain;
     }
 

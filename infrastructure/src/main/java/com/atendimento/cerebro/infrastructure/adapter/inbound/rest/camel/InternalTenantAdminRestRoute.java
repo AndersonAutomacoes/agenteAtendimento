@@ -1,6 +1,7 @@
 package com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel;
 
 import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort;
+import com.atendimento.cerebro.application.service.EvolutionTenantProvisioningService;
 import com.atendimento.cerebro.application.service.TenantInviteService;
 import com.atendimento.cerebro.domain.tenant.ProfileLevel;
 import com.atendimento.cerebro.domain.tenant.TenantConfiguration;
@@ -29,14 +30,17 @@ public class InternalTenantAdminRestRoute extends RouteBuilder {
 
     private final TenantConfigurationStorePort tenantConfigurationStore;
     private final TenantInviteService tenantInviteService;
+    private final EvolutionTenantProvisioningService evolutionTenantProvisioningService;
     private final JdbcClient jdbcClient;
 
     public InternalTenantAdminRestRoute(
             TenantConfigurationStorePort tenantConfigurationStore,
             TenantInviteService tenantInviteService,
+            EvolutionTenantProvisioningService evolutionTenantProvisioningService,
             JdbcClient jdbcClient) {
         this.tenantConfigurationStore = tenantConfigurationStore;
         this.tenantInviteService = tenantInviteService;
+        this.evolutionTenantProvisioningService = evolutionTenantProvisioningService;
         this.jdbcClient = jdbcClient;
     }
 
@@ -294,16 +298,51 @@ public class InternalTenantAdminRestRoute extends RouteBuilder {
                             base.spreadsheetUrl(),
                             base.whatsappBusinessNumber());
             tenantConfigurationStore.upsert(updated);
+            String evolutionInstanceName = null;
+            String provisioningWarning = null;
+            String whatsappQrDataUriOrNull = null;
+            if (Boolean.TRUE.equals(body.provisionEvolution())) {
+                try {
+                    EvolutionTenantProvisioningService.ProvisionOutcome outcome =
+                            evolutionTenantProvisioningService.provision(target);
+                    evolutionInstanceName = outcome.instanceName();
+                    whatsappQrDataUriOrNull =
+                            outcome.qrcodeBase64WithoutPrefix()
+                                    .map(b -> "data:image/png;base64," + b)
+                                    .orElse(null);
+                    provisioningWarning =
+                            outcome.warning().map(String::strip).filter(s -> !s.isBlank()).orElse(null);
+                } catch (RuntimeException ex) {
+                    String m = ex.getMessage() != null ? ex.getMessage().strip() : "Provisioning Evolution falhou";
+                    provisioningWarning = m;
+                }
+            }
             String inviteEmail = stripToNull(body.customerEmail());
-            String inviteCode = tenantInviteService.createInviteAndSendEmail(
-                    target, 5, null, inviteEmail, stripToNull(body.establishmentName()));
+            String inviteCode =
+                    tenantInviteService.createInviteAndSendEmail(
+                            target,
+                            5,
+                            null,
+                            inviteEmail,
+                            stripToNull(body.establishmentName()),
+                            whatsappQrDataUriOrNull,
+                            provisioningWarning);
+            String msg =
+                    "Tenant criado/atualizado. Convite enviado para "
+                            + inviteEmail
+                            + "."
+                            + (evolutionInstanceName != null
+                                    ? (" Instancia Evolution: " + evolutionInstanceName + ".")
+                                    : "");
             exchange.getMessage()
                     .setBody(
                             new CreateInternalTenantResponse(
                                     target.value(),
                                     level.name(),
                                     inviteCode,
-                                    "Tenant criado/atualizado. Convite enviado para " + inviteEmail + "."));
+                                    msg,
+                                    evolutionInstanceName,
+                                    provisioningWarning));
             exchange.getMessage().setHeader(Exchange.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
             exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.OK.value());
         } catch (IllegalArgumentException e) {
@@ -607,11 +646,18 @@ public class InternalTenantAdminRestRoute extends RouteBuilder {
             String tenantId,
             String establishmentName,
             String customerEmail,
-            String profileLevel) {}
+            String profileLevel,
+            /** Se {@code true}, cria instância Evolution + webhook público + QR no convite quando possível. */
+            Boolean provisionEvolution) {}
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record CreateInternalTenantResponse(
-            String tenantId, String profileLevel, String inviteCode, String message) {}
+            String tenantId,
+            String profileLevel,
+            String inviteCode,
+            String message,
+            String evolutionInstanceName,
+            String provisioningWarning) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record CreateTenantInviteRequest(Integer maxUses, String inviteEmail) {}

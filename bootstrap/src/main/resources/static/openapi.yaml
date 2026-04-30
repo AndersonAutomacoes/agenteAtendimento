@@ -120,6 +120,38 @@ paths:
               schema:
                 $ref: "#/components/schemas/IngestErrorResponse"
 
+  /api/v1/tenant/whatsapp/evolution/pairing:
+    post:
+      tags: [Tenant settings]
+      summary: Solicitar novo QR Evolution (WhatsApp Web Baileys) para o tenant autenticado
+      operationId: postTenantEvolutionPairing
+      parameters:
+        - name: tenantId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Deve coincidir com o tenant autorizado na sessão
+      responses:
+        "200":
+          description: QR devolvido (PNG base64 ou data-uri)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvolutionPairingHttpResponse"
+        "400":
+          description: Tenant sem Evolution configurado ou pedido inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        "503":
+          description: Evolution não devolveu QR neste momento
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+
   /api/v1/knowledge-base:
     get:
       tags: [Knowledge base]
@@ -1163,6 +1195,20 @@ components:
           type: string
           description: ID do calendário Google partilhado com a service account global (opcional)
           nullable: true
+
+    EvolutionPairingHttpResponse:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        evolutionInstanceId:
+          type: string
+        qrcodePlainBase64:
+          type: string
+          description: Base64 do PNG (sem prefixo data-uri)
+        qrcodeDataUri:
+          type: string
+          description: Pronto para usar em atributo src de imagem
 
     TenantSettingsHttpRequest:
       type: object

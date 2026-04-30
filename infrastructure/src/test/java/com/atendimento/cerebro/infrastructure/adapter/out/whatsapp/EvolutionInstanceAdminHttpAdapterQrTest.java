@@ -1,0 +1,33 @@
+package com.atendimento.cerebro.infrastructure.adapter.out.whatsapp;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Optional;
+import org.junit.jupiter.api.Test;
+
+class EvolutionInstanceAdminHttpAdapterQrTest {
+
+    private final ObjectMapper mapper = new ObjectMapper();
+
+    @Test
+    void extractQr_fromNestedQrcode() throws Exception {
+        JsonNode root = mapper.readTree("{\"qrcode\":{\"base64\":\"ABC123\"}}");
+        assertThat(EvolutionInstanceAdminHttpAdapter.extractQrBase64(root)).contains("ABC123");
+    }
+
+    @Test
+    void extractQr_fromDataEnvelope() throws Exception {
+        JsonNode root =
+                mapper.readTree(
+                        "{\"instance\":{\"instanceName\":\"ev\"},\"data\":{\"qrcode\":{\"base64\":\"PNGHERE\"}}}");
+        assertThat(EvolutionInstanceAdminHttpAdapter.extractQrBase64(root)).contains("PNGHERE");
+    }
+
+    @Test
+    void extractQr_missing_returnsEmpty() throws Exception {
+        JsonNode root = mapper.readTree("{\"foo\":1}");
+        assertThat(EvolutionInstanceAdminHttpAdapter.extractQrBase64(root)).isEqualTo(Optional.empty());
+    }
+}

@@ -1,5 +1,6 @@
 package com.atendimento.cerebro.infrastructure.multitenancy;
 
+import com.atendimento.cerebro.application.port.out.EvolutionInstanceMappingStorePort;
 import com.atendimento.cerebro.application.port.out.WhatsAppTenantLookupPort;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import com.atendimento.cerebro.infrastructure.whatsapp.WhatsAppTenantLookupProperties;
@@ -8,7 +9,8 @@ import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
 /**
- * Resolve o tenant do webhook: header HTTP (opcional), nome de instância Evolution (YAML), depois telefone.
+ * Resolve o tenant do webhook: header HTTP (opcional), nome de instância Evolution (Postgres provisionado +
+ * YAML legacy), depois telefone.
  */
 @Component
 public class WebhookTenantResolver {
@@ -17,11 +19,15 @@ public class WebhookTenantResolver {
 
     private final WhatsAppTenantLookupPort phoneLookup;
     private final WhatsAppTenantLookupProperties whatsAppProps;
+    private final EvolutionInstanceMappingStorePort evolutionMapping;
 
     public WebhookTenantResolver(
-            WhatsAppTenantLookupPort phoneLookup, WhatsAppTenantLookupProperties whatsAppProps) {
+            WhatsAppTenantLookupPort phoneLookup,
+            WhatsAppTenantLookupProperties whatsAppProps,
+            EvolutionInstanceMappingStorePort evolutionMapping) {
         this.phoneLookup = phoneLookup;
         this.whatsAppProps = whatsAppProps;
+        this.evolutionMapping = evolutionMapping;
     }
 
     public Optional<TenantId> resolve(
@@ -39,6 +45,10 @@ public class WebhookTenantResolver {
 
         if (evolutionInstanceName.isPresent() && !evolutionInstanceName.get().isBlank()) {
             String key = evolutionInstanceName.get().strip();
+            Optional<TenantId> db = evolutionMapping.findTenantIdByEvolutionInstanceName(key);
+            if (db.isPresent()) {
+                return db;
+            }
             String mapped = whatsAppProps.getInstanceTenants().get(key);
             if (mapped != null && !mapped.isBlank()) {
                 return Optional.of(new TenantId(mapped.strip()));

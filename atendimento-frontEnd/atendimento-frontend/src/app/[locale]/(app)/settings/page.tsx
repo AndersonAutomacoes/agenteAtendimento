@@ -22,6 +22,7 @@ import { mapProfileLevelToPlanTier } from "@/lib/plan-tier";
 import { cn } from "@/lib/utils";
 import {
   getTenantSettings,
+  postTenantEvolutionPairingQr,
   putTenantSettings,
   toUserFacingApiError,
   type WhatsAppProviderType,
@@ -53,6 +54,8 @@ export default function SettingsPage() {
   const [showAccessToken, setShowAccessToken] = React.useState(false);
   const [loadingInitial, setLoadingInitial] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [pairingQrLoading, setPairingQrLoading] = React.useState(false);
+  const [pairingQrSrc, setPairingQrSrc] = React.useState<string | null>(null);
 
   const readTenantFromStorage = React.useCallback(() => {
     try {
@@ -93,7 +96,10 @@ export default function SettingsPage() {
         if (!cancelled) toast.error(toUserFacingApiError(e, translateApi));
       })
       .finally(() => {
-      if (!cancelled) setLoadingInitial(false);
+      if (!cancelled) {
+        setLoadingInitial(false);
+        setPairingQrSrc(null);
+      }
     });
     return () => {
       cancelled = true;
@@ -185,6 +191,29 @@ export default function SettingsPage() {
   };
 
   const busy = saving || loadingInitial;
+
+  const fetchEvolutionQr = React.useCallback(async () => {
+    const tid = tenantId.trim();
+    if (!tid) {
+      toast.error(t("toastNeedAccount"));
+      return;
+    }
+    setPairingQrLoading(true);
+    try {
+      const r = await postTenantEvolutionPairingQr(tid);
+      const src = r.qrcodeDataUri || (r.qrcodePlainBase64 ? `data:image/png;base64,${r.qrcodePlainBase64}` : "");
+      if (!src) {
+        toast.error(tApi("errors.serverUnavailable"));
+        return;
+      }
+      setPairingQrSrc(src);
+      toast.success(t("evoPairingLoaded"));
+    } catch (e) {
+      toast.error(toUserFacingApiError(e, translateApi));
+    } finally {
+      setPairingQrLoading(false);
+    }
+  }, [tenantId, t, tApi, translateApi]);
 
   return (
     <FeatureGuard requiredPlan="pro" requiredFeature="SETTINGS">
@@ -359,6 +388,26 @@ export default function SettingsPage() {
                   className="rounded-xl"
                 />
                 <p className="text-xs text-muted-foreground">{t("evoKeyHint")}</p>
+              </div>
+              <div className="space-y-2 border-t border-border pt-4">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="rounded-xl"
+                  disabled={busy || pairingQrLoading || !tenantId.trim()}
+                  onClick={() => void fetchEvolutionQr()}
+                >
+                  {pairingQrLoading ? t("evoPairingLoading") : t("evoPairingButton")}
+                </Button>
+                <p className="text-xs text-muted-foreground">{t("evoPairingHint")}</p>
+                {pairingQrSrc ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={pairingQrSrc}
+                    alt={t("evoPairingAlt")}
+                    className="max-w-[260px] rounded-xl border border-border bg-muted/30 p-2"
+                  />
+                ) : null}
               </div>
             </div>
           )}
