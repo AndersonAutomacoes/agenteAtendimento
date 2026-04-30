@@ -112,7 +112,10 @@ services:
       SPRING_AI_MODEL_EMBEDDING_TEXT: google-genai
       CEREBRO_WHATSAPP_EVOLUTION_BASE_URL: http://evolution-api:8080
       CEREBRO_WHATSAPP_EVOLUTION_API_KEY: ${AUTHENTICATION_API_KEY:-}
-      # HML: por defeito false (sem account JSON no droplet o mount pode virar "Is a directory"). Ativar e montar o JSON: ver volumes abaixo
+      # Auth do portal (/v1/auth/me): quando false OU ausente como "true", o Spring NÃO regista Firebase Admin SDK —
+      # o verifier de fallback devolve sempre falha nos Bearer tokens → log «FirebaseTokenVerifier não configurado».
+      # No .env na VPS (/opt/axezap/.env): CEREBRO_FIREBASE_ENABLED=true, FIREBASE_PROJECT_ID=<mesmo NEXT_PUBLIC_FIREBASE_*>,
+      # e fecheiro real em ./secrets/firebase.json (volume abaixo; não usar placeholder quando enabled=true).
       CEREBRO_FIREBASE_ENABLED: ${CEREBRO_FIREBASE_ENABLED:-false}
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       FIREBASE_SERVICE_ACCOUNT_JSON_PATH: ${FIREBASE_SERVICE_ACCOUNT_JSON_PATH:-/run/firebase.json}

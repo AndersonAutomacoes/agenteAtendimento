@@ -174,9 +174,8 @@ jobs:
           target: "/opt/axezap/secrets/"
           overwrite: true
 
-      # Segredos opcionais no GitHub (se vazios, mantém-se o que já existir no .env do VPS):
-      # AUTHENTICATION_API_KEY, RESEND_API_KEY, FIREBASE_PROJECT_ID, CEREBRO_FIREBASE_ENABLED, CEREBRO_CORS_ALLOWED_ORIGINS,
-      # CEREBRO_MAIL_INVITE_*, WEBHOOK_GLOBAL_URL, GEMINI_CHAT_MODEL.
+      # Segredos opcionais no GitHub: se um segredo está vazio, o deploy já NÃO elimina nem duplica essa linha no .env do VPS —
+      # o valor atual no servidor preserva-se. Chaves sempre reescritas (GHCR_*, GEMINI/GROQ, DATABASE_URL_HML) são mergeadas uma vez.
       - name: Remote pull and up
         uses: appleboy/ssh-action@v1.0.3
         env:
@@ -224,9 +223,13 @@ jobs:
             echo "$GHCR_IMAGE"
             echo "=== GHCR_WEB_IMAGE (minúsculas) ==="
             echo "$GHCR_WEB_IMAGE"
-            echo "=== merge .env (GitHub Actions → /opt/axezap/.env; GEMINI/GROQ com %q para caracteres especiais) ==="
+            echo "=== merge .env (GitHub Actions → /opt/axezap/.env; sem duplicar chaves geridas; tolera CRLF / espaços em torno do =)"
             umask 026
             touch .env
+            if [ -s .env ] && grep -q $'\r' .env 2>/dev/null; then
+              tr -d '\r' < .env > .env.nocr && mv .env.nocr .env
+              echo "INFO: removidos CR (CRLF / Windows) do .env existente antes do merge."
+            fi
             append_kv_allow_empty() {
               _kv_k="$1"
               _kv_v="$2"
@@ -244,8 +247,35 @@ jobs:
               printf '%q' "$_kv_v" >> .env
               printf '\n' >> .env
             }
-            awk '/^(GHCR_IMAGE|GHCR_WEB_IMAGE|DATABASE_URL_HML|GROQ_API_KEY|GEMINI_API_KEY|GEMINI_CHAT_MODEL|AUTHENTICATION_API_KEY|RESEND_API_KEY|FIREBASE_PROJECT_ID|CEREBRO_FIREBASE_ENABLED|CEREBRO_CORS_ALLOWED_ORIGINS|CEREBRO_MAIL_INVITE_FROM_EMAIL|CEREBRO_MAIL_INVITE_FROM_NAME|CEREBRO_MAIL_INVITE_REGISTRATION_URL|CEREBRO_MAIL_INVITE_SUPPORT_EMAIL|WEBHOOK_GLOBAL_URL|FIREBASE_SERVICE_ACCOUNT_JSON_B64|GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64)=/d' .env > .env.tmp
-            mv .env.tmp .env
+            # Remove ocorrências de chaves antes de reapendar GitHub Actions. Chaves sempre reescritas (allow_empty ou B64 novo)
+            # são removidas sempre. Chaves opcionais (append apenas se secret não-vazio): só remover se há valor novo —
+            # assim mantém por exemplo GEMINI_CHAT_MODEL ou FIREBASE_PROJECT_ID já editados manualmente na VPS quando o segredo no GitHub está vazio.
+            remove_managed_keys_from_dotenv() {
+              _strip_tmp="$(mktemp)"
+              cp .env "$_strip_tmp" || touch "$_strip_tmp"
+              _grep_drop() {
+                _k="$1"
+                grep -Ev "^[[:space:]]*${_k}[[:space:]]*=" "$_strip_tmp" > "${_strip_tmp}.2" || true
+                mv "${_strip_tmp}.2" "$_strip_tmp"
+              }
+              for _mk in GHCR_IMAGE GHCR_WEB_IMAGE DATABASE_URL_HML GROQ_API_KEY GEMINI_API_KEY \
+                GOOGLE_CALENDAR_CREDENTIALS_FILE FIREBASE_SERVICE_ACCOUNT_JSON_B64 GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64; do
+                _grep_drop "$_mk"
+              done
+              [ -n "${AUTHENTICATION_API_KEY:-}" ] && _grep_drop AUTHENTICATION_API_KEY
+              [ -n "${RESEND_API_KEY:-}" ] && _grep_drop RESEND_API_KEY
+              [ -n "${FIREBASE_PROJECT_ID:-}" ] && _grep_drop FIREBASE_PROJECT_ID
+              [ -n "${CEREBRO_FIREBASE_ENABLED:-}" ] && _grep_drop CEREBRO_FIREBASE_ENABLED
+              [ -n "${CEREBRO_CORS_ALLOWED_ORIGINS:-}" ] && _grep_drop CEREBRO_CORS_ALLOWED_ORIGINS
+              [ -n "${CEREBRO_MAIL_INVITE_FROM_EMAIL:-}" ] && _grep_drop CEREBRO_MAIL_INVITE_FROM_EMAIL
+              [ -n "${CEREBRO_MAIL_INVITE_FROM_NAME:-}" ] && _grep_drop CEREBRO_MAIL_INVITE_FROM_NAME
+              [ -n "${CEREBRO_MAIL_INVITE_REGISTRATION_URL:-}" ] && _grep_drop CEREBRO_MAIL_INVITE_REGISTRATION_URL
+              [ -n "${CEREBRO_MAIL_INVITE_SUPPORT_EMAIL:-}" ] && _grep_drop CEREBRO_MAIL_INVITE_SUPPORT_EMAIL
+              [ -n "${WEBHOOK_GLOBAL_URL:-}" ] && _grep_drop WEBHOOK_GLOBAL_URL
+              [ -n "${GEMINI_CHAT_MODEL:-}" ] && _grep_drop GEMINI_CHAT_MODEL
+              mv "$_strip_tmp" .env
+            }
+            remove_managed_keys_from_dotenv
             append_kv_allow_empty GHCR_IMAGE "$GHCR_IMAGE"
             append_kv_allow_empty GHCR_WEB_IMAGE "$GHCR_WEB_IMAGE"
             append_kv_allow_empty DATABASE_URL_HML "$DATABASE_URL_HML"
@@ -310,9 +340,10 @@ jobs:
               echo "INFO: GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 vazio; a usar ficheiro copiado no deploy ou manual no servidor, se existir."
             fi
             if [ -f /opt/axezap/secrets/google-calendar-sa.json ] && [ -s /opt/axezap/secrets/google-calendar-sa.json ]; then
-              echo "GOOGLE_CALENDAR_CREDENTIALS_FILE=./secrets/google-calendar-sa.json" >> .env
-              if [ $? -ne 0 ]; then echo "AVISO: append GOOGLE_CALENDAR_CREDENTIALS_FILE a .env falhou" >&2; fi
-              echo "OK: .env define GOOGLE_CALENDAR_CREDENTIALS_FILE para o bind mount do docker-compose (Google Calendar SA)."
+              grep -Ev "^[[:space:]]*GOOGLE_CALENDAR_CREDENTIALS_FILE[[:space:]]*=" .env > .env.tmp_gc || true
+              mv .env.tmp_gc .env
+              append_kv_if_set GOOGLE_CALENDAR_CREDENTIALS_FILE "./secrets/google-calendar-sa.json"
+              echo "OK: .env com uma única linha GOOGLE_CALENDAR_CREDENTIALS_FILE para o bind mount (Calendar)."
             fi
             if [ -f docker-compose.hml.yml ]; then
               echo "Docker Compose HML existe"
