@@ -226,53 +226,78 @@ jobs:
             echo "=== merge .env (GitHub Actions → /opt/axezap/.env; sem duplicar chaves geridas; tolera CRLF / espaços em torno do =)"
             umask 026
             touch .env
-            if [ -s .env ] && grep -q $'\r' .env 2>/dev/null; then
+            # POSIX-safe (dash/sh): não usar $'\r' nem printf '%q' (bashismos que falhavam ao escrever o .env com set -e).
+            _CR="$(printf '\r')"
+            if [ -s .env ] && grep -Fq "${_CR}" .env 2>/dev/null; then
               tr -d '\r' < .env > .env.nocr && mv .env.nocr .env
               echo "INFO: removidos CR (CRLF / Windows) do .env existente antes do merge."
             fi
+            # Valores devem ser linha única sem CR (Compose /.env).
             append_kv_allow_empty() {
               _kv_k="$1"
               _kv_v="$2"
-              printf '%s=' "$_kv_k" >> .env
-              if [ -n "$_kv_v" ]; then
-                printf '%q' "$_kv_v" >> .env
-              fi
-              printf '\n' >> .env
+              printf '%s=%s\n' "$_kv_k" "$_kv_v" >> .env
             }
             append_kv_if_set() {
               _kv_k="$1"
               _kv_v="$2"
               [ -n "$_kv_v" ] || return 0
-              printf '%s=' "$_kv_k" >> .env
-              printf '%q' "$_kv_v" >> .env
-              printf '\n' >> .env
+              printf '%s=%s\n' "$_kv_k" "$_kv_v" >> .env
             }
-            # Remove ocorrências de chaves antes de reapendar GitHub Actions. Chaves sempre reescritas (allow_empty ou B64 novo)
-            # são removidas sempre. Chaves opcionais (append apenas se secret não-vazio): só remover se há valor novo —
-            # assim mantém por exemplo GEMINI_CHAT_MODEL ou FIREBASE_PROJECT_ID já editados manualmente na VPS quando o segredo no GitHub está vazio.
+            # Remove linhas antes de reapendar (grep -Ev com || true porque devolve 1 se não ficar seleção alguma sob set -e).
+            # Sem funções aninhadas para compatível com dash.
             remove_managed_keys_from_dotenv() {
               _strip_tmp="$(mktemp)"
-              cp .env "$_strip_tmp" || touch "$_strip_tmp"
-              _grep_drop() {
-                _k="$1"
-                grep -Ev "^[[:space:]]*${_k}[[:space:]]*=" "$_strip_tmp" > "${_strip_tmp}.2" || true
-                mv "${_strip_tmp}.2" "$_strip_tmp"
-              }
+              cp .env "$_strip_tmp" 2>/dev/null || touch "$_strip_tmp"
               for _mk in GHCR_IMAGE GHCR_WEB_IMAGE DATABASE_URL_HML GROQ_API_KEY GEMINI_API_KEY \
                 GOOGLE_CALENDAR_CREDENTIALS_FILE FIREBASE_SERVICE_ACCOUNT_JSON_B64 GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64; do
-                _grep_drop "$_mk"
+                grep -Ev "^[[:space:]]*${_mk}[[:space:]]*=" "$_strip_tmp" > "${_strip_tmp}.2" || true
+                mv "${_strip_tmp}.2" "$_strip_tmp"
               done
-              [ -n "${AUTHENTICATION_API_KEY:-}" ] && _grep_drop AUTHENTICATION_API_KEY
-              [ -n "${RESEND_API_KEY:-}" ] && _grep_drop RESEND_API_KEY
-              [ -n "${FIREBASE_PROJECT_ID:-}" ] && _grep_drop FIREBASE_PROJECT_ID
-              [ -n "${CEREBRO_FIREBASE_ENABLED:-}" ] && _grep_drop CEREBRO_FIREBASE_ENABLED
-              [ -n "${CEREBRO_CORS_ALLOWED_ORIGINS:-}" ] && _grep_drop CEREBRO_CORS_ALLOWED_ORIGINS
-              [ -n "${CEREBRO_MAIL_INVITE_FROM_EMAIL:-}" ] && _grep_drop CEREBRO_MAIL_INVITE_FROM_EMAIL
-              [ -n "${CEREBRO_MAIL_INVITE_FROM_NAME:-}" ] && _grep_drop CEREBRO_MAIL_INVITE_FROM_NAME
-              [ -n "${CEREBRO_MAIL_INVITE_REGISTRATION_URL:-}" ] && _grep_drop CEREBRO_MAIL_INVITE_REGISTRATION_URL
-              [ -n "${CEREBRO_MAIL_INVITE_SUPPORT_EMAIL:-}" ] && _grep_drop CEREBRO_MAIL_INVITE_SUPPORT_EMAIL
-              [ -n "${WEBHOOK_GLOBAL_URL:-}" ] && _grep_drop WEBHOOK_GLOBAL_URL
-              [ -n "${GEMINI_CHAT_MODEL:-}" ] && _grep_drop GEMINI_CHAT_MODEL
+              if [ -n "${AUTHENTICATION_API_KEY:-}" ]; then
+                grep -Ev '^[[:space:]]*AUTHENTICATION_API_KEY[[:space:]]*=' "$_strip_tmp" > "${_strip_tmp}.2" || true
+                mv "${_strip_tmp}.2" "$_strip_tmp"
+              fi
+              if [ -n "${RESEND_API_KEY:-}" ]; then
+                grep -Ev '^[[:space:]]*RESEND_API_KEY[[:space:]]*=' "$_strip_tmp" > "${_strip_tmp}.2" || true
+                mv "${_strip_tmp}.2" "$_strip_tmp"
+              fi
+              if [ -n "${FIREBASE_PROJECT_ID:-}" ]; then
+                grep -Ev '^[[:space:]]*FIREBASE_PROJECT_ID[[:space:]]*=' "$_strip_tmp" > "${_strip_tmp}.2" || true
+                mv "${_strip_tmp}.2" "$_strip_tmp"
+              fi
+              if [ -n "${CEREBRO_FIREBASE_ENABLED:-}" ]; then
+                grep -Ev '^[[:space:]]*CEREBRO_FIREBASE_ENABLED[[:space:]]*=' "$_strip_tmp" > "${_strip_tmp}.2" || true
+                mv "${_strip_tmp}.2" "$_strip_tmp"
+              fi
+              if [ -n "${CEREBRO_CORS_ALLOWED_ORIGINS:-}" ]; then
+                grep -Ev '^[[:space:]]*CEREBRO_CORS_ALLOWED_ORIGINS[[:space:]]*=' "$_strip_tmp" > "${_strip_tmp}.2" || true
+                mv "${_strip_tmp}.2" "$_strip_tmp"
+              fi
+              if [ -n "${CEREBRO_MAIL_INVITE_FROM_EMAIL:-}" ]; then
+                grep -Ev '^[[:space:]]*CEREBRO_MAIL_INVITE_FROM_EMAIL[[:space:]]*=' "$_strip_tmp" > "${_strip_tmp}.2" || true
+                mv "${_strip_tmp}.2" "$_strip_tmp"
+              fi
+              if [ -n "${CEREBRO_MAIL_INVITE_FROM_NAME:-}" ]; then
+                grep -Ev '^[[:space:]]*CEREBRO_MAIL_INVITE_FROM_NAME[[:space:]]*=' "$_strip_tmp" > "${_strip_tmp}.2" || true
+                mv "${_strip_tmp}.2" "$_strip_tmp"
+              fi
+              if [ -n "${CEREBRO_MAIL_INVITE_REGISTRATION_URL:-}" ]; then
+                grep -Ev '^[[:space:]]*CEREBRO_MAIL_INVITE_REGISTRATION_URL[[:space:]]*=' "$_strip_tmp" > "${_strip_tmp}.2" || true
+                mv "${_strip_tmp}.2" "$_strip_tmp"
+              fi
+              if [ -n "${CEREBRO_MAIL_INVITE_SUPPORT_EMAIL:-}" ]; then
+                grep -Ev '^[[:space:]]*CEREBRO_MAIL_INVITE_SUPPORT_EMAIL[[:space:]]*=' "$_strip_tmp" > "${_strip_tmp}.2" || true
+                mv "${_strip_tmp}.2" "$_strip_tmp"
+              fi
+              if [ -n "${WEBHOOK_GLOBAL_URL:-}" ]; then
+                grep -Ev '^[[:space:]]*WEBHOOK_GLOBAL_URL[[:space:]]*=' "$_strip_tmp" > "${_strip_tmp}.2" || true
+                mv "${_strip_tmp}.2" "$_strip_tmp"
+              fi
+              if [ -n "${GEMINI_CHAT_MODEL:-}" ]; then
+                grep -Ev '^[[:space:]]*GEMINI_CHAT_MODEL[[:space:]]*=' "$_strip_tmp" > "${_strip_tmp}.2" || true
+                mv "${_strip_tmp}.2" "$_strip_tmp"
+              fi
               mv "$_strip_tmp" .env
             }
             remove_managed_keys_from_dotenv
