@@ -134,13 +134,32 @@ public class EvolutionTenantProvisioningService {
         if (instance == null || instance.isBlank()) {
             throw new IllegalStateException("whatsapp_instance_id em falta");
         }
-        String base = tenantSaveUrl(globalEvolutionBaseUrl, cfg);
-        String apiKey =
-                tenantSaveKey(globalEvolutionApiKey, cfg);
+        // Igual ao envio outbound (EvolutionCredentials): override global primeiro. Evita 401 quando o BD
+        // guardou chave/url antigas mas CEREBRO_WHATSAPP_EVOLUTION_* está correto.
+        String base = evolutionHttpBaseUrl(cfg);
+        String apiKey = evolutionHttpApiKey(cfg);
         return extractPlainBase64(
                 evolutionInstanceAdmin
                         .connectAndFetchQrcodeBase64(trimSlash(base), apiKey, instance.strip())
                         .map(EvolutionTenantProvisioningService::normalizeBase64Payload));
+    }
+
+    /** URL para chamadas HTTP à Evolution: prioridade aos valores globais (Spring/env). */
+    private String evolutionHttpBaseUrl(TenantConfiguration cfg) {
+        if (globalEvolutionBaseUrl != null && !globalEvolutionBaseUrl.isBlank()) {
+            return globalEvolutionBaseUrl;
+        }
+        String t = cfg.whatsappBaseUrl() != null ? cfg.whatsappBaseUrl().strip() : "";
+        return t;
+    }
+
+    /** Chave apikey Evolution: prioridade aos valores globais (Spring/env). */
+    private String evolutionHttpApiKey(TenantConfiguration cfg) {
+        if (globalEvolutionApiKey != null && !globalEvolutionApiKey.isBlank()) {
+            return globalEvolutionApiKey;
+        }
+        String t = cfg.whatsappApiKey() != null ? cfg.whatsappApiKey().strip() : "";
+        return t;
     }
 
     private Optional<String> reconnectQr(String instanceName) {
