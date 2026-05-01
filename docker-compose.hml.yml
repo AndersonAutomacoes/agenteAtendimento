@@ -177,9 +177,13 @@ services:
       - cerebro_internal
     ports:
       - "3000:3000"
+    environment:
+      FIREBASE_SERVICE_ACCOUNT_JSON_PATH: ${FIREBASE_SERVICE_ACCOUNT_JSON_PATH:-/run/firebase.json}
     depends_on:
       api:
         condition: service_healthy
+    volumes:
+      - ./secrets/firebase.json:/run/firebase.json:ro
 
 volumes:
   cerebro_pgdata:

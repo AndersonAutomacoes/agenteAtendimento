@@ -1,6 +1,7 @@
 import "server-only";
 
 import * as admin from "firebase-admin";
+import { readFileSync } from "node:fs";
 
 /**
  * Servidor: credenciais via {@link process.env.FIREBASE_SERVICE_ACCOUNT_JSON}
@@ -17,9 +18,18 @@ export function getFirestoreAdmin(): admin.firestore.Firestore {
           credential: admin.credential.cert(cred),
         });
       } else {
-        admin.initializeApp({
-          credential: admin.credential.applicationDefault(),
-        });
+        const fromPath = process.env.FIREBASE_SERVICE_ACCOUNT_JSON_PATH?.trim();
+        if (fromPath) {
+          const fileJson = readFileSync(fromPath, "utf8");
+          const cred = JSON.parse(fileJson) as admin.ServiceAccount;
+          admin.initializeApp({
+            credential: admin.credential.cert(cred),
+          });
+        } else {
+          admin.initializeApp({
+            credential: admin.credential.applicationDefault(),
+          });
+        }
       }
     }
     return admin.firestore();
