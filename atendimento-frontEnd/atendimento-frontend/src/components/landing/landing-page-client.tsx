@@ -1,17 +1,11 @@
 "use client";
 
-import {
-  Bot,
-  CalendarClock,
-  ChevronRight,
-  LayoutDashboard,
-  Sparkles,
-  Users,
-  Zap,
-} from "lucide-react";
+import { CalendarClock, ChevronRight, Clock, Quote, TrendingUp } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { LandingChatMockup, type ChatBubble } from "@/components/landing/landing-chat-mockup";
 import { LandingContactForm } from "@/components/landing/landing-contact-form";
+import { getLandingWhatsAppHref, LandingFloatingWhatsApp } from "@/components/landing/landing-floating-whatsapp";
 import { LocaleSwitcher } from "@/components/layout/locale-switcher";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -19,20 +13,32 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
 
-type ProofItem = { label: string; detail: string };
 type Benefit = { title: string; description: string };
 type Step = { title: string; description: string };
 type FaqItem = { q: string; a: string };
 
-const benefitIcons = [Bot, CalendarClock, LayoutDashboard, Users, Sparkles];
+const benefitIcons = [Clock, TrendingUp, CalendarClock] as const;
+
+/** Demo externo: defina NEXT_PUBLIC_LANDING_DEMO_URL (https://...). Se vazio, o CTA secundário do Hero usa #contato. */
+function getLandingDemoHref(): string | null {
+  const raw = process.env.NEXT_PUBLIC_LANDING_DEMO_URL?.trim();
+  if (!raw) return null;
+  if (raw.startsWith("https://") || raw.startsWith("http://")) return raw;
+  return null;
+}
 
 export function LandingPageClient() {
   const t = useTranslations("landingPage");
-  const proofItems = t.raw("proofItems") as ProofItem[];
   const benefits = t.raw("benefits") as Benefit[];
   const howSteps = t.raw("howSteps") as Step[];
   const faqItems = t.raw("faq") as FaqItem[];
+  const heroChatBubbles = t.raw("heroChatBubbles") as ChatBubble[];
   const contactEmail = process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim();
+  const waHref = getLandingWhatsAppHref();
+  const demoHref = getLandingDemoHref();
+
+  const trialHref = waHref ?? "#contato";
+  const demoTargetHref = demoHref ?? "#contato";
 
   return (
     <div className="relative min-h-full bg-background">
@@ -46,16 +52,16 @@ export function LandingPageClient() {
         {t("skipToForm")}
       </a>
 
-      <header className="sticky top-0 z-40 border-b border-border/80 bg-background/80 backdrop-blur-md">
+      <header className="sticky top-0 z-40 border-b border-white/5 bg-zinc-950/75 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 md:px-6">
-          <span className="text-lg font-semibold tracking-tight">{t("navBrand")}</span>
+          <span className="text-lg font-semibold tracking-tight text-white">{t("navBrand")}</span>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <LocaleSwitcher />
             <ThemeToggle />
-            <Button variant="ghost" size="sm" className="hidden sm:inline-flex" asChild>
+            <Button variant="ghost" size="sm" className="hidden text-zinc-200 hover:bg-white/10 hover:text-white sm:inline-flex" asChild>
               <Link href="/login">{t("navLogin")}</Link>
             </Button>
-            <Button size="sm" asChild>
+            <Button size="sm" className="bg-white text-zinc-950 hover:bg-zinc-100" asChild>
               <Link href="/register">{t("navRegister")}</Link>
             </Button>
           </div>
@@ -63,81 +69,141 @@ export function LandingPageClient() {
       </header>
 
       <main>
-        <section className="relative overflow-hidden px-4 pb-20 pt-16 md:px-6 md:pb-28 md:pt-24">
-          <div
-            className="pointer-events-none absolute -left-1/4 top-0 h-[420px] w-[140%] rounded-full bg-primary/15 blur-3xl md:left-1/3 md:w-[900px]"
-            aria-hidden
-          />
-          <div className="relative mx-auto max-w-6xl">
-            <p className="mb-4 inline-flex items-center rounded-full border border-border bg-card/80 px-3 py-1 text-xs font-medium text-primary">
-              <Zap className="mr-2 size-3.5" aria-hidden />
-              {t("heroBadge")}
-            </p>
-            <h1 className="max-w-4xl text-balance text-4xl font-bold tracking-tight md:text-5xl lg:text-6xl">
-              {t("heroTitle")}
-            </h1>
-            <p className="mt-6 max-w-2xl text-pretty text-lg text-muted-foreground md:text-xl">
-              {t("heroSubtitle")}
-            </p>
-            <div className="mt-10 flex flex-wrap gap-3">
-              <Button size="lg" asChild>
-                <a href="#contato">
-                  {t("ctaPrimary")}
-                  <ChevronRight className="ml-1 size-4" aria-hidden />
-                </a>
-              </Button>
-              <Button size="lg" variant="outline" asChild>
-                <Link href="/login">{t("ctaSecondary")}</Link>
-              </Button>
+        <section className="relative overflow-hidden border-b border-white/5 bg-gradient-to-br from-zinc-950 via-slate-950 to-zinc-900 px-4 pb-16 pt-12 md:px-6 md:pb-24 md:pt-16">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_100%_80%_at_50%_-40%,rgba(59,130,246,0.22),transparent)]" aria-hidden />
+          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(24,24,27,0.3)_0%,transparent_35%,rgba(9,9,11,0.85)_100%)]" aria-hidden />
+          <div className="pointer-events-none absolute -right-20 top-1/4 size-[520px] rounded-full bg-violet-600/10 blur-[100px] md:right-0" aria-hidden />
+
+          <div className="relative mx-auto grid max-w-6xl gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(280px,400px)] lg:items-center lg:gap-16">
+            <div className="max-w-xl lg:max-w-none">
+              <p className="mb-4 inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-emerald-300/90 backdrop-blur-sm">
+                {t("heroBadge")}
+              </p>
+              <h1 className="text-balance text-3xl font-bold tracking-tight text-white md:text-4xl lg:text-[2.65rem] lg:leading-[1.12]">
+                {t("heroTitle")}
+              </h1>
+              <p className="mt-5 max-w-xl text-pretty text-base leading-relaxed text-zinc-400 md:text-lg">
+                {t("heroSubtitle")}
+              </p>
+              <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+                <Button
+                  size="lg"
+                  className={cn(
+                    "relative h-12 border-0 px-8 text-base font-semibold text-white shadow-xl shadow-violet-950/30 ring-2 ring-white/15",
+                    "bg-gradient-to-r from-violet-600 via-emerald-500 to-teal-500",
+                    "hover:from-violet-500 hover:via-emerald-400 hover:to-teal-400 hover:text-white hover:ring-white/25",
+                  )}
+                  asChild
+                >
+                  <a
+                    href={trialHref}
+                    target={waHref ? "_blank" : undefined}
+                    rel={waHref ? "noopener noreferrer" : undefined}
+                    aria-label={t("heroCtaTrialAria")}
+                  >
+                    {t("heroCtaTrial")}
+                    <ChevronRight className="ml-1 size-5 opacity-90" aria-hidden />
+                  </a>
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="h-12 border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
+                  asChild
+                >
+                  <a
+                    href={demoTargetHref}
+                    target={demoHref ? "_blank" : undefined}
+                    rel={demoHref ? "noopener noreferrer" : undefined}
+                    aria-label={t("heroCtaDemoAria")}
+                  >
+                    {t("heroCtaDemo")}
+                  </a>
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex justify-center lg:justify-end">
+              <LandingChatMockup
+                headerTitle={t("heroChatMockHeader")}
+                headerSub={t("heroChatMockSub")}
+                bubbles={heroChatBubbles}
+                className="lg:translate-y-2"
+              />
             </div>
           </div>
         </section>
 
-        <section className="border-y border-border bg-card/40 px-4 py-12 md:px-6">
-          <div className="mx-auto max-w-6xl">
-            <h2 className="text-center text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              {t("proofTitle")}
-            </h2>
-            <ul className="mt-8 grid gap-6 sm:grid-cols-3">
-              {proofItems.map((item) => (
-                <li
-                  key={item.label}
-                  className="rounded-xl border border-border bg-background/80 px-5 py-4 text-center shadow-sm"
-                >
-                  <p className="font-semibold text-foreground">{item.label}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{item.detail}</p>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
-
-        <section className="px-4 py-16 md:px-6 md:py-24">
+        <section className="px-4 py-14 md:px-6 md:py-20">
           <div className="mx-auto max-w-6xl">
             <div className="mx-auto max-w-2xl text-center">
               <h2 className="text-3xl font-bold tracking-tight md:text-4xl">{t("benefitsHeading")}</h2>
               <p className="mt-4 text-muted-foreground">{t("benefitsSub")}</p>
             </div>
-            <ul className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {benefits.map((b, i) => {
-                const Icon = benefitIcons[i % benefitIcons.length];
+            <ul className="mt-10 grid grid-cols-1 gap-8 md:grid-cols-3">
+              {benefits.slice(0, 3).map((b, i) => {
+                const Icon = benefitIcons[i] ?? Clock;
                 return (
                   <li key={b.title}>
-                    <Card className="h-full border-border/80 bg-card/60 transition-colors hover:border-primary/40">
-                      <CardHeader>
-                        <div className="mb-2 flex size-10 items-center justify-center rounded-lg bg-primary/15 text-primary">
-                          <Icon className="size-5" aria-hidden />
+                    <Card className="h-full border-border/80 bg-card/80 transition-colors hover:border-primary/35 hover:shadow-md hover:shadow-primary/5">
+                      <CardHeader className="pb-2">
+                        <div className="mb-3 flex size-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-emerald-600/15 text-primary ring-1 ring-white/10">
+                          <Icon className="size-6" aria-hidden strokeWidth={1.75} />
                         </div>
-                        <CardTitle className="text-lg">{b.title}</CardTitle>
-                        <CardDescription className="text-base leading-relaxed">
-                          {b.description}
-                        </CardDescription>
+                        <CardTitle className="text-lg leading-snug">{b.title}</CardTitle>
+                        <CardDescription className="text-base leading-relaxed">{b.description}</CardDescription>
                       </CardHeader>
                     </Card>
                   </li>
                 );
               })}
             </ul>
+          </div>
+        </section>
+
+        <section className="border-y border-border bg-muted/10 px-4 py-12 md:px-6 md:py-16">
+          <div className="mx-auto max-w-3xl">
+            <Card className="border-primary/20 bg-card/70 shadow-sm">
+              <CardContent className="flex flex-col gap-6 p-8 md:flex-row md:items-start md:gap-8 md:p-10">
+                <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                  <Quote className="size-6" aria-hidden />
+                </div>
+                <figure className="min-w-0 flex-1 space-y-4">
+                  <blockquote className="text-lg font-medium leading-relaxed text-foreground md:text-xl">
+                    &ldquo;{t("socialProofQuote")}&rdquo;
+                  </blockquote>
+                  <figcaption className="text-sm font-medium text-muted-foreground">{t("socialProofAttribution")}</figcaption>
+                </figure>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+
+        <section className="border-y border-border bg-muted/15 px-4 py-12 md:px-6 md:py-16">
+          <div className="mx-auto flex max-w-6xl flex-col gap-6 rounded-2xl border border-border/80 bg-card/60 p-6 shadow-sm backdrop-blur-sm md:flex-row md:items-center md:justify-between md:p-8 lg:p-10">
+            <div className="min-w-0 flex-1 space-y-2">
+              <h2 className="text-xl font-bold tracking-tight md:text-2xl">{t("tryAgentHeading")}</h2>
+              <p className="max-w-prose text-sm leading-relaxed text-muted-foreground md:text-base">{t("tryAgentSub")}</p>
+              {!waHref ? (
+                <p className="text-xs text-muted-foreground/90 md:text-sm">{t("tryAgentUnavailableHint")}</p>
+              ) : null}
+            </div>
+            <div className="flex w-full shrink-0 flex-col gap-3 sm:flex-row sm:justify-end md:w-auto md:flex-col lg:flex-row">
+              {waHref ? (
+                <Button
+                  size="lg"
+                  className="w-full bg-[#25D366] font-semibold text-white hover:bg-[#20BD5A] sm:w-auto md:w-full lg:w-auto"
+                  asChild
+                >
+                  <a href={waHref} target="_blank" rel="noopener noreferrer">
+                    {t("tryAgentCta")}
+                  </a>
+                </Button>
+              ) : null}
+              <Button size="lg" variant={waHref ? "outline" : "default"} className="w-full sm:w-auto md:w-full lg:w-auto" asChild>
+                <a href="#contato">{t("tryAgentFallbackCta")}</a>
+              </Button>
+            </div>
           </div>
         </section>
 
@@ -158,9 +224,7 @@ export function LandingPageClient() {
                   </span>
                   <div>
                     <h3 className="font-semibold">{step.title}</h3>
-                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                      {step.description}
-                    </p>
+                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{step.description}</p>
                   </div>
                 </li>
               ))}
@@ -189,24 +253,42 @@ export function LandingPageClient() {
                       />
                     </span>
                   </summary>
-                  <p className="mt-3 border-t border-border pt-3 text-sm leading-relaxed text-muted-foreground">
-                    {item.a}
-                  </p>
+                  <p className="mt-3 border-t border-border pt-3 text-sm leading-relaxed text-muted-foreground">{item.a}</p>
                 </details>
               ))}
             </div>
           </div>
         </section>
 
-        <section id="contato" className="scroll-mt-20 px-4 pb-20 pt-4 md:px-6 md:pb-28">
+        <section id="contato" className="scroll-mt-20 px-4 pb-28 pt-4 md:px-6 md:pb-36">
           <div className="mx-auto max-w-6xl">
-            <div className="mx-auto max-w-xl text-center">
+            <div className="mx-auto max-w-2xl text-center">
               <h2 className="text-3xl font-bold tracking-tight md:text-4xl">{t("contactHeading")}</h2>
               <p className="mt-4 text-muted-foreground">{t("contactSub")}</p>
+              <div className="mt-8 flex w-full flex-col justify-center gap-3 sm:mx-auto sm:max-w-lg sm:flex-row sm:flex-wrap">
+                <Button
+                  size="lg"
+                  className={cn(
+                    "w-full px-6 font-semibold text-white shadow-lg ring-2 ring-primary/25 sm:flex-1",
+                    "bg-gradient-to-r from-violet-600 via-emerald-600 to-teal-600 hover:from-violet-500 hover:via-emerald-500 hover:to-teal-500",
+                  )}
+                  asChild
+                >
+                  <a href="#landing-form" aria-label={t("finalCtaExpertAria")}>
+                    {t("contactFormCardTitle")}
+                  </a>
+                </Button>
+                <Button size="lg" variant="outline" className="w-full sm:flex-1" asChild>
+                  <Link href="/register">{t("finalCtaRegister")}</Link>
+                </Button>
+              </div>
             </div>
-            <Card className="mx-auto mt-12 max-w-xl border-primary/25 bg-card/80 shadow-lg shadow-primary/5">
+            <Card
+              id="landing-form"
+              className="mx-auto mt-12 max-w-xl scroll-mt-24 border-primary/25 bg-card/80 shadow-lg shadow-primary/5"
+            >
               <CardHeader>
-                <CardTitle className="text-xl">{t("ctaPrimary")}</CardTitle>
+                <CardTitle className="text-xl">{t("contactFormCardTitle")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <LandingContactForm />
@@ -234,15 +316,14 @@ export function LandingPageClient() {
             <Link href="/login" className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
               {t("footerLogin")}
             </Link>
-            <Link
-              href="/register"
-              className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-            >
+            <Link href="/register" className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
               {t("footerRegister")}
             </Link>
           </div>
         </div>
       </footer>
+
+      <LandingFloatingWhatsApp />
     </div>
   );
 }

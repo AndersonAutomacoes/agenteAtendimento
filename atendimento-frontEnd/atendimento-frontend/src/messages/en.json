@@ -38,47 +38,45 @@
     "sessionActive": "Active session"
   },
   "landingPage": {
-    "metaTitle": "AxeZap — Intelligent support that sells and books for you",
-    "metaDescription": "Automate WhatsApp with AI trained on your knowledge base. Shorter queues, more conversions and bookings without growing headcount.",
+    "metaTitle": "AxeZap — Turn WhatsApp into automated sales",
+    "metaDescription": "Artificial intelligence that qualifies leads, books appointments, and sells on WhatsApp 24/7 without interruption.",
     "skipToForm": "Skip to contact form",
     "navBrand": "AxeZap",
     "navLogin": "Sign in",
     "navRegister": "Create account",
-    "heroBadge": "Intelligent support",
-    "heroTitle": "Turn every conversation into opportunity — at scale.",
-    "heroSubtitle": "AxeZap puts AI beside your team: it speaks in your brand voice, draws from your knowledge base, and helps book appointments without friction. Customers get answers instantly; you reclaim time for what matters.",
-    "ctaPrimary": "Talk to our team",
-    "ctaSecondary": "I already have an account",
-    "proofTitle": "Built for businesses that cannot freeze on WhatsApp",
-    "proofItems": [
-      { "label": "Shorter queues", "detail": "Smooth support even at peak times." },
-      { "label": "Instant answers", "detail": "Less dependence on human availability." },
-      { "label": "Consistency", "detail": "Policies and pricing aligned with what you documented." }
+    "heroBadge": "Automated WhatsApp sales • Always-on AI",
+    "heroTitle": "Turn WhatsApp Support into Automated Sales",
+    "heroSubtitle": "Artificial intelligence that qualifies leads, books time slots, and sells 24 hours a day, without interruption.",
+    "heroCtaTrial": "I want to try it for free",
+    "heroCtaDemo": "Watch a demo",
+    "heroCtaTrialAria": "Try for free — opens WhatsApp or contact form",
+    "heroCtaDemoAria": "Watch a demo — opens external page or contact form",
+    "heroChatMockHeader": "AxeZap",
+    "heroChatMockSub": "online • instant replies",
+    "heroChatBubbles": [
+      { "role": "user", "text": "I need a demo and pricing for my business." },
+      { "role": "assistant", "text": "Happy to help. How large is your team and what’s your main channel (WhatsApp, website)?" },
+      { "role": "user", "text": "Five people — mostly WhatsApp." },
+      { "role": "assistant", "text": "Great — I have slots tomorrow at 10am or Thursday at 3pm for a 20-minute call. Which works better?" }
     ],
-    "benefitsHeading": "What serious product pages promise — delivered operationally",
-    "benefitsSub": "Less empty hype, more flow: configure, feed your knowledge base, and start handling conversations with AI without rebuilding your stack.",
+    "benefitsHeading": "Why choose AxeZap?",
+    "benefitsSub": "Business-focused benefits: more conversions, less wasted time, and a calendar that stays organized.",
     "benefits": [
       {
-        "title": "AI that understands your business",
-        "description": "Responses grounded in your knowledge base — fewer guesses and sharper interactions."
+        "title": "24/7 support with no waiting queues",
+        "description": "Your AI agent serves customers on WhatsApp in real time. It answers questions, presents services, and completes the interaction naturally and without friction."
       },
       {
-        "title": "From first \"hi\" to booking",
-        "description": "Guide customers to a confirmed slot without endless human ping-pong."
+        "title": "Intelligent lead qualification",
+        "description": "Stop chasing cold contacts. Our system analyzes customer profile and assigns a purchase-intent score, surfacing the hottest leads for your team."
       },
       {
-        "title": "A dashboard that surfaces what matters",
-        "description": "Track conversations, intents, and opportunities — step in where it moves the needle."
-      },
-      {
-        "title": "Ready for lean teams",
-        "description": "No mega-enterprise complexity: designed for small teams shipping daily."
-      },
-      {
-        "title": "Scale without losing your tone",
-        "description": "Handle more chats while staying aligned with what you taught the model."
+        "title": "Full integration with your calendar",
+        "description": "Automatic bookings synced straight to your calendar — fewer scheduling mistakes, fewer conflicts, and less reliance on manual operators."
       }
     ],
+    "socialProofQuote": "AxeZap cut our response time and increased bookings by over 30% in the first month of operation.",
+    "socialProofAttribution": "— Clinical Director, Salvador, Brazil",
     "howHeading": "How it works",
     "howSub": "Three steps to leave improvisation behind.",
     "howSteps": [
@@ -119,8 +117,17 @@
         "a": "Treat data like any commercial channel: purpose-led collection, consent where applicable, and governance aligned with how you already operate."
       }
     ],
-    "contactHeading": "Ready to see AxeZap in your scenario?",
-    "contactSub": "Share your details and a short note. We reply via WhatsApp or email with next steps.",
+    "contactHeading": "Ready to scale your business support?",
+    "contactSub": "Stop losing sales outside business hours. Connect AxeZap to your WhatsApp in under 10 minutes.",
+    "contactFormCardTitle": "Talk to a specialist",
+    "finalCtaExpertAria": "Go to the form to talk to a specialist",
+    "finalCtaRegister": "Create access account",
+    "tryAgentHeading": "Try the agent for real",
+    "tryAgentSub": "Open WhatsApp with a pre-filled message — see pace, tone, and usefulness on mobile or desktop.",
+    "tryAgentCta": "Chat on WhatsApp",
+    "tryAgentFallbackCta": "Use the form instead",
+    "tryAgentUnavailableHint": "Set NEXT_PUBLIC_LANDING_WHATSAPP_PHONE in your environment to enable the WhatsApp button.",
+    "floatWhatsAppAria": "Open WhatsApp to try the agent",
     "footerTagline": "AxeZap — Intelligent Support",
     "footerLogin": "Login",
     "footerRegister": "Register",

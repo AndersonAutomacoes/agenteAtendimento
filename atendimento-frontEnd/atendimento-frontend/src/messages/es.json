@@ -38,47 +38,45 @@
     "sessionActive": "Sesión activa"
   },
   "landingPage": {
-    "metaTitle": "AxeZap — Atención inteligente que vende y agenda por ti",
-    "metaDescription": "Automatiza WhatsApp con IA entrenada en tu base de conocimiento. Menos colas, más conversiones y citas sin aumentar plantilla.",
+    "metaTitle": "AxeZap — Convierte WhatsApp en ventas automáticas",
+    "metaDescription": "Inteligencia artificial que cualifica leads, agenda citas y vende por WhatsApp 24 horas al día, sin interrupción.",
     "skipToForm": "Ir al formulario de contacto",
     "navBrand": "AxeZap",
     "navLogin": "Entrar",
     "navRegister": "Crear cuenta",
-    "heroBadge": "Atención inteligente",
-    "heroTitle": "Convierte cada conversación en oportunidad — a escala.",
-    "heroSubtitle": "AxeZap pone una IA junto a tu equipo: habla con el tono de tu marca, usa tu base de conocimiento y ayuda a agendar sin fricción. Tu cliente recibe respuesta al momento; tú recuperas tiempo para lo importante.",
-    "ctaPrimary": "Hablar con el equipo",
-    "ctaSecondary": "Ya tengo cuenta",
-    "proofTitle": "Pensado para negocios que no pueden pararse en WhatsApp",
-    "proofItems": [
-      { "label": "Menos cola", "detail": "Flujo estable incluso en picos." },
-      { "label": "Respuestas al instante", "detail": "Menos dependencia de disponibilidad humana." },
-      { "label": "Consistencia", "detail": "Políticas y precios alineados con lo documentado." }
+    "heroBadge": "Ventas automáticas en WhatsApp • IA siempre activa",
+    "heroTitle": "Transforma la Atención en WhatsApp en Ventas Automáticas",
+    "heroSubtitle": "La Inteligencia Artificial que cualifica leads, agenda horarios y vende 24 horas al día, sin interrupción.",
+    "heroCtaTrial": "Quiero probar gratis",
+    "heroCtaDemo": "Ver una demostración",
+    "heroCtaTrialAria": "Probar gratis — abre WhatsApp o el formulario de contacto",
+    "heroCtaDemoAria": "Ver una demostración — abre página externa o formulario",
+    "heroChatMockHeader": "AxeZap",
+    "heroChatMockSub": "en línea • respuestas al instante",
+    "heroChatBubbles": [
+      { "role": "user", "text": "Necesito una demo y precios para mi negocio." },
+      { "role": "assistant", "text": "Te ayudo enseguida. ¿Cuántas personas sois y cuál es el canal principal (WhatsApp, web)?" },
+      { "role": "user", "text": "Somos 5 y trabajamos sobre todo por WhatsApp." },
+      { "role": "assistant", "text": "Perfecto — tengo huecos mañana a las 10h o el jueves a las 15h para una llamada de 20 min. ¿Cuál te encaja?" }
     ],
-    "benefitsHeading": "Lo que una landing seria promete — con entrega operativa",
-    "benefitsSub": "Menos humo, más flujo: configura, alimenta la base y empieza a atender con IA sin reinventar tu stack.",
+    "benefitsHeading": "¿Por qué elegir AxeZap?",
+    "benefitsSub": "Beneficios orientados al negocio: más conversiones, menos tiempo perdido y agenda siempre organizada.",
     "benefits": [
       {
-        "title": "IA que entiende tu negocio",
-        "description": "Respuestas apoyadas en tu base de conocimiento — menos improvisación y más precisión."
+        "title": "Atención 24/7 sin colas de espera",
+        "description": "Tu agente de IA atiende a los clientes en WhatsApp en tiempo real. Responde dudas, presenta servicios y cierra la interacción de forma natural y sin fricción."
       },
       {
-        "title": "Del primer \"hola\" a la cita",
-        "description": "Guía al cliente hasta reservar sin ping-pong interminable entre personas."
+        "title": "Cualificación inteligente de leads",
+        "description": "Deja de perder tiempo con contactos fríos. Nuestro sistema analiza el perfil del cliente y asigna una puntuación de intención de compra, destacando los prospectos más \"calientes\" para tu equipo."
       },
       {
-        "title": "Panel que muestra lo que importa",
-        "description": "Sigue conversaciones, intenciones y oportunidades para intervenir donde suma."
-      },
-      {
-        "title": "Listo para equipos ágiles",
-        "description": "Sin complejidad de gran empresa: pensado para equipos pequeños en el día a día."
-      },
-      {
-        "title": "Escala sin perder el tono",
-        "description": "Más conversaciones atendidas manteniendo lo que enseñaste al modelo."
+        "title": "Integración total con la agenda",
+        "description": "Citas automáticas sincronizadas directamente con el calendario, eliminando errores de agenda, conflictos de horario y dependencia de operadores humanos."
       }
     ],
+    "socialProofQuote": "AxeZap redujo nuestro tiempo de respuesta y aumentó las citas en más de un 30% en el primer mes de operación.",
+    "socialProofAttribution": "— Director clínico, Salvador (BA), Brasil",
     "howHeading": "Cómo funciona",
     "howSub": "Tres pasos para salir del improviso.",
     "howSteps": [
@@ -119,8 +117,17 @@
         "a": "Trata los datos como en cualquier canal comercial: finalidad, consentimiento donde aplique y buenas prácticas de gobernanza."
       }
     ],
-    "contactHeading": "¿Listo para ver AxeZap en tu escenario?",
-    "contactSub": "Deja tus datos y un mensaje breve. Respondemos por WhatsApp o email con próximos pasos.",
+    "contactHeading": "¿Listo para escalar la atención de tu negocio?",
+    "contactSub": "Deja de perder ventas fuera del horario comercial. Conecta AxeZap a tu WhatsApp en menos de 10 minutos.",
+    "contactFormCardTitle": "Hablar con un especialista",
+    "finalCtaExpertAria": "Ir al formulario para hablar con un especialista",
+    "finalCtaRegister": "Crear cuenta de acceso",
+    "tryAgentHeading": "Prueba el agente en la práctica",
+    "tryAgentSub": "Abre WhatsApp con un mensaje preparado — ideal para ver ritmo, tono y utilidad en móvil o escritorio.",
+    "tryAgentCta": "Chatear en WhatsApp",
+    "tryAgentFallbackCta": "Prefiero el formulario",
+    "tryAgentUnavailableHint": "Configura NEXT_PUBLIC_LANDING_WHATSAPP_PHONE en el entorno para activar WhatsApp.",
+    "floatWhatsAppAria": "Abrir WhatsApp para probar el agente",
     "footerTagline": "AxeZap — Atención Inteligente",
     "footerLogin": "Login",
     "footerRegister": "Registro",

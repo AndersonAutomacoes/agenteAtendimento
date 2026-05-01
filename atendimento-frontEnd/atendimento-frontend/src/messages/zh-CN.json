@@ -38,47 +38,45 @@
     "sessionActive": "会话有效"
   },
   "landingPage": {
-    "metaTitle": "AxeZap — 智能客服，为您促成销售与预约",
-    "metaDescription": "用训练于知识库的 AI 自动化 WhatsApp。缩短排队、提升转化与预约效率，无需扩充人手。",
+    "metaTitle": "AxeZap — 将 WhatsApp 变成自动销售",
+    "metaDescription": "人工智能全天候筛选线索、预约时段并在 WhatsApp 上持续成交，不打烊。",
     "skipToForm": "跳转到联系表单",
     "navBrand": "AxeZap",
     "navLogin": "登录",
     "navRegister": "创建账号",
-    "heroBadge": "智能客服",
-    "heroTitle": "把每一次对话，规模化变成商机。",
-    "heroSubtitle": "AxeZap 让 AI 站在团队一侧：使用品牌语气作答，调用知识库内容，并顺畅引导预约。客户即时得到答复；您把时间留给真正重要的事。",
-    "ctaPrimary": "联系团队",
-    "ctaSecondary": "已有账号",
-    "proofTitle": "为不能在 WhatsApp 上停摆的业务而打造",
-    "proofItems": [
-      { "label": "更短排队", "detail": "高峰期也能保持顺畅接待。" },
-      { "label": "即时回复", "detail": "减少对人工在线时段的依赖。" },
-      { "label": "一致性", "detail": "政策与价格与您录入的资料对齐。" }
+    "heroBadge": "WhatsApp 自动成交 • AI 常驻在线",
+    "heroTitle": "把 WhatsApp 客服变成自动销售引擎",
+    "heroSubtitle": "人工智能帮您筛选线索、锁定时间段并全天候售卖——不间断运转。",
+    "heroCtaTrial": "免费试用",
+    "heroCtaDemo": "观看演示",
+    "heroCtaTrialAria": "免费试用——打开 WhatsApp 或联系表单",
+    "heroCtaDemoAria": "观看演示——打开外部页面或联系表单",
+    "heroChatMockHeader": "AxeZap",
+    "heroChatMockSub": "在线 • 即时回复",
+    "heroChatBubbles": [
+      { "role": "user", "text": "想了解演示和价格方案。" },
+      { "role": "assistant", "text": "好的。团队规模和主要渠道是 WhatsApp 还是官网？" },
+      { "role": "user", "text": "五个人，主要在 WhatsApp。" },
+      { "role": "assistant", "text": "明白了——明天 10:00 或周四 15:00 可以安排 20 分钟演示通话，哪个更方便？" }
     ],
-    "benefitsHeading": "成熟产品落地页承诺的一切——落实到日常运营",
-    "benefitsSub": "少空谈、多闭环：完成配置、投喂知识库，即可用 AI 承接对话，无需推翻现有架构。",
+    "benefitsHeading": "为什么选择 AxeZap？",
+    "benefitsSub": "聚焦业务成果：更高转化、更少时间浪费、日程始终井井有条。",
     "benefits": [
       {
-        "title": "懂业务的 AI",
-        "description": "回答扎根于知识库，减少随口猜测，让互动更精准。"
+        "title": "7×24 接待，告别排队",
+        "description": "AI 座席在 WhatsApp 上实时接待客户：答疑、介绍服务，并以自然顺畅的方式完成对话。"
       },
       {
-        "title": "从第一句问候到完成预约",
-        "description": "引导客户在来回拉扯最少的情况下锁定时间段。"
+        "title": "智能线索评分",
+        "description": "别再浪费时间在冷门线索上。系统分析客户画像并给出购买意向分数，把最“火热”的机会推到团队面前。"
       },
       {
-        "title": "仪表盘聚焦关键信号",
-        "description": "追踪会话、意图与商机，在高价值节点及时介入。"
-      },
-      {
-        "title": "适合精干团队",
-        "description": "没有巨型企业的复杂度，为小团队的日常使用设计。"
-      },
-      {
-        "title": "规模化不掉品牌语气",
-        "description": "承接更多会话，同时延续您为模型设定的表达风格。"
+        "title": "与日历全面打通",
+        "description": "预约自动同步到日历，减少人工协调、排期冲突和对值班人员的依赖。"
       }
     ],
+    "socialProofQuote": "AxeZap 缩短了我们的响应时间，并在上线第一个月将预约量提升逾 30%。",
+    "socialProofAttribution": "— 临床总监，巴西萨尔瓦多",
     "howHeading": "如何运作",
     "howSub": "三步告别临场发挥。",
     "howSteps": [
@@ -119,8 +117,17 @@
         "a": "与任何商业渠道一样：明确目的、在适用场景取得同意，并配套治理实践。"
       }
     ],
-    "contactHeading": "想看看 AxeZap 在您的场景如何落地？",
-    "contactSub": "留下信息与简短说明，我们会通过微信/WhatsApp 或邮件回复下一步。",
+    "contactHeading": "准备好扩展业务的接待能力了吗？",
+    "contactSub": "别再在非营业时间流失商机。不到 10 分钟即可把 AxeZap 接入您的 WhatsApp。",
+    "contactFormCardTitle": "联系专家",
+    "finalCtaExpertAria": "前往表单与专家沟通",
+    "finalCtaRegister": "创建访问账号",
+    "tryAgentHeading": "亲自试用代理",
+    "tryAgentSub": "使用预设开场白打开 WhatsApp——在手机或桌面快速感受响应速度与语气。",
+    "tryAgentCta": "在 WhatsApp 对话",
+    "tryAgentFallbackCta": "使用表单联系",
+    "tryAgentUnavailableHint": "在环境中配置 NEXT_PUBLIC_LANDING_WHATSAPP_PHONE 以启用 WhatsApp 按钮。",
+    "floatWhatsAppAria": "打开 WhatsApp 试用代理",
     "footerTagline": "AxeZap — 智能客服",
     "footerLogin": "登录",
     "footerRegister": "注册",
