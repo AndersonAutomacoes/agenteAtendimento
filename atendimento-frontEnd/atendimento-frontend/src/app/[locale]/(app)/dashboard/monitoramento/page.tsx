@@ -12,6 +12,7 @@ import { CustomerRecordDialog } from "@/components/crm/customer-record-dialog";
 import { FeatureGuard } from "@/components/plan/feature-guard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toBcp47ForDates } from "@/lib/intl-locale";
 import { cn } from "@/lib/utils";
 import {
@@ -530,11 +531,11 @@ function MonitoramentoConversasPageContent() {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden rounded-2xl border border-border/80 bg-card/40 shadow-lg ring-1 ring-black/5 dark:ring-white/10 md:flex-row md:gap-0">
-        <aside className="flex h-auto max-h-[42vh] min-h-[200px] w-full shrink-0 flex-col overflow-hidden border-b border-border/60 bg-sidebar/80 md:max-h-none md:w-full md:max-w-[280px] md:border-b-0 md:border-r">
+        <aside className="flex h-auto max-h-[42vh] min-h-[200px] w-full shrink-0 flex-col overflow-hidden border-b border-border/60 bg-sidebar/80 md:max-h-none md:w-full md:max-w-[280px] md:border-b-0 md:border-r" aria-labelledby="monitor-contacts-heading">
           <div className="border-b border-border/60 px-3 py-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <h2 id="monitor-contacts-heading" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {t("contacts")}
-            </p>
+            </h2>
             <p className="text-[11px] text-muted-foreground">
               {tenantId.trim()
                 ? t("summaryLine", {
@@ -721,7 +722,10 @@ function MonitoramentoConversasPageContent() {
           </div>
         </aside>
 
-        <section className="flex min-h-0 min-w-0 flex-1 flex-col md:min-h-0">
+        <section
+          className="flex min-h-0 min-w-0 flex-1 flex-col md:min-h-0"
+          aria-labelledby="monitor-thread-heading"
+        >
           <div
             className={cn(
               "flex min-h-[52px] shrink-0 items-center justify-between border-b border-border/60 bg-muted/20 px-3 py-3 sm:px-4",
@@ -732,7 +736,7 @@ function MonitoramentoConversasPageContent() {
             )}
           >
             <div>
-              <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+              <h2 id="monitor-thread-heading" className="flex flex-wrap items-center gap-2 text-sm font-medium">
                 {selectedPhone &&
                 contacts.find((x) => x.phoneNumber === selectedPhone)
                   ?.botEnabled === false ? (
@@ -769,7 +773,7 @@ function MonitoramentoConversasPageContent() {
                 ) : (
                   t("selectContactHeader")
                 )}
-              </p>
+              </h2>
               {selectedPhone &&
               contacts.some(
                 (x) =>
@@ -780,11 +784,16 @@ function MonitoramentoConversasPageContent() {
                   {formatPhoneDisplay(selectedPhone)}
                 </p>
               ) : null}
-              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+              <p
+                className="flex items-center gap-2 text-xs text-muted-foreground"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+              >
                 <RefreshCw
                   className={cn(
-                    "h-3.5 w-3.5",
-                    isRefreshing ? "animate-spin" : "",
+                    "h-3.5 w-3.5 shrink-0 opacity-80",
+                    isRefreshing && "motion-safe:animate-spin opacity-100",
                   )}
                   aria-hidden
                 />
@@ -853,7 +862,11 @@ function MonitoramentoConversasPageContent() {
               </p>
             ) : null}
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Label htmlFor="monitor-human-message" className="sr-only">
+                {t("activeChatLabel")}
+              </Label>
               <Input
+                id="monitor-human-message"
                 value={humanDraft}
                 onChange={(ev) => setHumanDraft(ev.target.value)}
                 placeholder={t("activeChatPlaceholder")}
@@ -861,7 +874,7 @@ function MonitoramentoConversasPageContent() {
                 maxLength={4096}
                 className="min-w-0 flex-1"
                 autoComplete="off"
-                aria-label={t("activeChatPlaceholder")}
+                aria-label={t("activeChatLabel")}
               />
               <Button
                 type="submit"

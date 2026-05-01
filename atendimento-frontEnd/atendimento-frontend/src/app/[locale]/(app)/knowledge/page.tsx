@@ -148,6 +148,8 @@ export default function KnowledgePage() {
         <p className="text-muted-foreground">{t("intro")}</p>
       </div>
 
+      <h2 className="sr-only">{t("pageContentSection")}</h2>
+
       <FileUploadZone
         disabled={uploading}
         pendingFile={pendingFile}

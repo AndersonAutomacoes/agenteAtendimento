@@ -3,6 +3,11 @@
     "title": "AxeZap - 智能客服",
     "description": "AI 客服自动化平台"
   },
+  "common": {
+    "closeDialog": "关闭对话框",
+    "showPassword": "显示密码",
+    "hidePassword": "隐藏密码"
+  },
   "pwa": {
     "title": "在手机上安装 AxeZap",
     "subtitle": "从主屏幕快速打开，在网络不稳定时更稳定（渐进式 Web 应用）。",
@@ -159,7 +164,10 @@
     "success": "已登录",
     "discoverProduct": "了解产品",
     "backHome": "返回首页",
-    "firebaseNotConfigured": "未配置 Firebase（NEXT_PUBLIC_FIREBASE_* 环境变量）。"
+    "firebaseNotConfigured": "未配置 Firebase（NEXT_PUBLIC_FIREBASE_* 环境变量）。",
+    "invalidEmail": "请输入有效的邮箱地址。",
+    "passwordRequired": "请输入密码。",
+    "credentialMismatch": "邮箱或密码不正确，请检查后重试。"
   },
   "registerPage": {
     "title": "创建账号",
@@ -173,7 +181,11 @@
     "hasAccount": "已有账号？去登录",
     "discoverProduct": "了解产品",
     "backHome": "返回首页",
-    "firebaseNotConfigured": "未配置 Firebase（NEXT_PUBLIC_FIREBASE_* 环境变量）。"
+    "firebaseNotConfigured": "未配置 Firebase（NEXT_PUBLIC_FIREBASE_* 环境变量）。",
+    "inviteRequired": "请输入邀请码。",
+    "invalidEmail": "请输入有效的邮箱地址。",
+    "passwordTooShort": "密码至少需要 6 个字符。",
+    "weakPassword": "请选择更强的密码（需符合 Firebase 要求）。"
   },
   "forgotPasswordPage": {
     "title": "重置密码",
@@ -184,7 +196,8 @@
     "success": "若邮箱存在，您将很快收到说明。",
     "error": "无法发送邮件，请重试。",
     "backLogin": "返回登录",
-    "firebaseNotConfigured": "未配置 Firebase（NEXT_PUBLIC_FIREBASE_* 环境变量）。"
+    "firebaseNotConfigured": "未配置 Firebase（NEXT_PUBLIC_FIREBASE_* 环境变量）。",
+    "invalidEmail": "请输入有效的邮箱地址。"
   },
   "plan": {
     "lockedTitle": "此功能需要相应套餐",
@@ -216,6 +229,7 @@
   },
   "dashboard": {
     "title": "仪表盘",
+    "overviewSection": "指标概览与图表",
     "subtitle": "按账户的实时指标：客户、消息量、AI 表现与 WhatsApp 渠道状态。",
     "accountId": "账户 ID",
     "tenantHint": "账户 ID 在「设置」中配置（与「监控」等区域共用）。",
@@ -225,7 +239,9 @@
     "refresh": "刷新面板",
     "refreshButton": "刷新",
     "mainTabMetrics": "指标",
+    "mainTabsAria": "在主要指标与销售机会视图之间切换",
     "mainTabOpportunities": "销售机会",
+    "srMetricsOverview": "供屏幕朗读器阅读的摘要：该账户下有 {{clients}} 位客户；今日消息 {{messagesToday}} 条；图表时间段内消息量 {{volumePeriod}}；时间段内分类意图数 {{intentsTotal}}。",
     "opportunities": {
       "title": "销售机会",
       "subtitle": "有预算或预约意向但尚未转化的联系人。恢复后可关闭 AI 并在 WhatsApp 手动发送优惠。",
@@ -335,6 +351,7 @@
   },
   "knowledge": {
     "title": "知识库",
+    "pageContentSection": "文件上传与知识库列表",
     "intro": "上传 PDF 或 TXT 以丰富助手回答。文件在服务器上与账户 ID 关联。",
     "accountId": "账户 ID",
     "tenantHint": "保存在本浏览器本地；与「设置」和「监控」中配置的账户一致。",
@@ -383,6 +400,7 @@
   },
   "settings": {
     "title": "机器人设置",
+    "pageContentSection": "档案、服务与集成的表单",
     "subtitle": "按账户配置助手个性与 WhatsApp 集成。",
     "placeholderTenant": "例如：tenant-demo",
     "accountId": "账户 ID",
@@ -488,6 +506,7 @@
   },
   "internalTenants": {
     "title": "内部后台 — 租户",
+    "workspaceSection": "租户、客户与邀请管理",
     "subtitle": "内部使用（COMERCIAL）：创建租户、档位、联系人邮箱与邀请码。表格汇总全部账户。",
     "newTenantButton": "新建租户",
     "createModalTitle": "注册新租户",
@@ -533,6 +552,10 @@
     "saveTenant": "保存租户",
     "deactivate": "停用",
     "activate": "启用",
+    "deactivateDialogTitle": "停用租户？",
+    "deactivateDialogDescription": "账户「{tenantId}」将处于停用状态，直到再次启用。可随时恢复。",
+    "deactivateDialogConfirm": "停用",
+    "deactivateDialogCancel": "取消",
     "confirmDeactivate": "确认停用该租户",
     "deactivatedOk": "租户已停用。",
     "activatedOk": "租户已启用。",
@@ -607,12 +630,13 @@
     "handoffSuccess": "已切换为人工模式；已通知客户。",
     "enableBotSuccess": "已为此会话重新启用 AI。",
     "actionWorking": "请稍候…",
+    "activeChatLabel": "给客户的消息",
     "activeChatPlaceholder": "向客户输入消息…",
     "activeChatSend": "发送",
     "activeChatDisabledHint": "请先接管会话（关闭 AI）后再发送消息。",
     "activeChatNeedMessage": "发送前请输入消息。",
     "humanReplySuccess": "消息已发送。",
-    "appointmentBadge": "📅 预约时间：{date}"
+    "appointmentBadge": "预约时间：{date}"
   },
   "appointments": {
     "title": "预约（AI）",

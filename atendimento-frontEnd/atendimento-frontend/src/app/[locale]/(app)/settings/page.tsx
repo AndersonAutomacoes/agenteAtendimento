@@ -244,6 +244,7 @@ export default function SettingsPage() {
       <div className="mx-auto max-w-3xl space-y-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+        <h2 className="sr-only">{t("pageContentSection")}</h2>
         <p className="text-muted-foreground">{t("subtitle")}</p>
       </div>
 

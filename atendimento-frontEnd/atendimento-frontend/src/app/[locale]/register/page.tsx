@@ -9,11 +9,13 @@ import * as React from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
+import { PasswordInput } from "@/components/auth/password-input";
 import { usePlan } from "@/components/plan/plan-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Link, useRouter } from "@/i18n/navigation";
+import { readFirebaseErrorCode, isLikelyEmail } from "@/lib/email-format";
 import { getFirebaseAuth, isFirebaseConfigured } from "@/lib/firebase";
 import { mapProfileLevelToPlanTier } from "@/lib/plan-tier";
 import { cn } from "@/lib/utils";
@@ -26,8 +28,11 @@ import {
 
 const TENANT_STORAGE_KEY = "cerebro-tenant-id";
 
+type FieldKey = "inviteCode" | "email" | "password";
+
 export default function RegisterPage() {
   const t = useTranslations("registerPage");
+  const tCommon = useTranslations("common");
   const tApi = useTranslations("api");
   const router = useRouter();
   const { setTier, setFeatures, setProfileLevel } = usePlan();
@@ -35,13 +40,33 @@ export default function RegisterPage() {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [inviteCode, setInviteCode] = React.useState("");
+  const [fieldErrors, setFieldErrors] = React.useState<Partial<Record<FieldKey, string>>>({});
+  const inviteRef = React.useRef<HTMLInputElement>(null);
+  const emailRef = React.useRef<HTMLInputElement>(null);
+  const passwordRef = React.useRef<HTMLInputElement>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const submittingRef = React.useRef(false);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFieldErrors({});
     if (!isFirebaseConfigured()) {
       toast.error(t("firebaseNotConfigured"));
+      return;
+    }
+    if (!inviteCode.trim()) {
+      setFieldErrors({ inviteCode: t("inviteRequired") });
+      inviteRef.current?.focus();
+      return;
+    }
+    if (!isLikelyEmail(email)) {
+      setFieldErrors({ email: t("invalidEmail") });
+      emailRef.current?.focus();
+      return;
+    }
+    if (password.length < 6) {
+      setFieldErrors({ password: t("passwordTooShort") });
+      passwordRef.current?.focus();
       return;
     }
     if (submittingRef.current) return;
@@ -91,7 +116,16 @@ export default function RegisterPage() {
       toast.success(t("success"));
       router.push("/");
     } catch (err) {
-      toast.error(toUserFacingApiError(err, translateApi));
+      const code = readFirebaseErrorCode(err);
+      if (code === "auth/weak-password") {
+        setFieldErrors({ password: t("weakPassword") });
+        passwordRef.current?.focus();
+      } else if (code === "auth/invalid-email") {
+        setFieldErrors({ email: t("invalidEmail") });
+        emailRef.current?.focus();
+      } else {
+        toast.error(toUserFacingApiError(err, translateApi));
+      }
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
@@ -105,39 +139,87 @@ export default function RegisterPage() {
           <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
           <p className="mt-2 text-sm text-muted-foreground">{t("subtitle")}</p>
         </div>
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={onSubmit} className="space-y-4" noValidate>
           <div className="space-y-2">
             <Label htmlFor="reg-invite">{t("inviteCode")}</Label>
             <Input
+              ref={inviteRef}
               id="reg-invite"
               value={inviteCode}
-              onChange={(e) => setInviteCode(e.target.value)}
+              onChange={(e) => {
+                setInviteCode(e.target.value);
+                setFieldErrors((prev) => {
+                  if (!prev.inviteCode) return prev;
+                  const next = { ...prev };
+                  delete next.inviteCode;
+                  return next;
+                });
+              }}
               autoComplete="off"
-              required
+              aria-invalid={Boolean(fieldErrors.inviteCode)}
+              aria-describedby={fieldErrors.inviteCode ? "reg-invite-err" : undefined}
+              className="min-h-11"
             />
+            {fieldErrors.inviteCode ? (
+              <p id="reg-invite-err" className="text-sm text-destructive" role="alert">
+                {fieldErrors.inviteCode}
+              </p>
+            ) : null}
           </div>
           <div className="space-y-2">
             <Label htmlFor="reg-email">{t("email")}</Label>
             <Input
+              ref={emailRef}
               id="reg-email"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setFieldErrors((prev) => {
+                  if (!prev.email) return prev;
+                  const next = { ...prev };
+                  delete next.email;
+                  return next;
+                });
+              }}
               autoComplete="email"
-              required
+              aria-invalid={Boolean(fieldErrors.email)}
+              aria-describedby={fieldErrors.email ? "reg-email-err" : undefined}
+              className="min-h-11"
             />
+            {fieldErrors.email ? (
+              <p id="reg-email-err" className="text-sm text-destructive" role="alert">
+                {fieldErrors.email}
+              </p>
+            ) : null}
           </div>
           <div className="space-y-2">
             <Label htmlFor="reg-password">{t("password")}</Label>
-            <Input
+            <PasswordInput
+              ref={passwordRef}
               id="reg-password"
-              type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setFieldErrors((prev) => {
+                  if (!prev.password) return prev;
+                  const next = { ...prev };
+                  delete next.password;
+                  return next;
+                });
+              }}
               autoComplete="new-password"
-              required
+              toggleShowLabel={tCommon("showPassword")}
+              toggleHideLabel={tCommon("hidePassword")}
+              aria-invalid={Boolean(fieldErrors.password)}
+              aria-describedby={fieldErrors.password ? "reg-password-err" : undefined}
               minLength={6}
             />
+            {fieldErrors.password ? (
+              <p id="reg-password-err" className="text-sm text-destructive" role="alert">
+                {fieldErrors.password}
+              </p>
+            ) : null}
           </div>
           <Button
             type="submit"

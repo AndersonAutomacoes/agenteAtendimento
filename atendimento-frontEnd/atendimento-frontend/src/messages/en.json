@@ -3,6 +3,11 @@
     "title": "AxeZap - Intelligent Support",
     "description": "AI-powered customer support automation platform"
   },
+  "common": {
+    "closeDialog": "Close dialog",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password"
+  },
   "pwa": {
     "title": "Install AxeZap on your phone",
     "subtitle": "Faster access from your home screen and better resilience on flaky networks (web app).",
@@ -159,7 +164,10 @@
     "success": "Signed in",
     "discoverProduct": "Discover the product",
     "backHome": "Back to home",
-    "firebaseNotConfigured": "Firebase is not configured (NEXT_PUBLIC_FIREBASE_* env vars)."
+    "firebaseNotConfigured": "Firebase is not configured (NEXT_PUBLIC_FIREBASE_* env vars).",
+    "invalidEmail": "Enter a valid email address.",
+    "passwordRequired": "Enter your password.",
+    "credentialMismatch": "Incorrect email or password. Check and try again."
   },
   "registerPage": {
     "title": "Create account",
@@ -173,7 +181,11 @@
     "hasAccount": "Already have an account? Sign in",
     "discoverProduct": "Discover the product",
     "backHome": "Back to home",
-    "firebaseNotConfigured": "Firebase is not configured (NEXT_PUBLIC_FIREBASE_* env vars)."
+    "firebaseNotConfigured": "Firebase is not configured (NEXT_PUBLIC_FIREBASE_* env vars).",
+    "inviteRequired": "Enter the invite code.",
+    "invalidEmail": "Enter a valid email address.",
+    "passwordTooShort": "Password must be at least 6 characters.",
+    "weakPassword": "Choose a stronger password (Firebase requirements)."
   },
   "forgotPasswordPage": {
     "title": "Reset password",
@@ -184,7 +196,8 @@
     "success": "If the email exists, you will receive instructions shortly.",
     "error": "Could not send the email. Please try again.",
     "backLogin": "Back to sign in",
-    "firebaseNotConfigured": "Firebase is not configured (NEXT_PUBLIC_FIREBASE_* env vars)."
+    "firebaseNotConfigured": "Firebase is not configured (NEXT_PUBLIC_FIREBASE_* env vars).",
+    "invalidEmail": "Enter a valid email address."
   },
   "plan": {
     "lockedTitle": "This feature requires a higher plan",
@@ -216,6 +229,7 @@
   },
   "dashboard": {
     "title": "Dashboard",
+    "overviewSection": "Metrics overview and charts",
     "subtitle": "Real-time metrics per account: customers, message volume, AI performance, and WhatsApp channel status.",
     "accountId": "Account ID",
     "tenantHint": "Account ID is set in Settings (shared with Monitoring and other areas).",
@@ -225,7 +239,9 @@
     "refresh": "Refresh dashboard",
     "refreshButton": "Refresh",
     "mainTabMetrics": "Metrics",
+    "mainTabsAria": "Switch between main metrics and sales opportunities",
     "mainTabOpportunities": "Sales opportunities",
+    "srMetricsOverview": "Overview for screen readers: {{clients}} customers on file. Today's messages: {{messagesToday}}. Messages in chart period: {{volumePeriod}}. Classified intents in period: {{intentsTotal}}.",
     "opportunities": {
       "title": "Sales opportunities",
       "subtitle": "Contacts with budget or scheduling intent who have not converted yet. Recover to turn off the AI and send a manual offer on WhatsApp.",
@@ -335,6 +351,7 @@
   },
   "knowledge": {
     "title": "Knowledge base",
+    "pageContentSection": "File upload and knowledge base list",
     "intro": "Upload PDF or TXT to enrich assistant answers. Files are tied to the Account ID on the server.",
     "accountId": "Account ID",
     "tenantHint": "Saved locally in this browser; matches the account set in Settings and Monitoring.",
@@ -383,6 +400,7 @@
   },
   "settings": {
     "title": "Client (tenant) configuration",
+    "pageContentSection": "Forms for profile, services, and integrations",
     "subtitle": "Business profile, plan, compliance, calendar, services, WhatsApp, portal users, and invites.",
     "placeholderTenant": "e.g. tenant-demo",
     "accountId": "Account ID",
@@ -488,6 +506,7 @@
   },
   "internalTenants": {
     "title": "Internal backoffice — tenants",
+    "workspaceSection": "Tenant, client, and invite management",
     "subtitle": "Internal use (COMERCIAL profile): create tenant, set plan, contact email and invite. The table summarizes every account.",
     "newTenantButton": "New tenant",
     "createModalTitle": "Register new tenant",
@@ -533,6 +552,10 @@
     "saveTenant": "Save tenant",
     "deactivate": "Deactivate",
     "activate": "Activate",
+    "deactivateDialogTitle": "Deactivate tenant?",
+    "deactivateDialogDescription": "Account \"{tenantId}\" becomes inactive until reactivated. This can be undone.",
+    "deactivateDialogConfirm": "Deactivate",
+    "deactivateDialogCancel": "Cancel",
     "confirmDeactivate": "Confirm tenant deactivation",
     "deactivatedOk": "Tenant deactivated successfully.",
     "activatedOk": "Tenant activated successfully.",
@@ -607,12 +630,13 @@
     "handoffSuccess": "Human mode on; the customer was notified.",
     "enableBotSuccess": "AI re-enabled for this chat.",
     "actionWorking": "Please wait…",
+    "activeChatLabel": "Message to customer",
     "activeChatPlaceholder": "Write a message to the customer…",
     "activeChatSend": "Send",
     "activeChatDisabledHint": "Take over the chat (turn off the AI) to send messages.",
     "activeChatNeedMessage": "Write a message before sending.",
     "humanReplySuccess": "Message sent.",
-    "appointmentBadge": "📅 Has an appointment on {date}"
+    "appointmentBadge": "Has an appointment on {date}"
   },
   "appointments": {
     "title": "Appointments (AI)",

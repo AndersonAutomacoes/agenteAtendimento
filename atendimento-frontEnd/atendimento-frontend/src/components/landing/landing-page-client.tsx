@@ -7,7 +7,6 @@ import { LandingChatMockup, type ChatBubble } from "@/components/landing/landing
 import { LandingContactForm } from "@/components/landing/landing-contact-form";
 import { getLandingWhatsAppHref, LandingFloatingWhatsApp } from "@/components/landing/landing-floating-whatsapp";
 import { LocaleSwitcher } from "@/components/layout/locale-switcher";
-import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link } from "@/i18n/navigation";
@@ -41,7 +40,7 @@ export function LandingPageClient() {
   const demoTargetHref = demoHref ?? "#contato";
 
   return (
-    <div className="relative min-h-full bg-background">
+    <div className="dark relative min-h-full bg-background text-foreground">
       <a
         href="#contato"
         className="bg-primary text-primary-foreground shadow-md outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring absolute top-4 start-[10000px] z-[100] rounded-lg px-4 py-2 text-sm font-medium focus-visible:start-4"
@@ -49,16 +48,15 @@ export function LandingPageClient() {
         {t("skipToForm")}
       </a>
 
-      <header className="sticky top-0 z-40 border-b border-white/5 bg-zinc-950/75 backdrop-blur-md">
+      <header className="sticky top-0 z-40 border-b border-border/80 bg-background/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 md:px-6">
-          <span className="text-lg font-semibold tracking-tight text-white">{t("navBrand")}</span>
+          <span className="text-lg font-semibold tracking-tight text-foreground">{t("navBrand")}</span>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <LocaleSwitcher />
-            <ThemeToggle />
-            <Button variant="ghost" size="sm" className="hidden text-zinc-200 hover:bg-white/10 hover:text-white sm:inline-flex" asChild>
+            <Button variant="ghost" size="sm" className="hidden sm:inline-flex" asChild>
               <Link href="/login">{t("navLogin")}</Link>
             </Button>
-            <Button size="sm" className="bg-white text-zinc-950 hover:bg-zinc-100" asChild>
+            <Button size="sm" asChild>
               <Link href="/register">{t("navRegister")}</Link>
             </Button>
           </div>
@@ -66,20 +64,20 @@ export function LandingPageClient() {
       </header>
 
       <main id="landing-main-content" tabIndex={-1}>
-        <section className="relative overflow-hidden border-b border-white/5 bg-gradient-to-br from-zinc-950 via-slate-950 to-zinc-900 px-4 pb-16 pt-12 md:px-6 md:pb-24 md:pt-16">
+        <section className="relative overflow-hidden border-b border-border/60 bg-gradient-to-br from-background via-card to-muted/30 px-4 pb-16 pt-12 md:px-6 md:pb-24 md:pt-16">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_100%_80%_at_50%_-40%,rgba(59,130,246,0.22),transparent)]" aria-hidden />
           <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(24,24,27,0.3)_0%,transparent_35%,rgba(9,9,11,0.85)_100%)]" aria-hidden />
           <div className="pointer-events-none absolute -right-20 top-1/4 size-[520px] rounded-full bg-violet-600/10 blur-[100px] md:right-0" aria-hidden />
 
           <div className="relative mx-auto grid max-w-6xl gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(280px,400px)] lg:items-center lg:gap-16">
             <div className="max-w-xl lg:max-w-none">
-              <p className="mb-4 inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-emerald-300/90 backdrop-blur-sm">
+              <p className="mb-4 inline-flex items-center rounded-full border border-border/80 bg-muted/40 px-3 py-1 text-xs font-medium text-emerald-400/95 backdrop-blur-sm">
                 {t("heroBadge")}
               </p>
-              <h1 className="text-balance text-3xl font-bold tracking-tight text-white md:text-4xl lg:text-[2.65rem] lg:leading-[1.12]">
+              <h1 className="text-balance text-3xl font-bold tracking-tight text-foreground md:text-4xl lg:text-[2.65rem] lg:leading-[1.12]">
                 {t("heroTitle")}
               </h1>
-              <p className="mt-5 max-w-xl text-pretty text-base leading-relaxed text-zinc-400 md:text-lg">
+              <p className="mt-5 max-w-xl text-pretty text-base leading-relaxed text-muted-foreground md:text-lg">
                 {t("heroSubtitle")}
               </p>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
@@ -105,7 +103,7 @@ export function LandingPageClient() {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="h-12 border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
+                  className="h-12 border-border bg-transparent"
                   asChild
                 >
                   <a
@@ -144,7 +142,7 @@ export function LandingPageClient() {
                   <li key={b.title}>
                     <Card className="h-full border-border/80 bg-card/80 transition-colors hover:border-primary/35 hover:shadow-md hover:shadow-primary/5">
                       <CardHeader className="pb-2">
-                        <div className="mb-3 flex size-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-emerald-600/15 text-primary ring-1 ring-white/10">
+                        <div className="mb-3 flex size-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-emerald-600/15 text-primary ring-1 ring-border/60">
                           <Icon className="size-6" aria-hidden strokeWidth={1.75} />
                         </div>
                         <CardTitle className="text-lg leading-snug">{b.title}</CardTitle>

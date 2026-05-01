@@ -1,9 +1,11 @@
 "use client";
 
 import * as React from "react";
+import { Suspense } from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { Copy, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { Copy, Loader2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 
 import { FeatureGuard } from "@/components/plan/feature-guard";
 import { Button } from "@/components/ui/button";
@@ -11,12 +13,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { usePathname, useRouter } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
 import {
   activateInternalTenant,
@@ -40,10 +45,14 @@ import {
 const SLOT_MINUTES = [15, 30, 45, 60, 90, 120] as const;
 type ServiceDraft = { name: string; duration: string; active: boolean };
 
-export default function InternalTenantsPage() {
+function InternalTenantsPageContent() {
   const t = useTranslations("internalTenants");
   const tSettings = useTranslations("settings");
+  const tCommon = useTranslations("common");
   const tApi = useTranslations("api");
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const translateApi = React.useCallback((key: string) => tApi(key), [tApi]);
 
   const [tenantId, setTenantId] = React.useState("");
@@ -97,6 +106,24 @@ export default function InternalTenantsPage() {
     code: string;
     message: string;
   } | null>(null);
+  const [tenantPendingDeactivate, setTenantPendingDeactivate] =
+    React.useState<InternalTenantListItem | null>(null);
+
+  const navigateTenantTab = React.useCallback(
+    (tab: "tenants" | "clientes") => {
+      setActiveTab(tab);
+      const p = new URLSearchParams(searchParams.toString());
+      p.set("tab", tab === "clientes" ? "clientes" : "tenants");
+      router.replace(`${pathname}?${p.toString()}`, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
+
+  React.useEffect(() => {
+    const v = searchParams.get("tab");
+    if (v === "clientes") setActiveTab("clientes");
+    else setActiveTab("tenants");
+  }, [searchParams]);
 
   const refreshList = React.useCallback(async () => {
     setLoadingList(true);
@@ -268,14 +295,14 @@ export default function InternalTenantsPage() {
     }
   };
 
-  const deactivate = async (tenant: InternalTenantListItem) => {
-    if (!window.confirm(`${t("confirmDeactivate")} ${tenant.tenantId}?`)) {
-      return;
-    }
+  const confirmTenantDeactivate = async () => {
+    const tenant = tenantPendingDeactivate;
+    if (!tenant) return;
     setDeactivatingTenant(tenant.tenantId);
     try {
       await deleteInternalTenant(tenant.tenantId);
       toast.success(t("deactivatedOk"));
+      setTenantPendingDeactivate(null);
       await refreshList();
     } catch (e) {
       toast.error(toUserFacingApiError(e, translateApi));
@@ -399,6 +426,7 @@ export default function InternalTenantsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+          <h2 className="sr-only">{t("workspaceSection")}</h2>
           <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
         </div>
         <Button
@@ -412,7 +440,7 @@ export default function InternalTenantsPage() {
       </div>
 
       <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto rounded-2xl sm:max-w-lg">
+        <DialogContent closeLabel={tCommon("closeDialog")} className="max-h-[90vh] overflow-y-auto rounded-2xl sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("createModalTitle")}</DialogTitle>
           </DialogHeader>
@@ -482,14 +510,14 @@ export default function InternalTenantsPage() {
         <Button
           type="button"
           variant={activeTab === "tenants" ? "default" : "ghost"}
-          onClick={() => setActiveTab("tenants")}
+          onClick={() => navigateTenantTab("tenants")}
         >
           {t("listTitle")}
         </Button>
         <Button
           type="button"
           variant={activeTab === "clientes" ? "default" : "ghost"}
-          onClick={() => setActiveTab("clientes")}
+          onClick={() => navigateTenantTab("clientes")}
           disabled={!selectedTenantId}
         >
           {t("clientesTab")}
@@ -655,7 +683,7 @@ export default function InternalTenantsPage() {
                               className="h-8"
                               onClick={() => {
                                 setSelectedTenantId(x.tenantId);
-                                setActiveTab("clientes");
+                                navigateTenantTab("clientes");
                               }}
                             >
                               {t("openClientTab")}
@@ -677,7 +705,7 @@ export default function InternalTenantsPage() {
                                 size="sm"
                                 variant="destructive"
                                 className="h-8"
-                                onClick={() => void deactivate(x)}
+                                onClick={() => setTenantPendingDeactivate(x)}
                                 disabled={deactivatingTenant === x.tenantId}
                               >
                                 <Trash2 className="mr-1 h-3.5 w-3.5" />
@@ -731,7 +759,7 @@ export default function InternalTenantsPage() {
                     className="rounded-xl"
                     onClick={() => {
                       setSelectedTenantId(null);
-                      setActiveTab("tenants");
+                      navigateTenantTab("tenants");
                     }}
                   >
                     {t("backToTenantList")}
@@ -951,7 +979,7 @@ export default function InternalTenantsPage() {
       </div>
       )}
       <Dialog open={Boolean(editTenantId)} onOpenChange={(open) => !open && setEditTenantId(null)}>
-        <DialogContent>
+        <DialogContent closeLabel={tCommon("closeDialog")}>
           <DialogHeader>
             <DialogTitle>{t("editTenant")}</DialogTitle>
           </DialogHeader>
@@ -994,7 +1022,7 @@ export default function InternalTenantsPage() {
         </DialogContent>
       </Dialog>
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-        <DialogContent className="rounded-2xl sm:max-w-md">
+        <DialogContent closeLabel={tCommon("closeDialog")} className="rounded-2xl sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{tSettings("inviteDialogTitle")}</DialogTitle>
           </DialogHeader>
@@ -1026,8 +1054,67 @@ export default function InternalTenantsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={tenantPendingDeactivate != null}
+        onOpenChange={(open) => {
+          if (!open && !deactivatingTenant) setTenantPendingDeactivate(null);
+        }}
+      >
+        <DialogContent closeLabel={tCommon("closeDialog")} className="rounded-2xl sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("deactivateDialogTitle")}</DialogTitle>
+            <DialogDescription>
+              {tenantPendingDeactivate
+                ? t("deactivateDialogDescription", {
+                    tenantId: tenantPendingDeactivate.tenantId,
+                  })
+                : "\u00a0"}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={Boolean(deactivatingTenant)}
+              onClick={() => setTenantPendingDeactivate(null)}
+            >
+              {t("deactivateDialogCancel")}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deactivatingTenant === tenantPendingDeactivate?.tenantId}
+              onClick={() => void confirmTenantDeactivate()}
+            >
+              {t("deactivateDialogConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       </div>
     </FeatureGuard>
+  );
+}
+
+export default function InternalTenantsPage() {
+  const t = useTranslations("internalTenants");
+  return (
+    <Suspense
+      fallback={
+        <div
+          className="flex min-h-[40vh] flex-col items-center justify-center gap-2 text-muted-foreground"
+          role="status"
+          aria-live="polite"
+        >
+          <Loader2 className="h-8 w-8 shrink-0 animate-spin" aria-hidden />
+          <span className="sr-only">{t("title")}</span>
+        </div>
+      }
+    >
+      <InternalTenantsPageContent />
+    </Suspense>
   );
 }
 

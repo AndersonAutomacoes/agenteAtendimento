@@ -6,10 +6,12 @@ import * as React from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
+import { PasswordInput } from "@/components/auth/password-input";
 import { usePlan } from "@/components/plan/plan-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { readFirebaseErrorCode, isLikelyEmail } from "@/lib/email-format";
 import { Link, useRouter } from "@/i18n/navigation";
 import { getFirebaseAuth, isFirebaseConfigured } from "@/lib/firebase";
 import { mapProfileLevelToPlanTier } from "@/lib/plan-tier";
@@ -24,19 +26,38 @@ const TENANT_STORAGE_KEY = "cerebro-tenant-id";
 
 export default function LoginPage() {
   const t = useTranslations("loginPage");
+  const tCommon = useTranslations("common");
   const tApi = useTranslations("api");
   const router = useRouter();
   const { setTier, setFeatures, setProfileLevel } = usePlan();
   const translateApi = React.useCallback((key: string) => tApi(key), [tApi]);
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
+  const [emailError, setEmailError] = React.useState<string | null>(null);
+  const [passwordError, setPasswordError] = React.useState<string | null>(null);
+  const [formError, setFormError] = React.useState<string | null>(null);
+  const emailRef = React.useRef<HTMLInputElement>(null);
+  const passwordRef = React.useRef<HTMLInputElement>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const submittingRef = React.useRef(false);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setEmailError(null);
+    setPasswordError(null);
+    setFormError(null);
     if (!isFirebaseConfigured()) {
       toast.error(t("firebaseNotConfigured"));
+      return;
+    }
+    if (!isLikelyEmail(email)) {
+      setEmailError(t("invalidEmail"));
+      emailRef.current?.focus();
+      return;
+    }
+    if (!password) {
+      setPasswordError(t("passwordRequired"));
+      passwordRef.current?.focus();
       return;
     }
     if (submittingRef.current) return;
@@ -63,7 +84,19 @@ export default function LoginPage() {
       toast.success(t("success"));
       router.push("/");
     } catch (err) {
-      toast.error(toUserFacingApiError(err, translateApi));
+      const code = readFirebaseErrorCode(err);
+      if (code === "auth/invalid-email") {
+        setEmailError(t("invalidEmail"));
+        emailRef.current?.focus();
+      } else if (code === "auth/wrong-password" || code === "auth/invalid-credential") {
+        setFormError(t("credentialMismatch"));
+        passwordRef.current?.focus();
+      } else if (code === "auth/user-not-found") {
+        setFormError(t("credentialMismatch"));
+        emailRef.current?.focus();
+      } else {
+        toast.error(toUserFacingApiError(err, translateApi));
+      }
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
@@ -77,17 +110,34 @@ export default function LoginPage() {
           <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
           <p className="mt-2 text-sm text-muted-foreground">{t("subtitle")}</p>
         </div>
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={onSubmit} className="space-y-4" noValidate>
+          {formError ? (
+            <p className="text-sm text-destructive" role="alert">
+              {formError}
+            </p>
+          ) : null}
           <div className="space-y-2">
             <Label htmlFor="login-email">{t("email")}</Label>
             <Input
+              ref={emailRef}
               id="login-email"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setEmailError(null);
+                setFormError(null);
+              }}
               autoComplete="email"
-              required
+              aria-invalid={Boolean(emailError)}
+              aria-describedby={emailError ? "login-email-err" : undefined}
+              className="min-h-11"
             />
+            {emailError ? (
+              <p id="login-email-err" className="text-sm text-destructive" role="alert">
+                {emailError}
+              </p>
+            ) : null}
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
@@ -99,14 +149,26 @@ export default function LoginPage() {
                 {t("forgotPassword")}
               </Link>
             </div>
-            <Input
+            <PasswordInput
+              ref={passwordRef}
               id="login-password"
-              type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setPasswordError(null);
+                setFormError(null);
+              }}
               autoComplete="current-password"
-              required
+              toggleShowLabel={tCommon("showPassword")}
+              toggleHideLabel={tCommon("hidePassword")}
+              aria-invalid={Boolean(passwordError)}
+              aria-describedby={passwordError ? "login-password-err" : undefined}
             />
+            {passwordError ? (
+              <p id="login-password-err" className="text-sm text-destructive" role="alert">
+                {passwordError}
+              </p>
+            ) : null}
           </div>
           <Button
             type="submit"

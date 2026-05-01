@@ -33,8 +33,10 @@ const DialogContent = React.forwardRef<
   React.ComponentRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     hideClose?: boolean;
+    /** Accessible name for the close control (translate via next-intl at call sites). */
+    closeLabel?: string;
   }
->(({ className, children, hideClose, ...props }, ref) => (
+>(({ className, children, hideClose, closeLabel = "Close", ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
@@ -48,11 +50,12 @@ const DialogContent = React.forwardRef<
       {children}
       {!hideClose ? (
         <DialogPrimitive.Close
+          type="button"
           className="ring-offset-background data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none"
-          aria-label="Close"
+          aria-label={closeLabel}
         >
-          <X className="h-4 w-4" />
-          <span className="sr-only">Close</span>
+          <X className="h-4 w-4" aria-hidden />
+          <span className="sr-only">{closeLabel}</span>
         </DialogPrimitive.Close>
       ) : null}
     </DialogPrimitive.Content>

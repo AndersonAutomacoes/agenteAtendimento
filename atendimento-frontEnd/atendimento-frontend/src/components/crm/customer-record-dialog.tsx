@@ -39,6 +39,7 @@ export function CustomerRecordDialog({
   titleFallback,
 }: CustomerRecordDialogProps) {
   const t = useTranslations("crm");
+  const tCommon = useTranslations("common");
   const tApi = useTranslations("api");
   const translateApi = React.useCallback((key: string) => tApi(key), [tApi]);
   const locale = toBcp47ForDates(useLocale());
@@ -125,7 +126,7 @@ export function CustomerRecordDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[min(90vh,720px)] max-w-2xl overflow-y-auto">
+      <DialogContent closeLabel={tCommon("closeDialog")} className="max-h-[min(90vh,720px)] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("title")}</DialogTitle>
           <DialogDescription className="sr-only">{t("title")}</DialogDescription>

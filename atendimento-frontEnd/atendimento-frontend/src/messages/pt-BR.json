@@ -3,6 +3,11 @@
     "title": "AxeZap - Atendimento Inteligente",
     "description": "Plataforma de automação de atendimento por IA"
   },
+  "common": {
+    "closeDialog": "Fechar diálogo",
+    "showPassword": "Mostrar senha",
+    "hidePassword": "Ocultar senha"
+  },
   "pwa": {
     "title": "Instalar AxeZap no seu celular",
     "subtitle": "Acesso rápido na tela inicial e maior estabilidade com internet instável (app web).",
@@ -159,7 +164,10 @@
     "success": "Sessão iniciada",
     "discoverProduct": "Conheça o produto",
     "backHome": "Voltar ao início",
-    "firebaseNotConfigured": "Firebase não está configurado (variáveis NEXT_PUBLIC_FIREBASE_*)."
+    "firebaseNotConfigured": "Firebase não está configurado (variáveis NEXT_PUBLIC_FIREBASE_*).",
+    "invalidEmail": "Informe um email válido.",
+    "passwordRequired": "Informe a senha.",
+    "credentialMismatch": "Email ou senha incorretos. Verifique e tente novamente."
   },
   "registerPage": {
     "title": "Criar conta",
@@ -173,7 +181,11 @@
     "hasAccount": "Já tem conta? Entrar",
     "discoverProduct": "Conheça o produto",
     "backHome": "Voltar ao início",
-    "firebaseNotConfigured": "Firebase não está configurado (variáveis NEXT_PUBLIC_FIREBASE_*)."
+    "firebaseNotConfigured": "Firebase não está configurado (variáveis NEXT_PUBLIC_FIREBASE_*).",
+    "inviteRequired": "Informe o código de convite.",
+    "invalidEmail": "Informe um email válido.",
+    "passwordTooShort": "A senha deve ter pelo menos 6 caracteres.",
+    "weakPassword": "Escolha uma senha mais forte (requisitos do Firebase)."
   },
   "forgotPasswordPage": {
     "title": "Redefinir senha",
@@ -184,7 +196,8 @@
     "success": "Se o email existir, receberá instruções em breve.",
     "error": "Não foi possível enviar o email. Tente novamente.",
     "backLogin": "Voltar ao login",
-    "firebaseNotConfigured": "Firebase não está configurado (variáveis NEXT_PUBLIC_FIREBASE_*)."
+    "firebaseNotConfigured": "Firebase não está configurado (variáveis NEXT_PUBLIC_FIREBASE_*).",
+    "invalidEmail": "Informe um email válido."
   },
   "plan": {
     "lockedTitle": "Conteúdo exclusivo do seu plano",
@@ -216,6 +229,7 @@
   },
   "dashboard": {
     "title": "Dashboard",
+    "overviewSection": "Resumo de indicadores e gráficos",
     "subtitle": "Indicadores em tempo real por conta: clientes, volume de mensagens, desempenho da IA e estado do canal WhatsApp.",
     "accountId": "ID da Conta",
     "tenantHint": "O ID da conta é definido em Configurações (mesmo valor em Monitoramento e noutras áreas).",
@@ -225,7 +239,9 @@
     "refresh": "Atualizar painel",
     "refreshButton": "Atualizar",
     "mainTabMetrics": "Indicadores",
+    "mainTabsAria": "Alternar entre indicadores principais e oportunidades de venda",
     "mainTabOpportunities": "Oportunidades de Venda",
+    "srMetricsOverview": "Resumo para leitores de ecrã: {{clients}} clientes registados nesta conta. Mensagens de hoje: {{messagesToday}}. Total de mensagens no período do gráfico: {{volumePeriod}}. Intenções classificadas no período: {{intentsTotal}}.",
     "opportunities": {
       "title": "Oportunidades de venda",
       "subtitle": "Contactos com intenção de orçamento ou agendamento que ainda não converteram. Use a recuperação para desligar a IA e enviar uma oferta manual no WhatsApp.",
@@ -335,6 +351,7 @@
   },
   "knowledge": {
     "title": "Base de conhecimento",
+    "pageContentSection": "Envio de ficheiros e lista da base de conhecimento",
     "intro": "Envie PDF ou TXT para enriquecer as respostas do assistente. Os arquivos ficam associados ao ID da Conta no servidor.",
     "accountId": "ID da Conta",
     "tenantHint": "Salvo localmente neste navegador; corresponde à conta configurada em Configurações e no monitoramento.",
@@ -383,6 +400,7 @@
   },
   "settings": {
     "title": "Configuração do cliente (tenant)",
+    "pageContentSection": "Formulários de dados, serviços e integrações",
     "subtitle": "Dados do negócio, plano, adimplência, calendario, serviços, integração WhatsApp, utilizadores do portal e convites.",
     "placeholderTenant": "ex.: tenant-demo",
     "accountId": "Conta",
@@ -488,6 +506,7 @@
   },
   "internalTenants": {
     "title": "Backoffice interno — tenants",
+    "workspaceSection": "Gestão de tenants, clientes e convites",
     "subtitle": "Uso interno (perfil COMERCIAL): criar tenant, definir plano, email de contacto e convite. A lista resume todas as contas.",
     "newTenantButton": "Novo tenant",
     "createModalTitle": "Cadastrar novo tenant",
@@ -533,6 +552,10 @@
     "saveTenant": "Salvar tenant",
     "deactivate": "Inativar",
     "activate": "Ativar",
+    "deactivateDialogTitle": "Inativar tenant?",
+    "deactivateDialogDescription": "A conta «{tenantId}» ficará inativa até voltar a ativar. Esta ação é reversível.",
+    "deactivateDialogConfirm": "Inativar",
+    "deactivateDialogCancel": "Cancelar",
     "confirmDeactivate": "Confirma inativar o tenant",
     "deactivatedOk": "Tenant inativado com sucesso.",
     "activatedOk": "Tenant ativado com sucesso.",
@@ -607,12 +630,13 @@
     "handoffSuccess": "Modo humano activo; o cliente foi notificado.",
     "enableBotSuccess": "IA reativada para esta conversa.",
     "actionWorking": "A aguardar…",
+    "activeChatLabel": "Mensagem ao cliente",
     "activeChatPlaceholder": "Escreva uma mensagem ao cliente…",
     "activeChatSend": "Enviar",
     "activeChatDisabledHint": "Assuma a conversa (desligue a IA) para enviar mensagens.",
     "activeChatNeedMessage": "Escreva uma mensagem antes de enviar.",
     "humanReplySuccess": "Mensagem enviada.",
-    "appointmentBadge": "📅 Possui agendamento em {date}"
+    "appointmentBadge": "Possui agendamento em {date}"
   },
   "appointments": {
     "title": "Agendamentos (IA)",

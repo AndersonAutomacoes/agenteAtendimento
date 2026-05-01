@@ -65,7 +65,8 @@ import { toBcp47ForDates } from "@/lib/intl-locale";
 import { planMeetsRequirement } from "@/lib/plan-tier";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
-import { Link, useRouter } from "@/i18n/navigation";
+import { Link, usePathname, useRouter } from "@/i18n/navigation";
+import { useSearchParams } from "next/navigation";
 import {
   assumeCrmOpportunity,
   exportAnalyticsReport,
@@ -182,6 +183,47 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+function DashboardMetricsSkeleton({
+  cardClass,
+  areaChartPx,
+  loadingLabel,
+}: {
+  cardClass: string;
+  areaChartPx: number;
+  loadingLabel: string;
+}) {
+  return (
+    <div className="space-y-6" aria-busy="true" aria-label={loadingLabel}>
+      <div className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2 lg:grid-cols-4">
+        {[1, 2, 3, 4].map((i) => (
+          <Card key={i} className={cn(cardClass)}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <div className="h-4 w-28 animate-pulse rounded bg-muted md:w-32" />
+              <div className="h-4 w-4 shrink-0 animate-pulse rounded bg-muted/80" />
+            </CardHeader>
+            <CardContent>
+              <div className="h-9 w-20 animate-pulse rounded-md bg-muted" />
+              <div className="mt-3 h-3 w-[90%] max-w-[14rem] animate-pulse rounded bg-muted/70" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <Card className={cn(cardClass)}>
+        <CardHeader>
+          <div className="h-5 w-48 animate-pulse rounded bg-muted" />
+          <div className="mt-2 h-3 w-[min(100%,20rem)] animate-pulse rounded bg-muted/70" />
+        </CardHeader>
+        <CardContent className="pt-2">
+          <div
+            className="animate-pulse rounded-xl bg-muted/60"
+            style={{ height: areaChartPx, minHeight: areaChartPx }}
+          />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function opportunityLeadScorePresentation(
   score: number | null | undefined,
   translate: (key: string) => string,
@@ -214,6 +256,7 @@ export function DashboardPanel() {
   const t = useTranslations("dashboard");
   const tApi = useTranslations("api");
   const tPlan = useTranslations("plan");
+  const tCommon = useTranslations("common");
   const { tier } = usePlan();
   const locale = useLocale();
   const dateLocale = toBcp47ForDates(locale);
@@ -240,6 +283,8 @@ export function DashboardPanel() {
   const [opportunitiesError, setOpportunitiesError] = React.useState<string | null>(null);
   const [assumingId, setAssumingId] = React.useState<string | null>(null);
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const isSmallViewport = useMediaQuery("(max-width: 767px)");
   const chartTickSize = isSmallViewport ? 10 : 12;
@@ -567,10 +612,24 @@ export function DashboardPanel() {
   const canAccessExport = planMeetsRequirement(tier, "pro");
 
   React.useEffect(() => {
-    if (!canAccessOpportunities && mainTab === "opportunities") {
+    const raw = searchParams.get("tab");
+    if (raw === "opportunities" && canAccessOpportunities) {
+      setMainTab("opportunities");
+    } else {
       setMainTab("metrics");
     }
-  }, [canAccessOpportunities, mainTab]);
+  }, [searchParams, canAccessOpportunities]);
+
+  const navigateDashboardTab = React.useCallback(
+    (tab: "metrics" | "opportunities") => {
+      if (tab === "opportunities" && !canAccessOpportunities) return;
+      setMainTab(tab);
+      const p = new URLSearchParams(searchParams.toString());
+      p.set("tab", tab === "metrics" ? "metrics" : "opportunities");
+      router.replace(`${pathname}?${p.toString()}`, { scroll: false });
+    },
+    [canAccessOpportunities, pathname, router, searchParams],
+  );
 
   return (
     <div className="space-y-8">
@@ -608,13 +667,13 @@ export function DashboardPanel() {
             <div
               className="flex flex-wrap items-center gap-2"
               role="tablist"
-              aria-label={t("mainTabMetrics")}
+              aria-label={t("mainTabsAria")}
             >
               <Button
                 type="button"
                 size="touch"
                 variant={mainTab === "metrics" ? "default" : "outline"}
-                onClick={() => setMainTab("metrics")}
+                onClick={() => navigateDashboardTab("metrics")}
                 className={cn(
                   mainTab === "metrics" &&
                     "bg-primary text-primary-foreground shadow-md shadow-cyan-500/20",
@@ -627,7 +686,7 @@ export function DashboardPanel() {
                   type="button"
                   size="touch"
                   variant={mainTab === "opportunities" ? "default" : "outline"}
-                  onClick={() => setMainTab("opportunities")}
+                  onClick={() => navigateDashboardTab("opportunities")}
                   className={cn(
                     "gap-1.5",
                     mainTab === "opportunities" &&
@@ -789,7 +848,11 @@ export function DashboardPanel() {
             </p>
           ) : null}
           {opportunitiesLoading && opportunities === null ? (
-            <p className="text-sm text-muted-foreground">{t("loading")}</p>
+            <div className="space-y-3" aria-busy="true" aria-label={t("loading")}>
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-14 animate-pulse rounded-xl bg-muted/55" />
+              ))}
+            </div>
           ) : null}
           <FeatureGuard requiredPlan="pro">
             <Card className={cn(cardClass)}>
@@ -914,11 +977,23 @@ export function DashboardPanel() {
       ) : null}
 
       {mainTab === "metrics" && loading && !data ? (
-        <p className="text-sm text-muted-foreground">{t("loading")}</p>
+        <DashboardMetricsSkeleton
+          cardClass={cardClass}
+          areaChartPx={areaChartPx}
+          loadingLabel={t("loading")}
+        />
       ) : null}
 
       {mainTab === "metrics" && data ? (
         <>
+          <p className="sr-only">
+            {t("srMetricsOverview", {
+              clients: data.totalClients,
+              messagesToday: data.messagesToday,
+              volumePeriod: chartData.reduce((acc, row) => acc + row.count, 0),
+              intentsTotal: intentData ? totalIntentCount : 0,
+            })}
+          </p>
           <div className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2 lg:grid-cols-4">
             <Card className={cn(cardClass)}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -1108,7 +1183,12 @@ export function DashboardPanel() {
                       {intentError}
                     </p>
                   ) : !intentData ? (
-                    <p className="text-sm text-muted-foreground">{t("loading")}</p>
+                    <div
+                      className="w-full min-w-0 shrink-0 animate-pulse rounded-xl bg-muted/55"
+                      style={{ height: lowerChartPx, minHeight: lowerChartPx }}
+                      aria-busy="true"
+                      aria-label={t("loading")}
+                    />
                   ) : totalIntentCount === 0 ? (
                     <p className="text-sm text-muted-foreground">{t("primaryIntents.pieEmpty")}</p>
                   ) : (
@@ -1135,6 +1215,12 @@ export function DashboardPanel() {
                               innerRadius={0}
                               outerRadius={pieOuterRadius}
                               paddingAngle={2}
+                              label={
+                                isSmallViewport
+                                  ? false
+                                  : ({ name, percent }) =>
+                                      `${String(name ?? "")} ${Math.round((Number(percent) || 0) * 100)}%`
+                              }
                             >
                               {pieRows.map((_, i) => (
                                 <Cell
@@ -1183,7 +1269,12 @@ export function DashboardPanel() {
                       {intentError}
                     </p>
                   ) : !intentData ? (
-                    <p className="text-sm text-muted-foreground">{t("loading")}</p>
+                    <div
+                      className="w-full min-w-0 shrink-0 animate-pulse rounded-xl bg-muted/55"
+                      style={{ height: lowerChartPx, minHeight: lowerChartPx }}
+                      aria-busy="true"
+                      aria-label={t("loading")}
+                    />
                   ) : totalSentimentClassified === 0 ? (
                     <p className="text-sm text-muted-foreground">{t("sentiment.empty")}</p>
                   ) : (
@@ -1268,7 +1359,15 @@ export function DashboardPanel() {
                     {intentError}
                   </p>
                 ) : !intentData ? (
-                  <p className="text-sm text-muted-foreground">{t("loading")}</p>
+                  <div
+                    className="space-y-2"
+                    aria-busy="true"
+                    aria-label={t("loading")}
+                  >
+                    <div className="h-4 w-full max-w-md animate-pulse rounded bg-muted/70" />
+                    <div className="h-4 w-full max-w-lg animate-pulse rounded bg-muted/55" />
+                    <div className="h-4 w-2/3 max-w-sm animate-pulse rounded bg-muted/45" />
+                  </div>
                 ) : aiInsight.kind === "empty" ? (
                   <p className="text-sm text-muted-foreground">{t("aiInsight.empty")}</p>
                 ) : aiInsight.kind === "stable" ? (
@@ -1459,7 +1558,10 @@ export function DashboardPanel() {
       ) : null}
 
       <Dialog open={exportUpgradeOpen} onOpenChange={setExportUpgradeOpen}>
-        <DialogContent className="max-w-[calc(100vw-2rem)] gap-4 sm:max-w-md">
+        <DialogContent
+          closeLabel={tCommon("closeDialog")}
+          className="max-w-[calc(100vw-2rem)] gap-4 sm:max-w-md"
+        >
           <DialogHeader>
             <DialogTitle>{tPlan("exportDialogTitle")}</DialogTitle>
             <DialogDescription>{tPlan("exportDialogDescription")}</DialogDescription>
@@ -1469,7 +1571,7 @@ export function DashboardPanel() {
       </Dialog>
 
       <Dialog open={periodDialogOpen} onOpenChange={setPeriodDialogOpen}>
-        <DialogContent className="max-w-[calc(100vw-2rem)] gap-4">
+        <DialogContent closeLabel={tCommon("closeDialog")} className="max-w-[calc(100vw-2rem)] gap-4">
           <DialogHeader>
             <DialogTitle>{t("periodCustomDialogTitle")}</DialogTitle>
             <DialogDescription>{t("periodCustomDialogHint")}</DialogDescription>
