@@ -37,6 +37,108 @@
     "loggedIn": "Signed in",
     "sessionActive": "Active session"
   },
+  "landingPage": {
+    "metaTitle": "AxeZap — Intelligent support that sells and books for you",
+    "metaDescription": "Automate WhatsApp with AI trained on your knowledge base. Shorter queues, more conversions and bookings without growing headcount.",
+    "skipToForm": "Skip to contact form",
+    "navBrand": "AxeZap",
+    "navLogin": "Sign in",
+    "navRegister": "Create account",
+    "heroBadge": "Intelligent support",
+    "heroTitle": "Turn every conversation into opportunity — at scale.",
+    "heroSubtitle": "AxeZap puts AI beside your team: it speaks in your brand voice, draws from your knowledge base, and helps book appointments without friction. Customers get answers instantly; you reclaim time for what matters.",
+    "ctaPrimary": "Talk to our team",
+    "ctaSecondary": "I already have an account",
+    "proofTitle": "Built for businesses that cannot freeze on WhatsApp",
+    "proofItems": [
+      { "label": "Shorter queues", "detail": "Smooth support even at peak times." },
+      { "label": "Instant answers", "detail": "Less dependence on human availability." },
+      { "label": "Consistency", "detail": "Policies and pricing aligned with what you documented." }
+    ],
+    "benefitsHeading": "What serious product pages promise — delivered operationally",
+    "benefitsSub": "Less empty hype, more flow: configure, feed your knowledge base, and start handling conversations with AI without rebuilding your stack.",
+    "benefits": [
+      {
+        "title": "AI that understands your business",
+        "description": "Responses grounded in your knowledge base — fewer guesses and sharper interactions."
+      },
+      {
+        "title": "From first \"hi\" to booking",
+        "description": "Guide customers to a confirmed slot without endless human ping-pong."
+      },
+      {
+        "title": "A dashboard that surfaces what matters",
+        "description": "Track conversations, intents, and opportunities — step in where it moves the needle."
+      },
+      {
+        "title": "Ready for lean teams",
+        "description": "No mega-enterprise complexity: designed for small teams shipping daily."
+      },
+      {
+        "title": "Scale without losing your tone",
+        "description": "Handle more chats while staying aligned with what you taught the model."
+      }
+    ],
+    "howHeading": "How it works",
+    "howSub": "Three steps to leave improvisation behind.",
+    "howSteps": [
+      {
+        "title": "Set up your workspace",
+        "description": "Enter the platform, set preferences, and wire the flow to how you operate."
+      },
+      {
+        "title": "Feed the knowledge base",
+        "description": "Upload documents and content — the AI uses them to answer with substance."
+      },
+      {
+        "title": "Serve and convert",
+        "description": "Let AI reply at customer pace and escalate only when it pays off."
+      }
+    ],
+    "faqHeading": "FAQ",
+    "faqSub": "Clarity before you commit — what teams usually ask.",
+    "faq": [
+      {
+        "q": "Does it replace my team?",
+        "a": "No — it extends capacity: handles routine and repetitive questions so humans focus on sensitive cases and closing deals."
+      },
+      {
+        "q": "Does the AI hallucinate facts?",
+        "a": "The right setup anchors answers in documented knowledge and clear policies — fewer generic replies and better alignment with what you actually offer."
+      },
+      {
+        "q": "Does it support scheduling?",
+        "a": "Yes. Flows can include booking so customers leave with a time slot, not just an answered curiosity."
+      },
+      {
+        "q": "How fast can we start?",
+        "a": "Depends on your materials and channel — the goal is quick progress from first upload to guided, consistent conversations."
+      },
+      {
+        "q": "Is customer data safe?",
+        "a": "Treat data like any commercial channel: purpose-led collection, consent where applicable, and governance aligned with how you already operate."
+      }
+    ],
+    "contactHeading": "Ready to see AxeZap in your scenario?",
+    "contactSub": "Share your details and a short note. We reply via WhatsApp or email with next steps.",
+    "footerTagline": "AxeZap — Intelligent Support",
+    "footerLogin": "Login",
+    "footerRegister": "Register",
+    "footerRights": "All rights reserved."
+  },
+  "landingForm": {
+    "name": "Full name",
+    "email": "Email",
+    "whatsapp": "WhatsApp",
+    "whatsappHint": "Include country code, e.g. +15551234567",
+    "message": "How can we help?",
+    "consent": "I authorize the use of my data for commercial contact, under the applicable privacy policy.",
+    "submit": "Send message",
+    "success": "We received your message. We'll get back to you soon!",
+    "errorGeneric": "Could not send. Please try again later.",
+    "errorValidation": "Please check the fields and try again.",
+    "errorUnavailable": "Service temporarily unavailable. Try again later."
+  },
   "loginPage": {
     "title": "Sign in to the dashboard",
     "subtitle": "Sign in with your Firebase account (email and password).",
@@ -46,6 +148,7 @@
     "noAccount": "Create account with invite",
     "submit": "Sign in",
     "success": "Signed in",
+    "discoverProduct": "Discover the product",
     "backHome": "Back to home",
     "firebaseNotConfigured": "Firebase is not configured (NEXT_PUBLIC_FIREBASE_* env vars)."
   },
@@ -58,6 +161,7 @@
     "submit": "Register and link to tenant",
     "success": "Account created and linked to tenant",
     "hasAccount": "Already have an account? Sign in",
+    "discoverProduct": "Discover the product",
     "backHome": "Back to home",
     "firebaseNotConfigured": "Firebase is not configured (NEXT_PUBLIC_FIREBASE_* env vars)."
   },

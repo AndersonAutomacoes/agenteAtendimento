@@ -37,6 +37,108 @@
     "loggedIn": "Sesión iniciada",
     "sessionActive": "Sesión activa"
   },
+  "landingPage": {
+    "metaTitle": "AxeZap — Atención inteligente que vende y agenda por ti",
+    "metaDescription": "Automatiza WhatsApp con IA entrenada en tu base de conocimiento. Menos colas, más conversiones y citas sin aumentar plantilla.",
+    "skipToForm": "Ir al formulario de contacto",
+    "navBrand": "AxeZap",
+    "navLogin": "Entrar",
+    "navRegister": "Crear cuenta",
+    "heroBadge": "Atención inteligente",
+    "heroTitle": "Convierte cada conversación en oportunidad — a escala.",
+    "heroSubtitle": "AxeZap pone una IA junto a tu equipo: habla con el tono de tu marca, usa tu base de conocimiento y ayuda a agendar sin fricción. Tu cliente recibe respuesta al momento; tú recuperas tiempo para lo importante.",
+    "ctaPrimary": "Hablar con el equipo",
+    "ctaSecondary": "Ya tengo cuenta",
+    "proofTitle": "Pensado para negocios que no pueden pararse en WhatsApp",
+    "proofItems": [
+      { "label": "Menos cola", "detail": "Flujo estable incluso en picos." },
+      { "label": "Respuestas al instante", "detail": "Menos dependencia de disponibilidad humana." },
+      { "label": "Consistencia", "detail": "Políticas y precios alineados con lo documentado." }
+    ],
+    "benefitsHeading": "Lo que una landing seria promete — con entrega operativa",
+    "benefitsSub": "Menos humo, más flujo: configura, alimenta la base y empieza a atender con IA sin reinventar tu stack.",
+    "benefits": [
+      {
+        "title": "IA que entiende tu negocio",
+        "description": "Respuestas apoyadas en tu base de conocimiento — menos improvisación y más precisión."
+      },
+      {
+        "title": "Del primer \"hola\" a la cita",
+        "description": "Guía al cliente hasta reservar sin ping-pong interminable entre personas."
+      },
+      {
+        "title": "Panel que muestra lo que importa",
+        "description": "Sigue conversaciones, intenciones y oportunidades para intervenir donde suma."
+      },
+      {
+        "title": "Listo para equipos ágiles",
+        "description": "Sin complejidad de gran empresa: pensado para equipos pequeños en el día a día."
+      },
+      {
+        "title": "Escala sin perder el tono",
+        "description": "Más conversaciones atendidas manteniendo lo que enseñaste al modelo."
+      }
+    ],
+    "howHeading": "Cómo funciona",
+    "howSub": "Tres pasos para salir del improviso.",
+    "howSteps": [
+      {
+        "title": "Configura tu espacio",
+        "description": "Entra en la plataforma, define preferencias y adapta el flujo a tu forma de trabajar."
+      },
+      {
+        "title": "Alimenta la base de conocimiento",
+        "description": "Sube documentos y contenidos — la IA los usa para responder con fundamento."
+      },
+      {
+        "title": "Atiende y convierte",
+        "description": "Deja que la IA responda al ritmo del cliente y escala solo cuando valga la pena."
+      }
+    ],
+    "faqHeading": "Preguntas frecuentes",
+    "faqSub": "Transparencia antes de decidir — lo que suele importar.",
+    "faq": [
+      {
+        "q": "¿Reemplaza a mi equipo?",
+        "a": "No. Amplía capacidad: cubre rutina y preguntas repetidas para que las personas cierren casos sensibles y ventas."
+      },
+      {
+        "q": "¿La IA inventa información?",
+        "a": "El diseño correcto ancla respuestas en documentación y políticas claras — menos respuestas genéricas y más alineación con tu oferta real."
+      },
+      {
+        "q": "¿Sirve para agendar?",
+        "a": "Sí. El flujo puede incluir citas para que el cliente salga con horario, no solo con la duda resuelta."
+      },
+      {
+        "q": "¿Cuánto tardamos en empezar?",
+        "a": "Depende de tus materiales y canal — la idea es pasar rápido del primer upload a conversaciones guiadas y coherentes."
+      },
+      {
+        "q": "¿Es seguro para datos de clientes?",
+        "a": "Trata los datos como en cualquier canal comercial: finalidad, consentimiento donde aplique y buenas prácticas de gobernanza."
+      }
+    ],
+    "contactHeading": "¿Listo para ver AxeZap en tu escenario?",
+    "contactSub": "Deja tus datos y un mensaje breve. Respondemos por WhatsApp o email con próximos pasos.",
+    "footerTagline": "AxeZap — Atención Inteligente",
+    "footerLogin": "Login",
+    "footerRegister": "Registro",
+    "footerRights": "Todos los derechos reservados."
+  },
+  "landingForm": {
+    "name": "Nombre completo",
+    "email": "Email",
+    "whatsapp": "WhatsApp",
+    "whatsappHint": "Incluye prefijo internacional, ej.: +34911222333",
+    "message": "¿En qué podemos ayudarte?",
+    "consent": "Autorizo el uso de mis datos para contacto comercial, según la política de privacidad aplicable.",
+    "submit": "Enviar mensaje",
+    "success": "Hemos recibido tu mensaje. Te responderemos pronto.",
+    "errorGeneric": "No se pudo enviar. Inténtalo más tarde.",
+    "errorValidation": "Revisa los campos e inténtalo de nuevo.",
+    "errorUnavailable": "Servicio temporalmente no disponible. Inténtalo más tarde."
+  },
   "loginPage": {
     "title": "Iniciar sesión",
     "subtitle": "Use su cuenta Firebase (email y contraseña).",
@@ -46,6 +148,7 @@
     "noAccount": "Crear cuenta con invitación",
     "submit": "Entrar",
     "success": "Sesión iniciada",
+    "discoverProduct": "Conoce el producto",
     "backHome": "Volver al inicio",
     "firebaseNotConfigured": "Firebase no está configurado (variables NEXT_PUBLIC_FIREBASE_*)."
   },
@@ -58,6 +161,7 @@
     "submit": "Registrarse y asociar al tenant",
     "success": "Cuenta creada y asociada al tenant",
     "hasAccount": "¿Ya tiene cuenta? Entrar",
+    "discoverProduct": "Conoce el producto",
     "backHome": "Volver al inicio",
     "firebaseNotConfigured": "Firebase no está configurado (variables NEXT_PUBLIC_FIREBASE_*)."
   },

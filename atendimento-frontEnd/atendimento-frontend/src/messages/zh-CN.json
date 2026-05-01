@@ -37,6 +37,108 @@
     "loggedIn": "已登录",
     "sessionActive": "会话有效"
   },
+  "landingPage": {
+    "metaTitle": "AxeZap — 智能客服，为您促成销售与预约",
+    "metaDescription": "用训练于知识库的 AI 自动化 WhatsApp。缩短排队、提升转化与预约效率，无需扩充人手。",
+    "skipToForm": "跳转到联系表单",
+    "navBrand": "AxeZap",
+    "navLogin": "登录",
+    "navRegister": "创建账号",
+    "heroBadge": "智能客服",
+    "heroTitle": "把每一次对话，规模化变成商机。",
+    "heroSubtitle": "AxeZap 让 AI 站在团队一侧：使用品牌语气作答，调用知识库内容，并顺畅引导预约。客户即时得到答复；您把时间留给真正重要的事。",
+    "ctaPrimary": "联系团队",
+    "ctaSecondary": "已有账号",
+    "proofTitle": "为不能在 WhatsApp 上停摆的业务而打造",
+    "proofItems": [
+      { "label": "更短排队", "detail": "高峰期也能保持顺畅接待。" },
+      { "label": "即时回复", "detail": "减少对人工在线时段的依赖。" },
+      { "label": "一致性", "detail": "政策与价格与您录入的资料对齐。" }
+    ],
+    "benefitsHeading": "成熟产品落地页承诺的一切——落实到日常运营",
+    "benefitsSub": "少空谈、多闭环：完成配置、投喂知识库，即可用 AI 承接对话，无需推翻现有架构。",
+    "benefits": [
+      {
+        "title": "懂业务的 AI",
+        "description": "回答扎根于知识库，减少随口猜测，让互动更精准。"
+      },
+      {
+        "title": "从第一句问候到完成预约",
+        "description": "引导客户在来回拉扯最少的情况下锁定时间段。"
+      },
+      {
+        "title": "仪表盘聚焦关键信号",
+        "description": "追踪会话、意图与商机，在高价值节点及时介入。"
+      },
+      {
+        "title": "适合精干团队",
+        "description": "没有巨型企业的复杂度，为小团队的日常使用设计。"
+      },
+      {
+        "title": "规模化不掉品牌语气",
+        "description": "承接更多会话，同时延续您为模型设定的表达风格。"
+      }
+    ],
+    "howHeading": "如何运作",
+    "howSub": "三步告别临场发挥。",
+    "howSteps": [
+      {
+        "title": "配置工作空间",
+        "description": "登录平台，设定偏好，并将流程对齐您的协作方式。"
+      },
+      {
+        "title": "充实知识库",
+        "description": "上传文档与内容——AI 凭此有据可依地回答。"
+      },
+      {
+        "title": "接待与转化",
+        "description": "让 AI 跟上客户节奏，仅在值得时升级到人工。"
+      }
+    ],
+    "faqHeading": "常见问题",
+    "faqSub": "做决定前先厘清——团队最常问的点。",
+    "faq": [
+      {
+        "q": "会取代我的团队吗？",
+        "a": "不会。它扩展容量：处理例行与重复问题，让人专注敏感案例与成交。"
+      },
+      {
+        "q": "AI 会编造信息吗？",
+        "a": "正确的搭建会把答案锚定在文档化知识与清晰政策上——减少泛泛而谈，更贴合真实可提供的服务。"
+      },
+      {
+        "q": "支持预约吗？",
+        "a": "支持。流程可包含排期，让客户不只得到答复，还能带走确定的时间段。"
+      },
+      {
+        "q": "多久能起步？",
+        "a": "取决于资料与渠道——目标是从首次上传到一致、可引导的对话尽可能短。"
+      },
+      {
+        "q": "客户数据安全吗？",
+        "a": "与任何商业渠道一样：明确目的、在适用场景取得同意，并配套治理实践。"
+      }
+    ],
+    "contactHeading": "想看看 AxeZap 在您的场景如何落地？",
+    "contactSub": "留下信息与简短说明，我们会通过微信/WhatsApp 或邮件回复下一步。",
+    "footerTagline": "AxeZap — 智能客服",
+    "footerLogin": "登录",
+    "footerRegister": "注册",
+    "footerRights": "保留所有权利。"
+  },
+  "landingForm": {
+    "name": "姓名",
+    "email": "邮箱",
+    "whatsapp": "WhatsApp",
+    "whatsappHint": "请含国家区号，例如 +8613800138000",
+    "message": "我们如何帮助您？",
+    "consent": "我授权在适用隐私政策下将我的数据用于商业联系。",
+    "submit": "发送",
+    "success": "我们已收到您的留言，将尽快回复。",
+    "errorGeneric": "发送失败，请稍后再试。",
+    "errorValidation": "请检查表单后重试。",
+    "errorUnavailable": "服务暂时不可用，请稍后再试。"
+  },
   "loginPage": {
     "title": "登录控制台",
     "subtitle": "使用 Firebase 账号（邮箱与密码）登录。",
@@ -46,6 +148,7 @@
     "noAccount": "使用邀请码注册",
     "submit": "登录",
     "success": "已登录",
+    "discoverProduct": "了解产品",
     "backHome": "返回首页",
     "firebaseNotConfigured": "未配置 Firebase（NEXT_PUBLIC_FIREBASE_* 环境变量）。"
   },
@@ -58,6 +161,7 @@
     "submit": "注册并关联租户",
     "success": "账号已创建并关联租户",
     "hasAccount": "已有账号？去登录",
+    "discoverProduct": "了解产品",
     "backHome": "返回首页",
     "firebaseNotConfigured": "未配置 Firebase（NEXT_PUBLIC_FIREBASE_* 环境变量）。"
   },

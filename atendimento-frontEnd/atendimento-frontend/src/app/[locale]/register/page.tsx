@@ -138,6 +138,10 @@ export default function RegisterPage() {
           </Button>
         </form>
         <p className="text-center text-sm text-muted-foreground">
+          <Link href="/landing" className="underline-offset-4 hover:underline">
+            {t("discoverProduct")}
+          </Link>
+          <span className="mx-2 text-border">·</span>
           <Link href="/login" className="underline-offset-4 hover:underline">
             {t("hasAccount")}
           </Link>

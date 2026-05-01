@@ -37,6 +37,108 @@
     "loggedIn": "Conta iniciada",
     "sessionActive": "Sessão ativa"
   },
+  "landingPage": {
+    "metaTitle": "AxeZap — Atendimento inteligente que vende e agenda para você",
+    "metaDescription": "Automatize WhatsApp com IA treinada na sua base de conhecimento. Menos fila, mais conversões e agendamentos sem aumentar o time.",
+    "skipToForm": "Ir para o formulário de contato",
+    "navBrand": "AxeZap",
+    "navLogin": "Entrar",
+    "navRegister": "Criar conta",
+    "heroBadge": "Atendimento inteligente",
+    "heroTitle": "Transforme cada conversa em oportunidade — em escala.",
+    "heroSubtitle": "O AxeZap coloca uma IA ao lado da sua equipe: responde com o tom da marca, usa a sua base de conhecimento e ajuda a agendar sem fricção. Seu cliente tem resposta na hora; você recupera o tempo para o que importa.",
+    "ctaPrimary": "Falar com a equipe",
+    "ctaSecondary": "Já tenho conta",
+    "proofTitle": "Feito para negócios que não podem travar no WhatsApp",
+    "proofItems": [
+      { "label": "Menos fila", "detail": "Atendimento fluido mesmo nos picos." },
+      { "label": "Respostas instantâneas", "detail": "Sem depender só da disponibilidade humana." },
+      { "label": "Consistência", "detail": "Políticas e preços alinhados ao que você documentou." }
+    ],
+    "benefitsHeading": "Tudo o que uma landing de produto sério promete — com entrega operacional",
+    "benefitsSub": "Menos promessa vazia, mais fluxo: configure, alimente a base e comece a atender com IA sem reinventar o seu stack.",
+    "benefits": [
+      {
+        "title": "IA que entende o seu negócio",
+        "description": "Respostas guiadas pela sua base de conhecimento — menos improviso e mais precisão nas interações."
+      },
+      {
+        "title": "Do primeiro “oi” ao agendamento",
+        "description": "Conduza o cliente até marcar horário sem ping-pong infinito entre humanos."
+      },
+      {
+        "title": "Painel que mostra o que importa",
+        "description": "Acompanhe conversas, intenções e oportunidades para intervir quando fizer diferença."
+      },
+      {
+        "title": "Pronto para equipes enxutas",
+        "description": "Sem complexidade de grande enterprise: pensado para rodar no dia a dia de times pequenos."
+      },
+      {
+        "title": "Escala sem perder o tom da marca",
+        "description": "Mais conversas atendidas mantendo alinhamento com o que você ensinou ao modelo."
+      }
+    ],
+    "howHeading": "Como funciona",
+    "howSub": "Três passos para sair do improviso e entrar em modo automático.",
+    "howSteps": [
+      {
+        "title": "Configure o seu espaço",
+        "description": "Entre na plataforma, defina preferências e conecte o fluxo ao seu modo de trabalhar."
+      },
+      {
+        "title": "Alimente a base de conhecimento",
+        "description": "Envie documentos e conteúdos — a IA usa esse material para responder com fundamento."
+      },
+      {
+        "title": "Atenda e converta",
+        "description": "Deixe a IA responder no ritmo do cliente e escalonar só quando valer a pena."
+      }
+    ],
+    "faqHeading": "Perguntas frequentes",
+    "faqSub": "Transparência antes do “fechar”: o que você provavelmente quer saber.",
+    "faq": [
+      {
+        "q": "Substitui minha equipe?",
+        "a": "Não. Ela amplia a capacidade: responde rotina e perguntas repetidas para humanos focarem em casos sensíveis e em fechar vendas."
+      },
+      {
+        "q": "A IA inventa informação?",
+        "a": "O desenho correto é apoiar respostas na sua base documentada e políticas claras — assim você reduz resposta genérica e aumenta aderência ao que a empresa realmente oferece."
+      },
+      {
+        "q": "Serve para agendamento?",
+        "a": "Sim. O fluxo pode incluir marcação de horários para que o cliente saia da conversa com data combinada, não só com curiosidade respondida."
+      },
+      {
+        "q": "Quanto tempo para começar?",
+        "a": "Depende do seu material e do canal — mas a ideia é ir rápido do primeiro upload à primeira conversa guiada com consistência."
+      },
+      {
+        "q": "É seguro para dados de clientes?",
+        "a": "Trate dados como em qualquer canal comercial: coleta com propósito, consentimento onde aplicável e boas práticas de governança — alinhado ao que você já faz no atendimento humano."
+      }
+    ],
+    "contactHeading": "Pronto para ver o AxeZap no seu cenário?",
+    "contactSub": "Deixe seus dados e uma mensagem curta. Voltamos pelo WhatsApp ou email com próximos passos.",
+    "footerTagline": "AxeZap — Atendimento Inteligente",
+    "footerLogin": "Login",
+    "footerRegister": "Registro",
+    "footerRights": "Todos os direitos reservados."
+  },
+  "landingForm": {
+    "name": "Nome completo",
+    "email": "Email",
+    "whatsapp": "WhatsApp",
+    "whatsappHint": "Inclua DDI, ex.: +5511999998888",
+    "message": "Como podemos ajudar?",
+    "consent": "Autorizo o uso dos meus dados para contato comercial, conforme a política de privacidade aplicável.",
+    "submit": "Enviar mensagem",
+    "success": "Recebemos sua mensagem. Retornaremos em breve!",
+    "errorGeneric": "Não foi possível enviar. Tente novamente mais tarde.",
+    "errorValidation": "Verifique os campos e tente novamente.",
+    "errorUnavailable": "Serviço temporariamente indisponível. Tente mais tarde."
+  },
   "loginPage": {
     "title": "Painel de controle",
     "subtitle": "Entre com a sua conta Firebase (email e senha).",
@@ -46,6 +148,7 @@
     "noAccount": "Criar conta com convite",
     "submit": "Entrar",
     "success": "Sessão iniciada",
+    "discoverProduct": "Conheça o produto",
     "backHome": "Voltar ao início",
     "firebaseNotConfigured": "Firebase não está configurado (variáveis NEXT_PUBLIC_FIREBASE_*)."
   },
@@ -58,6 +161,7 @@
     "submit": "Registar e associar ao tenant",
     "success": "Conta criada e associada ao tenant",
     "hasAccount": "Já tem conta? Entrar",
+    "discoverProduct": "Conheça o produto",
     "backHome": "Voltar ao início",
     "firebaseNotConfigured": "Firebase não está configurado (variáveis NEXT_PUBLIC_FIREBASE_*)."
   },
