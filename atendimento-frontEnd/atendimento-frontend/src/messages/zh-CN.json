@@ -341,6 +341,7 @@
     "whatsappBusinessNumberHint": "仅供参考；真正接入仍用下方 Phone ID / Evolution。",
     "sectionPersona": "助手人格（系统提示）",
     "sectionChannel": "WhatsApp 技术集成",
+    "whatsappIntegrationReadOnlyDesc": "此处配置由团队在后台设定。您可生成新二维码以重新连接 WhatsApp。",
     "sectionServices": "服务目录",
     "sectionServicesDesc": "与排班关联；编辑后需保存。",
     "serviceName": "服务",

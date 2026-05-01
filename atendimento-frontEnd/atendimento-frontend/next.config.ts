@@ -88,6 +88,10 @@ const nextConfig: NextConfig = {
         destination: `${backend}/api/v1/tenant/settings`,
       },
       {
+        source: "/api/v1/tenant/whatsapp/evolution/pairing",
+        destination: `${backend}/api/v1/tenant/whatsapp/evolution/pairing`,
+      },
+      {
         source: "/api/v1/messages",
         destination: `${backend}/api/v1/messages`,
       },

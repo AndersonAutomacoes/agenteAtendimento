@@ -341,6 +341,7 @@
     "whatsappBusinessNumberHint": "For reference; real delivery still uses Phone Number ID / Evolution below.",
     "sectionPersona": "Assistant persona (AI system prompt)",
     "sectionChannel": "WhatsApp technical integration",
+    "whatsappIntegrationReadOnlyDesc": "These values are set by your team in the back office. You can generate a new QR code to reconnect WhatsApp.",
     "sectionServices": "Services (catalog)",
     "sectionServicesDesc": "List tied to booking and the tenant service catalog. Click save after editing rows.",
     "serviceName": "Service",

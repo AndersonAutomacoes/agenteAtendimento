@@ -341,6 +341,7 @@
     "whatsappBusinessNumberHint": "Utilizado para referência; a integração real depende do Phone Number ID / Evolution abaixo.",
     "sectionPersona": "Persona (IA) do assistente",
     "sectionChannel": "Integração técnica WhatsApp",
+    "whatsappIntegrationReadOnlyDesc": "Estes dados são definidos pela equipa no backoffice. Pode gerar um novo código QR para voltar a ligar o WhatsApp.",
     "sectionServices": "Serviços oferecidos (catálogo)",
     "sectionServicesDesc": "Lista alinhada com agendamento e o catálogo do tenant. Guarde o catálogo após editar as linhas.",
     "serviceName": "Serviço",

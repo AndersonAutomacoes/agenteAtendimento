@@ -336,6 +336,7 @@
     "whatsappBusinessNumberHint": "Solo referencia; la ruta real sigue con Phone ID / Evolution abajo.",
     "sectionPersona": "Persona (IA) del asistente",
     "sectionChannel": "Integración técnica WhatsApp",
+    "whatsappIntegrationReadOnlyDesc": "Estos datos los configura el equipo en el backoffice. Puede generar un nuevo código QR para volver a conectar WhatsApp.",
     "sectionServices": "Servicios ofrecidos (catálogo)",
     "sectionServicesDesc": "Lista para reservas. Guarde tras editar.",
     "serviceName": "Servicio",

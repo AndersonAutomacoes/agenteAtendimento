@@ -30,6 +30,9 @@ import {
 
 const TENANT_STORAGE_KEY = "cerebro-tenant-id";
 
+/** Campos da integração técnica WhatsApp só leitura no portal; alteração via backoffice. */
+const WHATSAPP_TECH_INTEGRATION_READONLY = true;
+
 const selectClassName = cn(
   "flex h-9 w-full rounded-xl border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors",
   "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
@@ -191,6 +194,8 @@ export default function SettingsPage() {
   };
 
   const busy = saving || loadingInitial;
+  const whatsappFieldsLocked = WHATSAPP_TECH_INTEGRATION_READONLY;
+  const whatsappIntegrationDisabled = busy || whatsappFieldsLocked;
 
   const fetchEvolutionQr = React.useCallback(async () => {
     const tid = tenantId.trim();
@@ -278,6 +283,9 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>{t("sectionChannel")}</CardTitle>
+          {whatsappFieldsLocked ? (
+            <CardDescription>{t("whatsappIntegrationReadOnlyDesc")}</CardDescription>
+          ) : null}
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -286,7 +294,7 @@ export default function SettingsPage() {
               id="provider"
               className={selectClassName}
               value={whatsappProviderType}
-              disabled={busy}
+              disabled={whatsappIntegrationDisabled}
               onChange={(e) =>
                 setWhatsappProviderType(e.target.value as WhatsAppProviderType)
               }
@@ -313,7 +321,8 @@ export default function SettingsPage() {
                   placeholder={t("metaPhonePlaceholder")}
                   value={whatsappInstanceId}
                   onChange={(e) => setWhatsappInstanceId(e.target.value)}
-                  disabled={busy}
+                  disabled={whatsappIntegrationDisabled}
+                  readOnly={whatsappFieldsLocked}
                   autoComplete="off"
                   className="rounded-xl"
                 />
@@ -328,7 +337,8 @@ export default function SettingsPage() {
                     placeholder={t("metaTokenPlaceholder")}
                     value={whatsappApiKey}
                     onChange={(e) => setWhatsappApiKey(e.target.value)}
-                    disabled={busy}
+                    disabled={whatsappIntegrationDisabled}
+                    readOnly={whatsappFieldsLocked}
                     autoComplete="off"
                     className="rounded-xl"
                   />
@@ -336,7 +346,7 @@ export default function SettingsPage() {
                     type="button"
                     variant="secondary"
                     className="shrink-0 rounded-xl"
-                    disabled={busy}
+                    disabled={whatsappIntegrationDisabled}
                     onClick={() => setShowAccessToken((v) => !v)}
                   >
                     {showAccessToken ? t("metaHide") : t("metaShow")}
@@ -356,7 +366,8 @@ export default function SettingsPage() {
                   placeholder={t("evoUrlPlaceholder")}
                   value={whatsappBaseUrl}
                   onChange={(e) => setWhatsappBaseUrl(e.target.value)}
-                  disabled={busy}
+                  disabled={whatsappIntegrationDisabled}
+                  readOnly={whatsappFieldsLocked}
                   autoComplete="off"
                   className="rounded-xl"
                 />
@@ -369,7 +380,8 @@ export default function SettingsPage() {
                   placeholder={t("evoInstancePlaceholder")}
                   value={whatsappInstanceId}
                   onChange={(e) => setWhatsappInstanceId(e.target.value)}
-                  disabled={busy}
+                  disabled={whatsappIntegrationDisabled}
+                  readOnly={whatsappFieldsLocked}
                   autoComplete="off"
                   className="rounded-xl"
                 />
@@ -383,7 +395,8 @@ export default function SettingsPage() {
                   placeholder={t("evoKeyPlaceholder")}
                   value={whatsappApiKey}
                   onChange={(e) => setWhatsappApiKey(e.target.value)}
-                  disabled={busy}
+                  disabled={whatsappIntegrationDisabled}
+                  readOnly={whatsappFieldsLocked}
                   autoComplete="off"
                   className="rounded-xl"
                 />
@@ -394,7 +407,9 @@ export default function SettingsPage() {
                   type="button"
                   variant="secondary"
                   className="rounded-xl"
-                  disabled={busy || pairingQrLoading || !tenantId.trim()}
+                  disabled={
+                    loadingInitial || saving || pairingQrLoading || !tenantId.trim()
+                  }
                   onClick={() => void fetchEvolutionQr()}
                 >
                   {pairingQrLoading ? t("evoPairingLoading") : t("evoPairingButton")}
