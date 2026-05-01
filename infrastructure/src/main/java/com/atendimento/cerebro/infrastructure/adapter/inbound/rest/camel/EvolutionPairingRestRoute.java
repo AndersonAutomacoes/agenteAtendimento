@@ -58,12 +58,11 @@ public class EvolutionPairingRestRoute extends RouteBuilder {
             var qr =
                     evolutionTenantProvisioningService.reconnectForTenant(new TenantId(tenantId.strip()));
             if (qr.isEmpty()) {
-                exchange.getIn()
-                        .setBody(
-                                new IngestErrorResponse(
-                                        "Não foi possível obter o QR neste momento. Tente novamente ou verifique a instância na Evolution."));
-                exchange.getMessage()
-                        .setHeader(Exchange.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
+                var err =
+                        new IngestErrorResponse(
+                                "Não foi possível obter o QR neste momento. Tente novamente ou verifique a instância na Evolution.");
+                exchange.getMessage().setBody(err);
+                exchange.getMessage().setHeader(Exchange.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
                 exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.SERVICE_UNAVAILABLE.value());
                 return;
             }
@@ -80,7 +79,7 @@ public class EvolutionPairingRestRoute extends RouteBuilder {
             exchange.getMessage().setHeader(Exchange.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
             exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.OK.value());
         } catch (IllegalStateException | IllegalArgumentException e) {
-            exchange.getIn().setBody(new IngestErrorResponse(e.getMessage()));
+            exchange.getMessage().setBody(new IngestErrorResponse(e.getMessage()));
             exchange.getMessage().setHeader(Exchange.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
             exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
         }

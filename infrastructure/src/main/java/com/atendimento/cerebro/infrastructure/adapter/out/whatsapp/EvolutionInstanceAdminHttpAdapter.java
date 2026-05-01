@@ -104,13 +104,17 @@ public class EvolutionInstanceAdminHttpAdapter implements EvolutionInstanceAdmin
             String evolutionBaseUrl, String apiKey, String instanceName) {
         String base = trimBase(evolutionBaseUrl);
         String enc = urlEncodePathSegment(instanceName);
+        // Evolution API v2: GET /instance/connect/{instance} (OpenAPI); POST não é suportado.
         String url = base + "/instance/connect/" + enc;
-        String body = "{}";
         try {
-            var res = evolutionOutboundHttp.postJsonResponse(url, apiKey, body);
+            var res = evolutionOutboundHttp.getJsonResponse(url, apiKey);
             String raw = res.body() != null ? res.body() : "";
             if (res.statusCode() < 200 || res.statusCode() >= 300) {
-                LOG.debug("Evolution connect HTTP {} body={}", res.statusCode(), truncate(raw, 400));
+                LOG.warn(
+                        "Evolution connect GET HTTP {} url={} body={}",
+                        res.statusCode(),
+                        url,
+                        truncate(raw, 500));
                 try {
                     JsonNode root = objectMapper.readTree(raw);
                     return extractQrBase64(root);
@@ -119,10 +123,14 @@ public class EvolutionInstanceAdminHttpAdapter implements EvolutionInstanceAdmin
                 }
             }
             JsonNode root = objectMapper.readTree(raw);
-            return extractQrBase64(root);
+            Optional<String> qr = extractQrBase64(root);
+            if (qr.isEmpty()) {
+                LOG.warn("Evolution connect GET 200 mas sem QR reconhecível url={} body={}", url, truncate(raw, 600));
+            }
+            return qr;
         } catch (IOException | InterruptedException e) {
             Thread.currentThread().interrupt();
-            LOG.warn("Evolution connect network: {}", e.toString());
+            LOG.warn("Evolution connect network url={}: {}", url, e.toString());
             return Optional.empty();
         }
     }
@@ -137,6 +145,9 @@ public class EvolutionInstanceAdminHttpAdapter implements EvolutionInstanceAdmin
             return direct;
         }
         JsonNode qrcode = root.get("qrcode");
+        if (qrcode == null || qrcode.isNull()) {
+            qrcode = root.get("qrCode");
+        }
         if (qrcode != null && !qrcode.isNull()) {
             Optional<String> b = textIfPresent(qrcode, "base64");
             if (b.isPresent()) {

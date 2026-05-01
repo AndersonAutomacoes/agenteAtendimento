@@ -18,6 +18,12 @@ class EvolutionInstanceAdminHttpAdapterQrTest {
     }
 
     @Test
+    void extractQr_fromNestedQrCode_camelCase() throws Exception {
+        JsonNode root = mapper.readTree("{\"qrCode\":{\"base64\":\"CAMELB64\"}}");
+        assertThat(EvolutionInstanceAdminHttpAdapter.extractQrBase64(root)).contains("CAMELB64");
+    }
+
+    @Test
     void extractQr_fromDataEnvelope() throws Exception {
         JsonNode root =
                 mapper.readTree(
