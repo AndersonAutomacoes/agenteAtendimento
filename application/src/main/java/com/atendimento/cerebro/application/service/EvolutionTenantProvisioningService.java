@@ -114,6 +114,15 @@ public class EvolutionTenantProvisioningService {
         return new ProvisionOutcome(instanceName, qr, warn);
     }
 
+    /**
+     * Ambiente configurado para criar instância Evolution automaticamente ao registar tenant interno.
+     */
+    public boolean isAutoProvisioningConfigured() {
+        return !globalEvolutionBaseUrl.isEmpty()
+                && !globalEvolutionApiKey.isEmpty()
+                && !webhookPublicBaseUrl.isEmpty();
+    }
+
     /** Solicita novo QR para instância já ligada ao tenant (portal). */
     public Optional<String> reconnectForTenant(TenantId tenantId) {
         TenantConfiguration cfg =

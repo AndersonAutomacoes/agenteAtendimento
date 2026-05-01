@@ -111,7 +111,10 @@ export async function getPortalSession(): Promise<PortalSession> {
     throw new Error(apiI18nKey("errors.serverUnavailable"));
   }
   if (!res.ok) {
-    throw new Error(httpErrorUserMessage(res.status, json, "errors.sessionFailed"));
+    throw new ApiHttpError(
+      httpErrorUserMessage(res.status, json, "errors.sessionFailed"),
+      res.status,
+    );
   }
   const o = json as Record<string, unknown>;
   if (typeof o.tenantId !== "string" || typeof o.profileLevel !== "string") {
@@ -195,6 +198,16 @@ export const API_I18N_PREFIX = "i18n:" as const;
 
 export function apiI18nKey(errorsDotKey: string): string {
   return `${API_I18N_PREFIX}${errorsDotKey}`;
+}
+
+export class ApiHttpError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiHttpError";
+    this.status = status;
+  }
 }
 
 function parseErrorFromBody(json: unknown, fallbackErrorsKey: string): string {

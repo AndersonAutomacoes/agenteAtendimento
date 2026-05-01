@@ -64,13 +64,13 @@ export function FeatureGuard({
   return (
     <div className={cn("relative min-h-[12rem] overflow-hidden rounded-xl", className)}>
       <div
-        className="pointer-events-none select-none opacity-[0.22] blur-[0.5px]"
+        className="pointer-events-none select-none opacity-[0.38] blur-[0.5px]"
         aria-hidden
       >
         {children}
       </div>
       <div
-        className="absolute inset-0 flex flex-col items-center justify-center bg-background/88 px-4 py-8 backdrop-blur-[2px]"
+        className="absolute inset-0 flex flex-col items-center justify-center bg-background/92 px-4 py-8 backdrop-blur-[2px] dark:bg-background/90"
         role="region"
         aria-label={t("lockedAria")}
       >

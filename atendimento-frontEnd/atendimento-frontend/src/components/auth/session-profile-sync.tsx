@@ -6,9 +6,11 @@ import * as React from "react";
 import { usePlan } from "@/components/plan/plan-provider";
 import { getFirebaseAuth, isFirebaseConfigured } from "@/lib/firebase";
 import { mapProfileLevelToPlanTier } from "@/lib/plan-tier";
+import { triggerSessionExpired } from "@/lib/auth-session";
 import {
   CEREBRO_AUTH_TOKEN_KEY,
   getPortalSession,
+  ApiHttpError,
 } from "@/services/apiService";
 
 /**
@@ -24,25 +26,14 @@ export function SessionProfileSync() {
     const auth = getFirebaseAuth();
     return onAuthStateChanged(auth, async (user) => {
       if (!user) {
-        try {
-          localStorage.removeItem(CEREBRO_AUTH_TOKEN_KEY);
-        } catch {
-          /* ignore */
-        }
-        setProfileLevel("BASIC");
-        setTier(mapProfileLevelToPlanTier("BASIC"));
-        setFeatures({});
+        triggerSessionExpired();
         return;
       }
       try {
         const token = await user.getIdToken();
         localStorage.setItem(CEREBRO_AUTH_TOKEN_KEY, token);
       } catch {
-        try {
-          localStorage.removeItem(CEREBRO_AUTH_TOKEN_KEY);
-        } catch {
-          /* ignore */
-        }
+        triggerSessionExpired();
         return;
       }
       try {
@@ -50,11 +41,12 @@ export function SessionProfileSync() {
         setProfileLevel(s.profileLevel);
         setTier(mapProfileLevelToPlanTier(s.profileLevel));
         setFeatures(s.features ?? {});
-      } catch {
-        try {
-          localStorage.removeItem(CEREBRO_AUTH_TOKEN_KEY);
-        } catch {
-          /* ignore */
+      } catch (e) {
+        if (
+          e instanceof ApiHttpError &&
+          (e.status === 401 || e.status === 403)
+        ) {
+          triggerSessionExpired();
         }
       }
     });

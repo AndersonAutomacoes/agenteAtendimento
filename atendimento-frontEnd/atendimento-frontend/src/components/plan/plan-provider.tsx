@@ -2,9 +2,11 @@
 
 import * as React from "react";
 import type { PlanFeatureKey, ProfileLevel } from "@/services/apiService";
-import { CEREBRO_AUTH_TOKEN_KEY, getPortalSession } from "@/services/apiService";
+import { ApiHttpError, CEREBRO_AUTH_TOKEN_KEY, getPortalSession } from "@/services/apiService";
 
+import { SessionExpiryCoordinator } from "@/components/auth/session-expiry-coordinator";
 import { SessionProfileSync } from "@/components/auth/session-profile-sync";
+import { triggerSessionExpired } from "@/lib/auth-session";
 import {
   PLAN_CHANGED_EVENT,
   PLAN_STORAGE_KEY,
@@ -133,8 +135,13 @@ export function PlanProvider({ children }: PlanProviderProps) {
           /* ignore */
         }
         setFeaturesState(nextFeatures);
-      } catch {
-        // Keep last known features to avoid false lockouts.
+      } catch (e) {
+        if (
+          e instanceof ApiHttpError &&
+          (e.status === 401 || e.status === 403)
+        ) {
+          triggerSessionExpired();
+        }
       } finally {
         if (!cancelled) {
           setFeaturesHydrated(true);
@@ -176,6 +183,7 @@ export function PlanProvider({ children }: PlanProviderProps) {
 
   return (
     <PlanContext.Provider value={value}>
+      <SessionExpiryCoordinator />
       <SessionProfileSync />
       {children}
     </PlanContext.Provider>

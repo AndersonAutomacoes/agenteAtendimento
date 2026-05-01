@@ -301,7 +301,17 @@ public class InternalTenantAdminRestRoute extends RouteBuilder {
             String evolutionInstanceName = null;
             String provisioningWarning = null;
             String whatsappQrDataUriOrNull = null;
-            if (Boolean.TRUE.equals(body.provisionEvolution())) {
+
+            boolean wantProvision;
+            if (Boolean.FALSE.equals(body.provisionEvolution())) {
+                wantProvision = false;
+            } else if (Boolean.TRUE.equals(body.provisionEvolution())) {
+                wantProvision = true;
+            } else {
+                wantProvision = evolutionTenantProvisioningService.isAutoProvisioningConfigured();
+            }
+
+            if (wantProvision) {
                 try {
                     EvolutionTenantProvisioningService.ProvisionOutcome outcome =
                             evolutionTenantProvisioningService.provision(target);
@@ -316,6 +326,10 @@ public class InternalTenantAdminRestRoute extends RouteBuilder {
                     String m = ex.getMessage() != null ? ex.getMessage().strip() : "Provisioning Evolution falhou";
                     provisioningWarning = m;
                 }
+            } else if (body.provisionEvolution() == null
+                    && !evolutionTenantProvisioningService.isAutoProvisioningConfigured()) {
+                provisioningWarning =
+                        "Evolution não está configurado neste servidor — nenhuma instância WhatsApp foi criada.";
             }
             String inviteEmail = stripToNull(body.customerEmail());
             String inviteCode =

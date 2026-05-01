@@ -25,10 +25,11 @@ import {
   postTenantEvolutionPairingQr,
   putTenantSettings,
   toUserFacingApiError,
+  type ProfileLevel,
   type WhatsAppProviderType,
 } from "@/services/apiService";
 
-const TENANT_STORAGE_KEY = "cerebro-tenant-id";
+import { TENANT_STORAGE_KEY } from "@/lib/auth-session";
 
 /** Campos da integração técnica WhatsApp só leitura no portal; alteração via backoffice. */
 const WHATSAPP_TECH_INTEGRATION_READONLY = true;
@@ -43,10 +44,28 @@ export default function SettingsPage() {
   const t = useTranslations("settings");
   const tApi = useTranslations("api");
   const translateApi = React.useCallback((key: string) => tApi(key), [tApi]);
-  const { setTier } = usePlan();
+  const { setTier, profileLevel: sessionProfileLevel, featuresHydrated } = usePlan();
 
   const [tenantId, setTenantId] = React.useState("");
-  const [profileLevel, setProfileLevel] = React.useState<string>("BASIC");
+  const [profileLevel, setProfileLevel] = React.useState<ProfileLevel>("BASIC");
+
+  const resolvedPlanLevel = React.useMemo(
+    () => (featuresHydrated ? sessionProfileLevel : profileLevel),
+    [featuresHydrated, sessionProfileLevel, profileLevel],
+  );
+
+  const planTierTitle = React.useMemo(() => {
+    switch (resolvedPlanLevel) {
+      case "PRO":
+        return t("planTierPro");
+      case "ULTRA":
+        return t("planTierUltra");
+      case "COMERCIAL":
+        return t("planTierCommercial");
+      default:
+        return t("planTierBasic");
+    }
+  }, [resolvedPlanLevel, t]);
 
   const [personality, setPersonality] = React.useState("");
   const [whatsappProviderType, setWhatsappProviderType] =
@@ -249,15 +268,17 @@ export default function SettingsPage() {
           <CardTitle>{t("sectionPlan")}</CardTitle>
           <CardDescription>{t("sectionPlanDesc")}</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-1">
-          <p className="text-sm text-muted-foreground">{t("planLabel")}</p>
-          <p className="text-lg font-semibold">
-            {profileLevel === "ULTRA" || profileLevel === "COMERCIAL"
-              ? t("planUltra")
-              : profileLevel === "PRO"
-                ? t("planPro")
-                : t("planBasic")}
-          </p>
+        <CardContent className="space-y-2">
+          <Label htmlFor="current-plan-tier">{t("planLabel")}</Label>
+          <Input
+            id="current-plan-tier"
+            readOnly
+            aria-readonly
+            value={planTierTitle}
+            className="rounded-xl bg-muted/50 font-semibold text-foreground"
+          />
+          <p className="font-mono text-xs text-muted-foreground">{resolvedPlanLevel}</p>
+          <p className="text-xs text-muted-foreground">{t("planCodeHint")}</p>
         </CardContent>
       </Card>
 

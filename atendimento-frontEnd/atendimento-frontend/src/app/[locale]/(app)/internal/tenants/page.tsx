@@ -1,4 +1,4 @@
- "use client";
+"use client";
 
 import * as React from "react";
 import { useTranslations } from "next-intl";
@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import {
   activateInternalTenant,
   deleteInternalTenant,
@@ -52,9 +53,9 @@ export default function InternalTenantsPage() {
     "BASIC" | "PRO" | "ULTRA" | "COMERCIAL"
   >("BASIC");
   const [busy, setBusy] = React.useState(false);
+  const [createModalOpen, setCreateModalOpen] = React.useState(false);
   const [inviteCode, setInviteCode] = React.useState("");
   const [resultTenantId, setResultTenantId] = React.useState("");
-  const [provisionEvolution, setProvisionEvolution] = React.useState(false);
   const [lastEvolutionInstance, setLastEvolutionInstance] = React.useState<string | null>(null);
   const [lastProvisioningWarning, setLastProvisioningWarning] = React.useState<string | null>(
     null,
@@ -114,7 +115,8 @@ export default function InternalTenantsPage() {
   }, [refreshList]);
 
   const loadTenantClientData = React.useCallback(
-    async (tenantIdToLoad: string) => {
+    async (tenantIdToLoad: string, opts?: { signal?: AbortSignal }) => {
+      const signal = opts?.signal;
       setLoadingTenantData(true);
       try {
         const [settings, users, services] = await Promise.all([
@@ -122,6 +124,9 @@ export default function InternalTenantsPage() {
           getPortalUsers(tenantIdToLoad),
           getTenantServices(tenantIdToLoad),
         ]);
+        if (signal?.aborted) {
+          return;
+        }
         setPersonality(settings.systemPrompt);
         setEstablishmentNameClient(settings.establishmentName ?? "");
         setBusinessAddress(settings.businessAddress ?? "");
@@ -151,13 +156,41 @@ export default function InternalTenantsPage() {
             : [{ name: "", duration: "30", active: true }],
         );
       } catch (e) {
-        toast.error(toUserFacingApiError(e, translateApi));
+        if (!signal?.aborted) {
+          toast.error(toUserFacingApiError(e, translateApi));
+        }
       } finally {
-        setLoadingTenantData(false);
+        if (!signal?.aborted) {
+          setLoadingTenantData(false);
+        }
       }
     },
     [translateApi],
   );
+
+  React.useEffect(() => {
+    if (!selectedTenantId) {
+      return;
+    }
+    const ac = new AbortController();
+    setPersonality("");
+    setEstablishmentNameClient("");
+    setBusinessAddress("");
+    setOpeningHours("");
+    setBusinessContacts("");
+    setInviteRecipientEmail("");
+    setBusinessFacilities("");
+    setDefaultSlotMinutes(30);
+    setBillingCompliant(true);
+    setGoogleCalendarId("");
+    setCalendarAccessNotes("");
+    setSpreadsheetUrl("");
+    setWhatsappBusinessNumber("");
+    setPortalUsers([]);
+    setServiceRows([{ name: "", duration: "30", active: true }]);
+    void loadTenantClientData(selectedTenantId, { signal: ac.signal });
+    return () => ac.abort();
+  }, [selectedTenantId, loadTenantClientData]);
 
   const submit = async () => {
     if (!tenantId.trim()) {
@@ -173,13 +206,17 @@ export default function InternalTenantsPage() {
         establishmentName,
         customerEmail,
         profileLevel,
-        ...(provisionEvolution ? { provisionEvolution: true } : {}),
       });
       setInviteCode(res.inviteCode);
       setResultTenantId(res.tenantId);
       setLastEvolutionInstance(res.evolutionInstanceName ?? null);
       setLastProvisioningWarning(res.provisioningWarning ?? null);
       toast.success(t("createdOk"));
+      setCreateModalOpen(false);
+      setTenantId("");
+      setEstablishmentName("");
+      setCustomerEmail("");
+      setProfileLevel("BASIC");
       await refreshList();
     } catch (e) {
       toast.error(toUserFacingApiError(e, translateApi));
@@ -359,87 +396,87 @@ export default function InternalTenantsPage() {
   return (
     <FeatureGuard requiredPlan="enterprise" requiredProfile="COMERCIAL">
       <div className="mx-auto max-w-6xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-        <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
+        </div>
+        <Button
+          type="button"
+          className="shrink-0 rounded-xl"
+          onClick={() => setCreateModalOpen(true)}
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          {t("newTenantButton")}
+        </Button>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("formTitle")}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="tenantId">{t("tenantId")}</Label>
-            <Input
-              id="tenantId"
-              value={tenantId}
-              onChange={(e) => setTenantId(e.target.value)}
-              placeholder="oficina-centro-sp"
-              disabled={busy}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="estName">{t("establishmentName")}</Label>
-            <Input
-              id="estName"
-              value={establishmentName}
-              onChange={(e) => setEstablishmentName(e.target.value)}
-              placeholder={t("establishmentPlaceholder")}
-              disabled={busy}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="custEmail">{t("customerEmail")}</Label>
-            <Input
-              id="custEmail"
-              type="email"
-              value={customerEmail}
-              onChange={(e) => setCustomerEmail(e.target.value)}
-              placeholder="cliente@empresa.com"
-              disabled={busy}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="profile">{t("plan")}</Label>
-            <select
-              id="profile"
-              className="flex h-9 w-full rounded-xl border border-input bg-transparent px-3 py-1 text-sm"
-              value={profileLevel}
-              onChange={(e) =>
-                setProfileLevel(
-                  e.target.value as "BASIC" | "PRO" | "ULTRA" | "COMERCIAL",
-                )
-              }
-              disabled={busy}
-            >
-              <option value="BASIC">BASIC</option>
-              <option value="PRO">PRO</option>
-              <option value="ULTRA">ULTRA</option            >
-              <option value="COMERCIAL">COMERCIAL</option>
-            </select>
-          </div>
-          <div className="flex items-start gap-2 rounded-xl border border-border/60 bg-card/40 p-3">
-            <input
-              id="provisionEvo"
-              type="checkbox"
-              className="mt-1 h-4 w-4 shrink-0"
-              checked={provisionEvolution}
-              onChange={(e) => setProvisionEvolution(e.target.checked)}
-              disabled={busy}
-            />
-            <div>
-              <Label htmlFor="provisionEvo" className="cursor-pointer font-normal">
-                {t("provisionEvolutionLabel")}
-              </Label>
-              <p className="text-xs text-muted-foreground">{t("provisionEvolutionHint")}</p>
+      <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto rounded-2xl sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t("createModalTitle")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="tenantId">{t("tenantId")}</Label>
+              <Input
+                id="tenantId"
+                value={tenantId}
+                onChange={(e) => setTenantId(e.target.value)}
+                placeholder="oficina-centro-sp"
+                disabled={busy}
+                className="rounded-xl"
+              />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="estName">{t("establishmentName")}</Label>
+              <Input
+                id="estName"
+                value={establishmentName}
+                onChange={(e) => setEstablishmentName(e.target.value)}
+                placeholder={t("establishmentPlaceholder")}
+                disabled={busy}
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="custEmail">{t("customerEmail")}</Label>
+              <Input
+                id="custEmail"
+                type="email"
+                value={customerEmail}
+                onChange={(e) => setCustomerEmail(e.target.value)}
+                placeholder="cliente@empresa.com"
+                disabled={busy}
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="profile">{t("plan")}</Label>
+              <select
+                id="profile"
+                className="flex h-9 w-full rounded-xl border border-input bg-transparent px-3 py-1 text-sm"
+                value={profileLevel}
+                onChange={(e) =>
+                  setProfileLevel(
+                    e.target.value as "BASIC" | "PRO" | "ULTRA" | "COMERCIAL",
+                  )
+                }
+                disabled={busy}
+              >
+                <option value="BASIC">BASIC</option>
+                <option value="PRO">PRO</option>
+                <option value="ULTRA">ULTRA</option>
+                <option value="COMERCIAL">COMERCIAL</option>
+              </select>
+            </div>
+            <p className="text-xs text-muted-foreground">{t("evolutionAutoHint")}</p>
+            <Button type="button" className="rounded-xl" onClick={() => void submit()} disabled={busy}>
+              {busy ? t("creating") : t("create")}
+            </Button>
           </div>
-          <Button type="button" onClick={() => void submit()} disabled={busy}>
-            {busy ? t("creating") : t("create")}
-          </Button>
-        </CardContent>
-      </Card>
+        </DialogContent>
+      </Dialog>
 
       <div className="flex flex-wrap gap-2 rounded-xl border border-border/70 bg-muted/20 p-1">
         <Button
@@ -535,99 +572,119 @@ export default function InternalTenantsPage() {
             {tenants.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t("emptyList")}</p>
             ) : (
-              <div className="grid gap-3 md:grid-cols-2">
-              {filteredTenants.map((x) => (
-                <div
-                  key={x.tenantId}
-                  className="rounded-xl border border-border/70 bg-muted/20 p-3"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="font-medium">{x.tenantId}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {x.establishmentName || "—"} · {x.profileLevel} ·{" "}
-                        {x.billingCompliant ? t("adimplent") : t("inadimplent")}
-                      </p>
-                      <p className="text-xs">
-                        <span
-                          className={
-                            x.active
-                              ? "rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-800"
-                              : "rounded-full bg-amber-100 px-2 py-0.5 text-amber-800"
-                          }
-                        >
-                          {x.active ? t("statusActive") : t("statusInactive")}
-                        </span>
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {t("monthlyUsage")}: {x.monthlyAppointmentsUsed} /{" "}
-                        {x.monthlyAppointmentsLimit ?? t("unlimited")}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => openEdit(x)}
+              <div className="overflow-x-auto rounded-xl border border-border/70">
+                <table className="w-full min-w-[720px] border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      <th className="px-3 py-2">{t("colTenantId")}</th>
+                      <th className="px-3 py-2">{t("colName")}</th>
+                      <th className="px-3 py-2">{t("colPlan")}</th>
+                      <th className="px-3 py-2">{t("colStatus")}</th>
+                      <th className="px-3 py-2">{t("colBilling")}</th>
+                      <th className="px-3 py-2">{t("colUsage")}</th>
+                      <th className="px-3 py-2">{t("colContacts")}</th>
+                      <th className="px-3 py-2 text-right">{t("colActions")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredTenants.map((x) => (
+                      <tr
+                        key={x.tenantId}
+                        className="border-b border-border/60 bg-card/40 hover:bg-muted/25"
                       >
-                        <Pencil className="mr-1 h-4 w-4" />
-                        {t("editTenant")}
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => void createExtraInvite(x.tenantId)}
-                        disabled={invitingTenant === x.tenantId}
-                      >
-                        {invitingTenant === x.tenantId
-                          ? t("creating")
-                          : t("newInviteUser")}
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setSelectedTenantId(x.tenantId);
-                          setActiveTab("clientes");
-                          void loadTenantClientData(x.tenantId);
-                        }}
-                      >
-                        {t("openClientTab")}
-                      </Button>
-                      {!x.active ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => void activate(x)}
-                          disabled={deactivatingTenant === x.tenantId}
-                        >
-                          {t("activate")}
-                        </Button>
-                      ) : (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => void deactivate(x)}
-                          disabled={deactivatingTenant === x.tenantId}
-                        >
-                          <Trash2 className="mr-1 h-4 w-4" />
-                          {t("deactivate")}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  {x.contacts ? (
-                    <p className="mt-2 text-xs text-muted-foreground break-all">
-                      {x.contacts}
-                    </p>
-                  ) : null}
-                </div>
-              ))}
+                        <td className="max-w-[140px] px-3 py-2 font-mono text-xs font-medium break-all">
+                          {x.tenantId}
+                        </td>
+                        <td className="max-w-[160px] px-3 py-2 align-top">
+                          <span className="line-clamp-2">{x.establishmentName || "—"}</span>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 align-top">{x.profileLevel}</td>
+                        <td className="whitespace-nowrap px-3 py-2 align-top">
+                          <span
+                            className={cn(
+                              "inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
+                              x.active
+                                ? "bg-emerald-500/15 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300"
+                                : "bg-amber-500/15 text-amber-900 dark:bg-amber-500/20 dark:text-amber-200",
+                            )}
+                          >
+                            {x.active ? t("statusActive") : t("statusInactive")}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 align-top text-xs">
+                          {x.billingCompliant ? t("adimplent") : t("inadimplent")}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 align-top text-xs">
+                          {x.monthlyAppointmentsUsed} /{" "}
+                          {x.monthlyAppointmentsLimit ?? t("unlimited")}
+                        </td>
+                        <td className="max-w-[180px] px-3 py-2 align-top text-xs text-muted-foreground break-all">
+                          {x.contacts ?? "—"}
+                        </td>
+                        <td className="px-3 py-2 align-top">
+                          <div className="flex flex-col items-end gap-1">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-8"
+                              onClick={() => openEdit(x)}
+                            >
+                              <Pencil className="mr-1 h-3.5 w-3.5" />
+                              {t("editTenant")}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              className="h-8"
+                              onClick={() => void createExtraInvite(x.tenantId)}
+                              disabled={invitingTenant === x.tenantId}
+                            >
+                              {invitingTenant === x.tenantId ? t("creating") : t("newInviteUser")}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-8"
+                              onClick={() => {
+                                setSelectedTenantId(x.tenantId);
+                                setActiveTab("clientes");
+                              }}
+                            >
+                              {t("openClientTab")}
+                            </Button>
+                            {!x.active ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-8"
+                                onClick={() => void activate(x)}
+                                disabled={deactivatingTenant === x.tenantId}
+                              >
+                                {t("activate")}
+                              </Button>
+                            ) : (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="destructive"
+                                className="h-8"
+                                onClick={() => void deactivate(x)}
+                                disabled={deactivatingTenant === x.tenantId}
+                              >
+                                <Trash2 className="mr-1 h-3.5 w-3.5" />
+                                {t("deactivate")}
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
@@ -643,20 +700,38 @@ export default function InternalTenantsPage() {
           </Card>
         ) : (
           <>
-            <Card>
-              <CardHeader>
-                <CardTitle>{t("clientTabTitle", { tenantId: selectedTenantId })}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => void loadTenantClientData(selectedTenantId)}
-                  disabled={loadingTenantData}
-                >
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  {t("refresh")}
-                </Button>
+            <Card className="border-primary/20 bg-muted/25">
+              <CardContent className="flex flex-col gap-4 pt-6 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 space-y-1">
+                  <p className="text-sm font-medium text-foreground">{t("editingTenantBanner")}</p>
+                  <p className="font-mono text-lg font-semibold tracking-tight break-all">
+                    {selectedTenantId}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{t("clientTabSubtitle")}</p>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-xl"
+                    onClick={() => void loadTenantClientData(selectedTenantId)}
+                    disabled={loadingTenantData}
+                  >
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    {t("refresh")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="rounded-xl"
+                    onClick={() => {
+                      setSelectedTenantId(null);
+                      setActiveTab("tenants");
+                    }}
+                  >
+                    {t("backToTenantList")}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
             <Card>
@@ -875,6 +950,16 @@ export default function InternalTenantsPage() {
             <DialogTitle>{t("editTenant")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="edit-tenant-id">{t("tenantId")}</Label>
+              <Input
+                id="edit-tenant-id"
+                readOnly
+                aria-readonly
+                value={editTenantId ?? ""}
+                className="rounded-xl bg-muted/50 font-mono text-sm"
+              />
+            </div>
             <div className="space-y-2">
               <Label>{t("establishmentName")}</Label>
               <Input value={editEstablishmentName} onChange={(e) => setEditEstablishmentName(e.target.value)} />

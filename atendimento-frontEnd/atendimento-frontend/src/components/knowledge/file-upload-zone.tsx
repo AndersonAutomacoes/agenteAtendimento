@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const ACCEPT = ".pdf,.txt,application/pdf,text/plain";
+const ACCEPT = ".pdf,.txt,.md,text/markdown,text/plain,application/pdf";
 
 type FileUploadZoneProps = {
   disabled?: boolean;
@@ -31,7 +31,12 @@ export function FileUploadZone({
     if (!list?.length) return;
     const file = list[0];
     const lower = file.name.toLowerCase();
-    if (!lower.endsWith(".pdf") && !lower.endsWith(".txt")) {
+    const allowedExt =
+      lower.endsWith(".pdf") ||
+      lower.endsWith(".txt") ||
+      lower.endsWith(".md") ||
+      lower.endsWith(".markdown");
+    if (!allowedExt) {
       toast.error(t("invalidType"));
       return;
     }

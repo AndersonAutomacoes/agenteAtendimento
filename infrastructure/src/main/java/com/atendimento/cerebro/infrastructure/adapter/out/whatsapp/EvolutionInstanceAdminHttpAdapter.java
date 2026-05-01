@@ -125,6 +125,11 @@ public class EvolutionInstanceAdminHttpAdapter implements EvolutionInstanceAdmin
             JsonNode root = objectMapper.readTree(raw);
             Optional<String> qr = extractQrBase64(root);
             if (qr.isEmpty()) {
+                if (evolutionInstanceIndicatesOpenConnected(root)) {
+                    throw new IllegalStateException(
+                            "WhatsApp já está ligado nesta instância (Evolution: state=open). Não é gerado QR enquanto a sessão "
+                                    + "estiver ativa; na Evolution utilize logout nesta instância se precisar de novo pareamento.");
+                }
                 LOG.warn("Evolution connect GET 200 mas sem QR reconhecível url={} body={}", url, truncate(raw, 600));
             }
             return qr;
@@ -133,6 +138,21 @@ public class EvolutionInstanceAdminHttpAdapter implements EvolutionInstanceAdmin
             LOG.warn("Evolution connect network url={}: {}", url, e.toString());
             return Optional.empty();
         }
+    }
+
+    /**
+     * Resposta típica quando a sessão Baileys já está autentificada ({@code connect} delega para
+     * connectionState em vez de devolver QR).
+     */
+    static boolean evolutionInstanceIndicatesOpenConnected(JsonNode root) {
+        if (root == null || root.isNull() || root.isMissingNode()) {
+            return false;
+        }
+        JsonNode inst = root.get("instance");
+        if (inst == null || !inst.hasNonNull("state")) {
+            return false;
+        }
+        return "open".equalsIgnoreCase(inst.get("state").asText("").strip());
     }
 
     /** Procura blobs base64 relacionados a QR em respostas heterogéneas da Evolution. */

@@ -10,9 +10,8 @@ import { Link, usePathname, useRouter } from "@/i18n/navigation";
 import { getFirebaseAuth, isFirebaseConfigured } from "@/lib/firebase";
 import { readDefaultPlanTierFromEnv } from "@/lib/plan-tier";
 import { cn } from "@/lib/utils";
+import { TENANT_STORAGE_KEY } from "@/lib/auth-session";
 import { CEREBRO_AUTH_TOKEN_KEY } from "@/services/apiService";
-
-const TENANT_STORAGE_KEY = "cerebro-tenant-id";
 
 type NavAuthFooterProps = {
   variant: "sidebar" | "drawer";
@@ -26,30 +25,44 @@ export function NavAuthFooter({ variant, onNavigate }: NavAuthFooterProps) {
   const { setTier, setFeatures, setProfileLevel } = usePlan();
 
   const [authed, setAuthed] = React.useState(false);
+  const [identityLabel, setIdentityLabel] = React.useState<string | null>(null);
+
+  const refreshTokenOnlyAuth = React.useCallback(() => {
+    try {
+      const token = localStorage.getItem(CEREBRO_AUTH_TOKEN_KEY);
+      setAuthed(Boolean(token));
+      setIdentityLabel(token ? t("sessionActive") : null);
+    } catch {
+      setAuthed(false);
+      setIdentityLabel(null);
+    }
+  }, [t]);
 
   React.useEffect(() => {
     if (!isFirebaseConfigured()) {
-      try {
-        setAuthed(Boolean(localStorage.getItem(CEREBRO_AUTH_TOKEN_KEY)));
-      } catch {
-        setAuthed(false);
-      }
+      refreshTokenOnlyAuth();
       return;
     }
     const auth = getFirebaseAuth();
     return onAuthStateChanged(auth, (user) => {
       setAuthed(Boolean(user));
+      if (!user) {
+        setIdentityLabel(null);
+        return;
+      }
+      const primary =
+        user.email?.trim() ||
+        user.displayName?.trim() ||
+        user.phoneNumber?.trim() ||
+        null;
+      setIdentityLabel(primary);
     });
-  }, [pathname]);
+  }, [pathname, refreshTokenOnlyAuth]);
 
   React.useEffect(() => {
     const sync = () => {
       if (!isFirebaseConfigured()) {
-        try {
-          setAuthed(Boolean(localStorage.getItem(CEREBRO_AUTH_TOKEN_KEY)));
-        } catch {
-          setAuthed(false);
-        }
+        refreshTokenOnlyAuth();
       }
     };
     window.addEventListener("storage", sync);
@@ -58,7 +71,7 @@ export function NavAuthFooter({ variant, onNavigate }: NavAuthFooterProps) {
       window.removeEventListener("storage", sync);
       window.removeEventListener("focus", sync);
     };
-  }, []);
+  }, [refreshTokenOnlyAuth]);
 
   const linkClass =
     variant === "sidebar"
@@ -88,15 +101,44 @@ export function NavAuthFooter({ variant, onNavigate }: NavAuthFooterProps) {
   };
 
   if (authed) {
+    const identityBlock =
+      variant === "sidebar" ? (
+        <div className="mb-2 px-3 pt-1">
+          {identityLabel ? (
+            <p
+              className="truncate text-xs font-medium text-sidebar-foreground"
+              title={identityLabel}
+            >
+              {identityLabel}
+            </p>
+          ) : (
+            <p className="truncate text-xs text-muted-foreground">{t("loggedIn")}</p>
+          )}
+        </div>
+      ) : (
+        <div className="mb-1 px-3">
+          {identityLabel ? (
+            <p className="truncate text-xs font-medium text-foreground" title={identityLabel}>
+              {identityLabel}
+            </p>
+          ) : (
+            <p className="truncate text-xs text-muted-foreground">{t("loggedIn")}</p>
+          )}
+        </div>
+      );
+
     return (
-      <button
-        type="button"
-        className={cn(linkClass, "text-left")}
-        onClick={() => handleLogout()}
-      >
-        <LogOut className="h-4 w-4 shrink-0" aria-hidden />
-        {t("logout")}
-      </button>
+      <div className="w-full">
+        {identityBlock}
+        <button
+          type="button"
+          className={cn(linkClass, "text-left")}
+          onClick={() => handleLogout()}
+        >
+          <LogOut className="h-4 w-4 shrink-0" aria-hidden />
+          {t("logout")}
+        </button>
+      </div>
     );
   }
 

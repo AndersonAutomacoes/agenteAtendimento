@@ -36,4 +36,20 @@ class EvolutionInstanceAdminHttpAdapterQrTest {
         JsonNode root = mapper.readTree("{\"foo\":1}");
         assertThat(EvolutionInstanceAdminHttpAdapter.extractQrBase64(root)).isEqualTo(Optional.empty());
     }
+
+    @Test
+    void openConnectedResponse_detected() throws Exception {
+        JsonNode root =
+                mapper.readTree(
+                        "{\"instance\":{\"instanceName\":\"evo-Pilates_6\",\"state\":\"open\"}}");
+        assertThat(EvolutionInstanceAdminHttpAdapter.evolutionInstanceIndicatesOpenConnected(root))
+                .isTrue();
+    }
+
+    @Test
+    void connectingWithoutOpen_notDetectedAsOpenConnected() throws Exception {
+        JsonNode root = mapper.readTree("{\"instance\":{\"instanceName\":\"x\",\"state\":\"connecting\"}}");
+        assertThat(EvolutionInstanceAdminHttpAdapter.evolutionInstanceIndicatesOpenConnected(root))
+                .isFalse();
+    }
 }
