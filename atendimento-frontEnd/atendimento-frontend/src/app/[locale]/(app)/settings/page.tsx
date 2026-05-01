@@ -31,9 +31,6 @@ import {
 
 import { TENANT_STORAGE_KEY } from "@/lib/auth-session";
 
-/** Campos da integração técnica WhatsApp só leitura no portal; alteração via backoffice. */
-const WHATSAPP_TECH_INTEGRATION_READONLY = true;
-
 const selectClassName = cn(
   "flex h-9 w-full rounded-xl border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors",
   "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
@@ -213,7 +210,8 @@ export default function SettingsPage() {
   };
 
   const busy = saving || loadingInitial;
-  const whatsappFieldsLocked = WHATSAPP_TECH_INTEGRATION_READONLY;
+  /** BASIC/PRO/ULTRA: integração técnica só leitura no portal (backoffice). COMERCIAL: edição permitida aqui. */
+  const whatsappFieldsLocked = resolvedPlanLevel !== "COMERCIAL";
   const whatsappIntegrationDisabled = busy || whatsappFieldsLocked;
 
   const fetchEvolutionQr = React.useCallback(async () => {

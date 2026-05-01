@@ -1,0 +1,14 @@
+---
+description: Portal — integração técnica WhatsApp em Configurações (perfil COMERCIAL)
+globs:
+  - atendimento-frontEnd/atendimento-frontend/src/app/**/settings/**/*.tsx
+---
+
+## Regra de produto / UI
+
+- Na secção **Integração técnica WhatsApp** (`sectionChannel`), os campos provedor META/EVOLUTION (e seleção do tipo) devem estar **editáveis** apenas quando `resolvedPlanLevel === "COMERCIAL"` (valor vindo da sessão/plano ou de `getTenantSettings` até hidratar).
+- Para perfis **BASIC**, **PRO** e **ULTRA**, os mesmos campos permanecem **só leitura** (`readOnly`/disabled conforme estado `whatsappFieldsLocked`) e deve mostrar-se a copy `whatsappIntegrationReadOnlyDesc`.
+
+Implementação atual: [`settings/page.tsx`](atendimento-frontEnd/atendimento-frontend/src/app/[locale]/(app)/settings/page.tsx) — `whatsappFieldsLocked = resolvedPlanLevel !== "COMERCIAL"`.
+
+Não voltar a forçar bloqueio global sem excepção COMERCIAL, salvo requisito de produto explicitamente alterado.
