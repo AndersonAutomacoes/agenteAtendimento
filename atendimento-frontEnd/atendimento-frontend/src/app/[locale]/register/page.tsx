@@ -4,6 +4,7 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
 } from "firebase/auth";
+import { Loader2 } from "lucide-react";
 import * as React from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -15,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Link, useRouter } from "@/i18n/navigation";
 import { getFirebaseAuth, isFirebaseConfigured } from "@/lib/firebase";
 import { mapProfileLevelToPlanTier } from "@/lib/plan-tier";
+import { cn } from "@/lib/utils";
 import {
   CEREBRO_AUTH_TOKEN_KEY,
   getPortalSession,
@@ -34,6 +36,7 @@ export default function RegisterPage() {
   const [password, setPassword] = React.useState("");
   const [inviteCode, setInviteCode] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
+  const submittingRef = React.useRef(false);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,6 +44,8 @@ export default function RegisterPage() {
       toast.error(t("firebaseNotConfigured"));
       return;
     }
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       const auth = getFirebaseAuth();
@@ -88,6 +93,7 @@ export default function RegisterPage() {
     } catch (err) {
       toast.error(toUserFacingApiError(err, translateApi));
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -133,8 +139,15 @@ export default function RegisterPage() {
               minLength={6}
             />
           </div>
-          <Button type="submit" className="w-full" disabled={submitting}>
-            {t("submit")}
+          <Button
+            type="submit"
+            className={cn("w-full gap-2", submitting && "pointer-events-none opacity-90")}
+            aria-busy={submitting}
+          >
+            {submitting ? (
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+            ) : null}
+            {submitting ? t("submitProgress") : t("submit")}
           </Button>
         </form>
         <p className="text-center text-sm text-muted-foreground">

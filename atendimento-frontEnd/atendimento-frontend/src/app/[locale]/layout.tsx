@@ -5,6 +5,7 @@ import { getMessages, getTranslations, setRequestLocale } from "next-intl/server
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { HtmlLang } from "@/components/layout/html-lang";
 import { PlanProvider } from "@/components/plan/plan-provider";
 import { Providers } from "@/components/providers";
 import { routing } from "@/i18n/routing";
@@ -18,6 +19,7 @@ const inter = Inter({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: "swap",
 });
 
 type Props = {
@@ -89,10 +91,11 @@ export default async function LocaleLayout({ children, params }: Props) {
   const messages = await getMessages();
 
   return (
-    <div className={`${inter.variable} ${geistMono.variable} dark min-h-full antialiased`}>
+    <div className={`${inter.variable} ${geistMono.variable} min-h-full antialiased`}>
       <div className="min-h-full font-sans">
         <Providers>
           <NextIntlClientProvider locale={locale} messages={messages}>
+            <HtmlLang locale={locale} />
             <PlanProvider>{children}</PlanProvider>
           </NextIntlClientProvider>
         </Providers>

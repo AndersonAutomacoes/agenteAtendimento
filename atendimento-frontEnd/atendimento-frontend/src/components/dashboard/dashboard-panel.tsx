@@ -1307,7 +1307,7 @@ export function DashboardPanel() {
                           <th className="pb-3 font-medium">{t("activities.colPreview")}</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody className="[&>tr]:[contain-intrinsic-size:auto_4rem] [&>tr]:[content-visibility:auto]">
                         {data.recentInteractions.map((row) => {
                           const title =
                             row.contactDisplayName?.trim() || formatPhoneDisplay(row.phoneNumber);
@@ -1337,6 +1337,8 @@ export function DashboardPanel() {
                                       <img
                                         src={pic}
                                         alt=""
+                                        width={36}
+                                        height={36}
                                         className="h-full w-full object-cover"
                                       />
                                     ) : (
@@ -1395,13 +1397,19 @@ export function DashboardPanel() {
                       return (
                         <div
                           key={row.messageId}
-                          className="space-y-2 rounded-xl border border-border/60 bg-muted/20 p-4 text-sm"
+                          className="[contain-intrinsic-size:auto_7rem] [content-visibility:auto] space-y-2 rounded-xl border border-border/60 bg-muted/20 p-4 text-sm"
                         >
                           <div className="flex items-start gap-3">
                             <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-muted ring-1 ring-border">
                               {pic ? (
                                 // eslint-disable-next-line @next/next/no-img-element
-                                <img src={pic} alt="" className="h-full w-full object-cover" />
+                                <img
+                                  src={pic}
+                                  alt=""
+                                  width={40}
+                                  height={40}
+                                  className="h-full w-full object-cover"
+                                />
                               ) : (
                                 <span className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-muted-foreground">
                                   {contactInitials(row.contactDisplayName, row.phoneNumber)}

@@ -44,10 +44,7 @@ export function LandingPageClient() {
     <div className="relative min-h-full bg-background">
       <a
         href="#contato"
-        className={cn(
-          "sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50",
-          "focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground",
-        )}
+        className="bg-primary text-primary-foreground shadow-md outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring absolute top-4 start-[10000px] z-[100] rounded-lg px-4 py-2 text-sm font-medium focus-visible:start-4"
       >
         {t("skipToForm")}
       </a>
@@ -68,7 +65,7 @@ export function LandingPageClient() {
         </div>
       </header>
 
-      <main>
+      <main id="landing-main-content" tabIndex={-1}>
         <section className="relative overflow-hidden border-b border-white/5 bg-gradient-to-br from-zinc-950 via-slate-950 to-zinc-900 px-4 pb-16 pt-12 md:px-6 md:pb-24 md:pt-16">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_100%_80%_at_50%_-40%,rgba(59,130,246,0.22),transparent)]" aria-hidden />
           <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(24,24,27,0.3)_0%,transparent_35%,rgba(9,9,11,0.85)_100%)]" aria-hidden />

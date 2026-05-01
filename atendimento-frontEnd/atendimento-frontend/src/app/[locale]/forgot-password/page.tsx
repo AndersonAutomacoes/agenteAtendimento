@@ -1,6 +1,7 @@
 "use client";
 
 import { sendPasswordResetEmail } from "firebase/auth";
+import { Loader2 } from "lucide-react";
 import * as React from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -10,11 +11,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Link } from "@/i18n/navigation";
 import { getFirebaseAuth, isFirebaseConfigured } from "@/lib/firebase";
+import { cn } from "@/lib/utils";
 
 export default function ForgotPasswordPage() {
   const t = useTranslations("forgotPasswordPage");
   const [email, setEmail] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
+  const submittingRef = React.useRef(false);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,6 +25,8 @@ export default function ForgotPasswordPage() {
       toast.error(t("firebaseNotConfigured"));
       return;
     }
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       const auth = getFirebaseAuth();
@@ -30,6 +35,7 @@ export default function ForgotPasswordPage() {
     } catch {
       toast.error(t("error"));
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -53,8 +59,15 @@ export default function ForgotPasswordPage() {
               required
             />
           </div>
-          <Button type="submit" className="w-full" disabled={submitting}>
-            {t("submit")}
+          <Button
+            type="submit"
+            className={cn("w-full gap-2", submitting && "pointer-events-none opacity-90")}
+            aria-busy={submitting}
+          >
+            {submitting ? (
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+            ) : null}
+            {submitting ? t("submitProgress") : t("submit")}
           </Button>
         </form>
         <Button variant="ghost" asChild className="w-full">

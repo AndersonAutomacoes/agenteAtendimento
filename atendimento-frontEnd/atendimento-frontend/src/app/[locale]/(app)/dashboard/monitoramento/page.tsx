@@ -706,7 +706,7 @@ function MonitoramentoConversasPageContent() {
                           >
                             <span
                               className={cn(
-                                "pointer-events-none absolute top-0.5 left-0.5 block h-6 w-6 rounded-full bg-white shadow-sm ring-1 ring-black/10 transition-all duration-200 dark:bg-background dark:ring-white/10",
+                                "pointer-events-none absolute top-0.5 left-0.5 block h-6 w-6 rounded-full bg-white shadow-sm ring-1 ring-black/10 transition-[left,box-shadow] duration-200 dark:bg-background dark:ring-white/10",
                                 !c.botEnabled && "left-[calc(100%-1.625rem)]",
                               )}
                             />

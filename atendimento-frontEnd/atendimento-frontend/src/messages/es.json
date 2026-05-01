@@ -29,6 +29,7 @@
     "brand": "AxeZap",
     "brandSubtitle": "Gestión de IA",
     "footer": "Plataforma pensada para equipos pequeños — fácil de usar.",
+    "skipToMain": "Ir al contenido principal",
     "openMenu": "Abrir menú",
     "closeMenu": "Cerrar menú",
     "menuTitle": "Navegación principal",
@@ -154,6 +155,7 @@
     "forgotPassword": "Olvidé mi contraseña",
     "noAccount": "Crear cuenta con invitación",
     "submit": "Entrar",
+    "submitProgress": "Entrando…",
     "success": "Sesión iniciada",
     "discoverProduct": "Conoce el producto",
     "backHome": "Volver al inicio",
@@ -166,6 +168,7 @@
     "email": "Email",
     "password": "Contraseña (mín. 6 caracteres)",
     "submit": "Registrarse y asociar al tenant",
+    "submitProgress": "Registrando…",
     "success": "Cuenta creada y asociada al tenant",
     "hasAccount": "¿Ya tiene cuenta? Entrar",
     "discoverProduct": "Conoce el producto",
@@ -177,6 +180,7 @@
     "subtitle": "Enviaremos un enlace por email (Firebase Authentication).",
     "email": "Email",
     "submit": "Enviar email",
+    "submitProgress": "Enviando…",
     "success": "Si el email existe, recibirá instrucciones pronto.",
     "error": "No se pudo enviar el email. Inténtelo de nuevo.",
     "backLogin": "Volver al inicio de sesión",
@@ -185,7 +189,7 @@
   "plan": {
     "lockedTitle": "Disponible en tu plan",
     "lockedAria": "Zona bloqueada según tu suscripción",
-    "checkingAccess": "Validando acceso...",
+    "checkingAccess": "Validando acceso…",
     "upgradeCta": "Mejorar plan",
     "navLockedHint": "Disponible en un plan superior.",
     "exportDialogTitle": "Exportación de informes",
@@ -530,7 +534,9 @@
     "openClientTab": "Abrir pestaña Clientes",
     "clientesTab": "Clientes",
     "selectTenantFirst": "Seleccione un tenant de la lista para editar los datos del cliente.",
-    "clientTabTitle": "Cliente: {tenantId}"
+    "clientTabTitle": "Cliente: {tenantId}",
+    "ariaCopyInviteCode": "Copiar código de invitación",
+    "ariaRemoveService": "Quitar servicio de la lista"
   },
   "internalPlans": {
     "title": "Gestión de planes",

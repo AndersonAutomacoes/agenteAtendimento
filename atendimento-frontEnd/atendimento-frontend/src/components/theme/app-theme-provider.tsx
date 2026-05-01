@@ -58,6 +58,7 @@ export function AppThemeProvider({ children }: { children: React.ReactNode }) {
     if (resolvedTheme === "dark") {
       root.classList.add("dark");
     }
+    root.style.colorScheme = resolvedTheme === "dark" ? "dark" : "light";
     try {
       localStorage.setItem(STORAGE_KEY, theme);
     } catch {

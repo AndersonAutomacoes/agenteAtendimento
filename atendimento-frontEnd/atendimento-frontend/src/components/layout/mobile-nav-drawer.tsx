@@ -45,7 +45,7 @@ export function MobileNavDrawer() {
         id={menuId}
         hideClose
         className={cn(
-          "top-0 left-0 flex h-full max-h-[100dvh] w-[min(100vw,20rem)] max-w-[min(100vw,20rem)] translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-r p-0 shadow-2xl sm:max-w-[min(100vw,20rem)] sm:rounded-none",
+          "top-0 left-0 flex h-full max-h-[100dvh] w-[min(100vw,20rem)] max-w-[min(100vw,20rem)] translate-x-0 translate-y-0 flex-col gap-0 overflow-y-auto overscroll-contain rounded-none border-r p-0 shadow-2xl sm:max-w-[min(100vw,20rem)] sm:rounded-none",
         )}
       >
         <DialogTitle className="sr-only">{t("menuTitle")}</DialogTitle>

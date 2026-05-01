@@ -29,6 +29,7 @@
     "brand": "AxeZap",
     "brandSubtitle": "AI 管理",
     "footer": "为小型团队设计——简单易用。",
+    "skipToMain": "跳到主内容",
     "openMenu": "打开菜单",
     "closeMenu": "关闭菜单",
     "menuTitle": "主导航",
@@ -154,6 +155,7 @@
     "forgotPassword": "忘记密码",
     "noAccount": "使用邀请码注册",
     "submit": "登录",
+    "submitProgress": "登录中…",
     "success": "已登录",
     "discoverProduct": "了解产品",
     "backHome": "返回首页",
@@ -166,6 +168,7 @@
     "email": "邮箱",
     "password": "密码（至少 6 位）",
     "submit": "注册并关联租户",
+    "submitProgress": "注册中…",
     "success": "账号已创建并关联租户",
     "hasAccount": "已有账号？去登录",
     "discoverProduct": "了解产品",
@@ -177,6 +180,7 @@
     "subtitle": "我们将发送重置链接到邮箱（Firebase Authentication）。",
     "email": "邮箱",
     "submit": "发送邮件",
+    "submitProgress": "发送中…",
     "success": "若邮箱存在，您将很快收到说明。",
     "error": "无法发送邮件，请重试。",
     "backLogin": "返回登录",
@@ -185,7 +189,7 @@
   "plan": {
     "lockedTitle": "此功能需要相应套餐",
     "lockedAria": "根据订阅计划，此区域已锁定",
-    "checkingAccess": "正在验证访问权限...",
+    "checkingAccess": "正在验证访问权限…",
     "upgradeCta": "升级套餐",
     "navLockedHint": "更高套餐可用。",
     "exportDialogTitle": "导出报表",
@@ -535,7 +539,9 @@
     "openClientTab": "打开客户页签",
     "clientesTab": "客户",
     "selectTenantFirst": "请先在列表中选择一个租户，再编辑客户数据。",
-    "clientTabTitle": "客户：{tenantId}"
+    "clientTabTitle": "客户：{tenantId}",
+    "ariaCopyInviteCode": "复制邀请码",
+    "ariaRemoveService": "从列表中移除服务"
   },
   "internalPlans": {
     "title": "计划管理",

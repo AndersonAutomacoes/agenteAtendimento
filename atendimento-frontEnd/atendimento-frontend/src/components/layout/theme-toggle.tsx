@@ -24,7 +24,7 @@ export function ThemeToggle() {
         className="h-11 w-11 touch-manipulation sm:h-9 sm:w-9"
         aria-label={t("toggle")}
       >
-        <Sun className="h-4 w-4 opacity-50" />
+        <Sun className="h-4 w-4 opacity-50" aria-hidden />
       </Button>
     );
   }
@@ -40,9 +40,9 @@ export function ThemeToggle() {
       onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
     >
       {resolvedTheme === "dark" ? (
-        <Sun className="h-4 w-4" />
+        <Sun className="h-4 w-4" aria-hidden />
       ) : (
-        <Moon className="h-4 w-4" />
+        <Moon className="h-4 w-4" aria-hidden />
       )}
     </Button>
   );

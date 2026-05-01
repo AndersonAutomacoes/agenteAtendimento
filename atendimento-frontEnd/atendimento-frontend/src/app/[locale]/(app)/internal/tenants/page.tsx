@@ -522,12 +522,13 @@ export default function InternalTenantsPage() {
                 type="button"
                 size="icon"
                 variant="outline"
+                aria-label={t("ariaCopyInviteCode")}
                 onClick={async () => {
                   await navigator.clipboard.writeText(inviteCode);
                   toast.success(t("copied"));
                 }}
               >
-                <Copy className="h-4 w-4" />
+                <Copy className="h-4 w-4" aria-hidden />
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">{t("manualEmailHint")}</p>
@@ -543,9 +544,13 @@ export default function InternalTenantsPage() {
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
             <Input
+              id="internal-tenants-search"
+              name="tenantSearch"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t("searchPlaceholder")}
+              autoComplete="off"
+              aria-label={t("searchPlaceholder")}
             />
             <select
               className="h-9 rounded-xl border border-input bg-transparent px-3 py-1 text-sm"
@@ -872,9 +877,10 @@ export default function InternalTenantsPage() {
                       type="button"
                       size="icon"
                       variant="ghost"
+                      aria-label={t("ariaRemoveService")}
                       onClick={() => setServiceRows(serviceRows.filter((_, j) => j !== i))}
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="h-4 w-4" aria-hidden />
                     </Button>
                   </div>
                 ))}
@@ -1002,6 +1008,7 @@ export default function InternalTenantsPage() {
                   type="button"
                   size="icon"
                   variant="outline"
+                  aria-label={t("ariaCopyInviteCode")}
                   onClick={async () => {
                     try {
                       await navigator.clipboard.writeText(invitePayload.code);
@@ -1011,7 +1018,7 @@ export default function InternalTenantsPage() {
                     }
                   }}
                 >
-                  <Copy className="h-4 w-4" />
+                  <Copy className="h-4 w-4" aria-hidden />
                 </Button>
               </div>
               <p className="text-muted-foreground">{invitePayload.message}</p>

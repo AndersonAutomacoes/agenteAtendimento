@@ -111,7 +111,7 @@ export function KnowledgeBaseFilesTable({
                   </th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="[&>tr]:[contain-intrinsic-size:auto_3rem] [&>tr]:[content-visibility:auto]">
                 {uploading ? (
                   <tr className="border-b border-border/60 bg-amber-500/5">
                     <td className="max-w-[200px] truncate px-3 py-3 font-medium">
