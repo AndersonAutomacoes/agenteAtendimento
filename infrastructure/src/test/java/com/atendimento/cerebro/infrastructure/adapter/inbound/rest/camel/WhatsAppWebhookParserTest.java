@@ -164,6 +164,35 @@ class WhatsAppWebhookParserTest {
     }
 
     @Test
+    void evolution_messagesUpsert_listResponse_mapsRowIds() throws Exception {
+        String json =
+                """
+                {
+                  "event": "messages.upsert",
+                  "data": {
+                    "key": { "remoteJid": "557196248348@s.whatsapp.net", "fromMe": false, "id": "LST1" },
+                    "message": {
+                      "listResponseMessage": {
+                        "singleSelectReply": {
+                          "selectedRowId": "slot_14_45",
+                          "title": "14:45"
+                        }
+                      }
+                    },
+                    "messageType": "listResponseMessage"
+                  }
+                }
+                """;
+        var tm = (WhatsAppWebhookParser.Incoming.TextMessage) parser.parse(mapper.readTree(json));
+        assertThat(tm.text()).isEqualTo("14:45");
+        assertThat(tm.providerMessageId()).isEqualTo("LST1");
+
+        assertThat(WhatsAppWebhookParser.canonicalReplyFromInteractiveRowId("confirm_yes")).isEqualTo("sim");
+        assertThat(WhatsAppWebhookParser.canonicalReplyFromInteractiveRowId("confirm_no")).isEqualTo("não");
+        assertThat(WhatsAppWebhookParser.canonicalReplyFromInteractiveRowId("cancel_7")).isEqualTo("cancel_7");
+    }
+
+    @Test
     void evolution_messagesUpsert_buttonsResponse_fallbackFromSlotId() throws Exception {
         String json =
                 """

@@ -20,6 +20,15 @@ class WhatsAppOutboundRoutesInteractiveSuppressionTest {
     }
 
     @Test
+    void shouldSuppressPlainTextWhenInteractive_falseForConfirmationKind() {
+        assertThat(
+                        WhatsAppOutboundRoutes.shouldSuppressPlainTextWhenInteractive(
+                                WhatsAppProviderType.EVOLUTION,
+                                WhatsAppInteractiveReply.forConfirmationActions()))
+                .isFalse();
+    }
+
+    @Test
     void shouldSuppressPlainTextWhenInteractive_falseForNonEvolutionOrNoSlots() {
         WhatsAppInteractiveReply emptyInteractive =
                 new WhatsAppInteractiveReply("t", "d", List.of());

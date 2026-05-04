@@ -54,6 +54,7 @@ import com.atendimento.cerebro.application.port.out.AppointmentSchedulingPort;
 
 import com.atendimento.cerebro.application.port.out.TenantServiceCatalogPort;
 
+import com.atendimento.cerebro.application.dto.WhatsAppInteractiveKind;
 import com.atendimento.cerebro.application.scheduling.CreateAppointmentResult;
 
 import com.atendimento.cerebro.domain.conversation.ConversationContext;
@@ -71,6 +72,7 @@ import com.atendimento.cerebro.domain.tenant.TenantId;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 
 import java.util.List;
 
@@ -525,7 +527,8 @@ class ChatServiceTest {
                 .contains("09:30")
                 .contains("14/04/2026")
                 .contains("Posso confirmar");
-        assertThat(result.whatsAppInteractive()).isEmpty();
+        assertThat(result.whatsAppInteractive()).isPresent();
+        assertThat(result.whatsAppInteractive().get().kind()).isEqualTo(WhatsAppInteractiveKind.CONFIRMATION);
 
         ArgumentCaptor<ConversationContext> saved = ArgumentCaptor.forClass(ConversationContext.class);
         verify(conversationContextStore).save(saved.capture());
@@ -916,10 +919,10 @@ class ChatServiceTest {
                         conversationId.value(),
                         "Anderson Nunes",
                         "Alinhamento e Balanceamento",
-                        Instant.parse("2026-04-25T13:00:00Z"),
-                        Instant.parse("2026-04-25T13:30:00Z"),
+                        Instant.parse("2026-12-01T13:00:00Z"),
+                        Instant.parse("2026-12-01T13:30:00Z"),
                         "evt-43",
-                        Instant.parse("2026-04-24T12:00:00Z"),
+                        Instant.parse("2026-11-30T12:00:00Z"),
                         TenantAppointmentListItem.AppointmentStatus.UPCOMING,
                         TenantAppointmentListItem.BookingStatus.AGENDADO);
         ConversationContext existing =
@@ -929,7 +932,7 @@ class ChatServiceTest {
                         .messages(
                                 List.of(
                                         Message.assistantMessage(
-                                                "Agendamentos\n\n43) Alinhamento e Balanceamento — 25/04/2026 10:00")))
+                                                "Agendamentos\n\n43) Alinhamento e Balanceamento — 01/12/2026 10:00")))
                         .build();
         when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.empty());
         when(conversationContextStore.load(tenantId, conversationId)).thenReturn(Optional.of(existing));
@@ -942,7 +945,7 @@ class ChatServiceTest {
         when(tenantAppointmentStore.markCancelled(eq(43L), any(Instant.class))).thenReturn(true);
         when(appointmentScheduling.createAppointment(
                         eq(tenantId),
-                        eq("2026-04-25"),
+                        eq("2026-12-01"),
                         eq("23:00"),
                         eq("Anderson Nunes"),
                         eq(1L),
@@ -950,7 +953,7 @@ class ChatServiceTest {
                         eq(conversationId.value())))
                 .thenReturn(
                         CreateAppointmentResult.success(
-                                "Agendamento confirmado para 25/04/2026 às 23:00. O horário foi registado na agenda da oficina.",
+                                "Agendamento confirmado para 01/12/2026 às 23:00. O horário foi registado na agenda da oficina.",
                                 120L));
 
         var result =
@@ -968,7 +971,7 @@ class ChatServiceTest {
         order.verify(appointmentScheduling)
                 .createAppointment(
                         eq(tenantId),
-                        eq("2026-04-25"),
+                        eq("2026-12-01"),
                         eq("23:00"),
                         eq("Anderson Nunes"),
                         eq(1L),
@@ -1013,10 +1016,10 @@ class ChatServiceTest {
                         conversationId.value(),
                         "Anderson Nunes",
                         "Alinhamento e Balanceamento",
-                        Instant.parse("2026-04-25T13:00:00Z"),
-                        Instant.parse("2026-04-25T13:30:00Z"),
+                        Instant.parse("2026-12-15T13:00:00Z"),
+                        Instant.parse("2026-12-15T13:30:00Z"),
                         "evt-45",
-                        Instant.parse("2026-04-24T12:00:00Z"),
+                        Instant.parse("2026-11-24T12:00:00Z"),
                         TenantAppointmentListItem.AppointmentStatus.UPCOMING,
                         TenantAppointmentListItem.BookingStatus.AGENDADO);
         ConversationContext existing =
@@ -1042,9 +1045,11 @@ class ChatServiceTest {
                 chatService.chat(new ChatCommand(tenantId, conversationId, "Hoje, 11:00", null, AiChatProvider.GEMINI));
 
         verify(aiEngine, never()).complete(any());
+        ZoneId sp = ZoneId.of("America/Sao_Paulo");
+        String hojeDdMmYy = LocalDate.now(sp).format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
         assertThat(result.assistantMessage())
                 .contains("Alinhamento e Balanceamento")
-                .contains("25/04/2026")
+                .contains(hojeDdMmYy)
                 .contains("11:00")
                 .contains("Posso confirmar o agendamento");
     }

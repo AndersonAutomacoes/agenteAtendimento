@@ -66,10 +66,11 @@ public class EvolutionOutboundHttp {
         HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
         int code = res.statusCode();
         String responseBody = res.body();
-        if (url.contains("/message/sendButtons/")) {
+        if (url.contains("/message/sendButtons/") || url.contains("/message/sendList/")) {
             LOG.info(
-                    "Evolution sendButtons HTTP {} response={}",
+                    "Evolution interactive HTTP {} url={} response={}",
                     code,
+                    url.substring(0, Math.min(url.length(), 120)),
                     truncate(responseBody, 3000));
         } else {
             LOG.debug("Evolution HTTP {} url={} response={}", code, url, truncate(responseBody, 800));

@@ -1,6 +1,8 @@
 package com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel;
 
+import com.atendimento.cerebro.application.dto.WhatsAppInteractiveKind;
 import com.atendimento.cerebro.application.dto.WhatsAppInteractiveReply;
+import com.atendimento.cerebro.application.dto.WhatsAppInteractiveRow;
 import com.atendimento.cerebro.application.scheduling.AssistantOutputSanitizer;
 import com.atendimento.cerebro.application.port.out.ChatMessageRepository;
 import com.atendimento.cerebro.application.scheduling.SchedulingSlotCapture;
@@ -14,6 +16,7 @@ import com.atendimento.cerebro.domain.tenant.TenantId;
 import com.atendimento.cerebro.domain.tenant.WhatsAppProviderType;
 import com.atendimento.cerebro.infrastructure.adapter.out.whatsapp.EvolutionOutboundHttp;
 import com.atendimento.cerebro.infrastructure.whatsapp.EvolutionCredentials;
+import com.atendimento.cerebro.infrastructure.whatsapp.EvolutionInteractiveMode;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -22,6 +25,7 @@ import java.net.http.HttpResponse;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.apache.camel.Exchange;
@@ -36,10 +40,8 @@ import org.slf4j.LoggerFactory;
 /**
  * Envio outbound: {@code direct:processWhatsAppResponse} escolhe Meta, Evolution ou log (SIMULATED / credenciais em falta).
  *
- * <p><strong>Evolution / Baileys:</strong> o endpoint {@code sendButtons} geralmente envia {@code viewOnceMessage} +
- * {@code nativeFlowMessage}. O WhatsApp costuma <em>não</em> mostrar botões de resposta reais no cliente — apenas texto
- * ou “visto uma vez”. Para lista de horários fiável, use {@code cerebro.whatsapp.evolution.send-interactive-buttons=false}
- * (omissão), que envia uma única mensagem de texto formatada.
+ * <p><strong>Evolution:</strong> {@code cerebro.whatsapp.evolution.interactive-mode=TEXT} (omissão) envia vagas só em texto
+ * formatado; {@code BUTTONS} usa {@code sendButtons} (máx. 3; pouco fiável via Baileys); {@code LIST} usa {@code sendList}.
  */
 @Component
 @Order(300)
@@ -48,6 +50,9 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
     private static final Logger LOG = LoggerFactory.getLogger(WhatsAppOutboundRoutes.class);
 
     private static final String PROP_FB_PATH = "fbGraphPath";
+
+    /** Limite típico de linhas por secção nas listas WhatsApp Evolution. */
+    private static final int EVOLUTION_INTERACTIVE_LIST_MAX_ROWS = 10;
 
     private final TenantConfigurationStorePort tenantConfigurationStore;
     private final ChatMessageRepository chatMessageRepository;
@@ -64,16 +69,10 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
      */
     private final String evolutionApiKeyGlobal;
 
-    /**
-     * Se {@code true}, chama {@code /message/sendButtons} (botões raramente visíveis no WhatsApp via Baileys). Se {@code
-     * false}, envia só {@code sendText} com lista formatada (omissão recomendada).
-     */
-    private final boolean evolutionSendInteractiveButtons;
+    /** Modo de envio Evolution para payloads {@link WhatsAppInteractiveReply} (TEXT / BUTTONS / LIST). */
+    private final EvolutionInteractiveMode evolutionInteractiveMode;
 
-    /**
-     * Após {@code sendButtons}, duplica a lista em texto simples (só usado com {@link #evolutionSendInteractiveButtons}
-     * {@code true}).
-     */
+    /** Após {@code sendButtons} com vagas, duplica lista em texto (só com {@link EvolutionInteractiveMode#BUTTONS}). */
     private final boolean evolutionMirrorSlotsAsPlainText;
 
     /** Fuso do calendário (alinha cabeçalho “hoje/amanhã” na lista premium). */
@@ -88,8 +87,9 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
             @Value("${cerebro.whatsapp.meta.graph-api-version:v21.0}") String metaGraphApiVersion,
             @Value("${cerebro.whatsapp.evolution.base-url-override:}") String evolutionBaseUrlOverride,
             @Value("${cerebro.whatsapp.evolution.api-key:}") String evolutionApiKeyGlobal,
+            @Value("${cerebro.whatsapp.evolution.interactive-mode:}") String evolutionInteractiveModeRaw,
             @Value("${cerebro.whatsapp.evolution.send-interactive-buttons:false}")
-                    boolean evolutionSendInteractiveButtons,
+                    boolean evolutionSendInteractiveButtonsLegacy,
             @Value("${cerebro.whatsapp.evolution.mirror-slots-as-plain-text:false}")
                     boolean evolutionMirrorSlotsAsPlainText,
             @Value("${cerebro.google.calendar.zone:America/Bahia}") String schedulingCalendarZoneId) {
@@ -101,7 +101,8 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         this.metaGraphApiVersion = metaGraphApiVersion;
         this.evolutionBaseUrlOverride = evolutionBaseUrlOverride != null ? evolutionBaseUrlOverride : "";
         this.evolutionApiKeyGlobal = evolutionApiKeyGlobal != null ? evolutionApiKeyGlobal : "";
-        this.evolutionSendInteractiveButtons = evolutionSendInteractiveButtons;
+        this.evolutionInteractiveMode =
+                EvolutionInteractiveMode.fromConfig(evolutionInteractiveModeRaw, evolutionSendInteractiveButtonsLegacy);
         this.evolutionMirrorSlotsAsPlainText = evolutionMirrorSlotsAsPlainText;
         this.schedulingCalendarZone =
                 schedulingCalendarZoneId != null && !schedulingCalendarZoneId.isBlank()
@@ -177,12 +178,11 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_TEXT, effectiveText);
         exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_INTERACTIVE, interactive);
         if (interactive instanceof WhatsAppInteractiveReply reply
-                && reply.slotTimes() != null
-                && !reply.slotTimes().isEmpty()
+                && reply.replacesPrimaryOutboundTextSlotList()
                 && effective != WhatsAppProviderType.EVOLUTION) {
             LOG.warn(
-                    "whatsapp outbound: payload com botões de horários mas o tenant {} usa provider {}; "
-                            + "só Evolution com URL/instância/chave válidos envia botões — a verificar configuração.",
+                    "whatsapp outbound: payload interativo de horários mas o tenant {} usa provider {}; "
+                            + "LIST/BUTTONS na Evolution só com URL/instância/chave válidos.",
                     tenantIdStr,
                     effective);
         }
@@ -294,7 +294,7 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         if (!(interactive instanceof WhatsAppInteractiveReply reply)) {
             return false;
         }
-        return reply.slotTimes() != null && !reply.slotTimes().isEmpty();
+        return reply.replacesPrimaryOutboundTextSlotList();
     }
 
     private void prepareMetaHttp(Exchange exchange) throws Exception {
@@ -329,7 +329,7 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
     }
 
     /**
-     * Evolution: envia texto e/ou botões via HTTP cliente (pode ser duas chamadas: verificação + botões).
+     * Evolution: texto, {@code sendButtons} ou {@code sendList} segundo {@link #evolutionInteractiveMode}.
      */
     private void sendEvolutionOutbound(Exchange exchange) throws Exception {
         TenantConfiguration cfg = exchange.getProperty(WhatsAppOutboundHeaders.PROP_WA_TENANT_CONFIG, TenantConfiguration.class);
@@ -341,7 +341,19 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         String instanceId = cfg.whatsappInstanceId();
 
         Object raw = exchange.getProperty(WhatsAppOutboundHeaders.PROP_WA_INTERACTIVE);
+        if (raw instanceof WhatsAppInteractiveReply multiKindReply
+                && (multiKindReply.kind() == WhatsAppInteractiveKind.CONFIRMATION
+                        || multiKindReply.kind() == WhatsAppInteractiveKind.CANCEL_PICK)
+                && multiKindReply.customRows() != null
+                && !multiKindReply.customRows().isEmpty()) {
+            sendConfirmationOrCancelFollowUpInteractive(
+                    base, apiKey, instanceId, digits, exchange, multiKindReply);
+            exchange.getMessage().setBody("");
+            markAssistantSent(exchange);
+            return;
+        }
         if (raw instanceof WhatsAppInteractiveReply reply
+                && reply.kind() == WhatsAppInteractiveKind.SLOTS
                 && reply.slotTimes() != null
                 && !reply.slotTimes().isEmpty()) {
             List<String> validTimes = SchedulingSlotCapture.normalizeSlotTimes(reply.slotTimes());
@@ -357,21 +369,18 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
                 markAssistantSent(exchange);
                 return;
             }
-            WhatsAppInteractiveReply safeReply =
-                    new WhatsAppInteractiveReply(
-                            sanitizeOutboundBody(reply.title()),
-                            sanitizeOutboundBody(reply.description()),
-                            validTimes,
-                            sanitizeOutboundBody(reply.verificationText()),
-                            reply.requestedDate());
-            if (!evolutionSendInteractiveButtons) {
+            WhatsAppInteractiveReply safeReply = sanitizeSlotInteractiveCopy(reply, validTimes);
+            if (evolutionInteractiveMode == EvolutionInteractiveMode.TEXT) {
                 String body = sanitizeOutboundBody(buildSlotsFormattedPlainText(safeReply, validTimes));
-                LOG.info(
-                        "Evolution: envio só texto formatado (send-interactive-buttons=false) instance={} to={}",
-                        instanceId,
-                        digits);
+                LOG.info("Evolution: vagas só em texto formatado mode=TEXT instance={} to={}", instanceId, digits);
                 evolutionOutboundHttp.postJson(
                         base + "/message/sendText/" + instanceId, apiKey, buildEvolutionSendTextJson(digits, body));
+                exchange.getMessage().setBody("");
+                markAssistantSent(exchange);
+                return;
+            }
+            if (evolutionInteractiveMode == EvolutionInteractiveMode.LIST) {
+                sendSlotListOrFallbackSlotsText(base, apiKey, instanceId, digits, safeReply, validTimes);
                 exchange.getMessage().setBody("");
                 markAssistantSent(exchange);
                 return;
@@ -383,7 +392,7 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
                     evolutionOutboundHttp.postJson(base + "/message/sendText/" + instanceId, apiKey, textJson);
                 }
                 String buttonsJson = buildEvolutionSendButtonsJson(digits, safeReply);
-                LOG.info("Evolution sendButtons request JSON (instance={} to={}): {}", instanceId, digits, buttonsJson);
+                LOG.info("Evolution sendButtons mode=BUTTONS instance={} to={} json={}", instanceId, digits, buttonsJson);
                 evolutionOutboundHttp.postJson(base + "/message/sendButtons/" + instanceId, apiKey, buttonsJson);
                 if (evolutionMirrorSlotsAsPlainText) {
                     String mirror = sanitizeOutboundBody(buildMirrorSlotsPlainText(validTimes, reply.requestedDate()));
@@ -393,7 +402,7 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
                 }
             } catch (Exception e) {
                 LOG.error(
-                        "Evolution: falha ao enviar mensagem interativa (sendText/sendButtons) instance={} to={}: {}",
+                        "Evolution: falha ao enviar sendButtons para vagas instance={} to={}: {}",
                         instanceId,
                         digits,
                         e.toString());
@@ -537,6 +546,255 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
             b.put("id", "slot_" + time.strip().replace(':', '_'));
         }
 
+        return objectMapper.writeValueAsString(root);
+    }
+
+    private static WhatsAppInteractiveReply sanitizeSlotInteractiveCopy(
+            WhatsAppInteractiveReply reply, List<String> validTimes) {
+        return new WhatsAppInteractiveReply(
+                WhatsAppInteractiveKind.SLOTS,
+                sanitizeOutboundBody(reply.title()),
+                sanitizeOutboundBody(reply.description()),
+                validTimes,
+                sanitizeOutboundBody(reply.verificationText()),
+                reply.requestedDate(),
+                sanitizeOutboundBody(reply.listButtonText()),
+                sanitizeOutboundBody(reply.footerText()),
+                List.of());
+    }
+
+    private void sendSlotListOrFallbackSlotsText(
+            String base,
+            String apiKey,
+            String instanceId,
+            String digits,
+            WhatsAppInteractiveReply safeReply,
+            List<String> validTimes)
+            throws Exception {
+        try {
+            String verification = safeReply.verificationText();
+            if (verification != null && !verification.isBlank()) {
+                evolutionOutboundHttp.postJson(
+                        base + "/message/sendText/" + instanceId,
+                        apiKey,
+                        buildEvolutionSendTextJson(digits, sanitizeOutboundBody(verification)));
+            }
+            List<String> primary =
+                    validTimes.size() > EVOLUTION_INTERACTIVE_LIST_MAX_ROWS
+                            ? validTimes.subList(0, EVOLUTION_INTERACTIVE_LIST_MAX_ROWS)
+                            : validTimes;
+            List<String> remainder =
+                    validTimes.size() > EVOLUTION_INTERACTIVE_LIST_MAX_ROWS
+                            ? validTimes.subList(EVOLUTION_INTERACTIVE_LIST_MAX_ROWS, validTimes.size())
+                            : List.of();
+            List<WhatsAppInteractiveRow> rows = slotRowsFromTimes(primary);
+            String listJson = buildEvolutionSendListJson(digits, safeReply, rows, "Horários");
+            String listUrl = base + "/message/sendList/" + instanceId;
+            LOG.info("Evolution sendList mode=LIST instance={} to={} json={}", instanceId, digits, listJson);
+            evolutionOutboundHttp.postJson(listUrl, apiKey, listJson);
+            if (!remainder.isEmpty()) {
+                StringBuilder extra = new StringBuilder();
+                extra.append(SchedulingSlotCapture.formatPremiumAvailabilityHeader(safeReply.requestedDate(), schedulingCalendarZone));
+                extra.append("\n\n*Demais horários (responda com o número ou HH:mm):*\n\n");
+                for (int i = 0; i < remainder.size(); i++) {
+                    int optionNo = EVOLUTION_INTERACTIVE_LIST_MAX_ROWS + i + 1;
+                    extra.append('*')
+                            .append(optionNo)
+                            .append(") ")
+                            .append(remainder.get(i))
+                            .append("*\n");
+                }
+                extra.append("\n").append(SchedulingSlotCapture.SLOT_LIST_FOOTER_PT);
+                evolutionOutboundHttp.postJson(
+                        base + "/message/sendText/" + instanceId,
+                        apiKey,
+                        buildEvolutionSendTextJson(digits, sanitizeOutboundBody(extra.toString())));
+            }
+        } catch (Exception e) {
+            LOG.error("Evolution: sendList falhou (instance={} to={}): {}", instanceId, digits, e.toString());
+            String body = sanitizeOutboundBody(buildSlotsFormattedPlainText(safeReply, validTimes));
+            evolutionOutboundHttp.postJson(
+                    base + "/message/sendText/" + instanceId, apiKey, buildEvolutionSendTextJson(digits, body));
+        }
+    }
+
+    private void sendConfirmationOrCancelFollowUpInteractive(
+            String base,
+            String apiKey,
+            String instanceId,
+            String digits,
+            Exchange exchange,
+            WhatsAppInteractiveReply reply)
+            throws Exception {
+        String visible =
+                sanitizeOutboundBody(exchange.getProperty(WhatsAppOutboundHeaders.PROP_WA_TEXT, String.class));
+        if (visible != null && !visible.isBlank()) {
+            evolutionOutboundHttp.postJson(
+                    base + "/message/sendText/" + instanceId,
+                    apiKey,
+                    buildEvolutionSendTextJson(digits, visible));
+        }
+        WhatsAppInteractiveReply sanitized = sanitizeCustomRowsReply(reply);
+        if (evolutionInteractiveMode == EvolutionInteractiveMode.TEXT) {
+            return;
+        }
+        try {
+            if (evolutionInteractiveMode == EvolutionInteractiveMode.BUTTONS) {
+                if (sanitized.customRows().size() > 3) {
+                    LOG.info(
+                            "Evolution: confirmação/cancelamento com >3 linhas — envio LIST em vez de sendButtons "
+                                    + "(instance={})",
+                            instanceId);
+                    String listJson = buildEvolutionSendListJson(digits, sanitized, sanitized.customRows(), "Opções");
+                    evolutionOutboundHttp.postJson(base + "/message/sendList/" + instanceId, apiKey, listJson);
+                } else {
+                    evolutionOutboundHttp.postJson(
+                            base + "/message/sendButtons/" + instanceId,
+                            apiKey,
+                            buildEvolutionSendCustomButtonsJson(digits, sanitized));
+                }
+            } else {
+                List<WhatsAppInteractiveRow> capped = sanitized.customRows();
+                if (capped.size() > EVOLUTION_INTERACTIVE_LIST_MAX_ROWS) {
+                    capped = capped.subList(0, EVOLUTION_INTERACTIVE_LIST_MAX_ROWS);
+                    LOG.warn(
+                            "Evolution: lista confirmação/cancelamento truncada para {} linhas (instance={})",
+                            EVOLUTION_INTERACTIVE_LIST_MAX_ROWS,
+                            instanceId);
+                }
+                String listJson = buildEvolutionSendListJson(digits, sanitized, capped, "Opções");
+                LOG.info(
+                        "Evolution sendList confirm/cancel instance={} to={} json={}", instanceId, digits, listJson);
+                evolutionOutboundHttp.postJson(base + "/message/sendList/" + instanceId, apiKey, listJson);
+            }
+        } catch (Exception e) {
+            LOG.warn("Evolution: falha ao enviar interativo de confirmação/cancelamento: {}", e.toString());
+        }
+    }
+
+    private static WhatsAppInteractiveReply sanitizeCustomRowsReply(WhatsAppInteractiveReply reply) {
+        List<WhatsAppInteractiveRow> cleaned = new ArrayList<>();
+        for (WhatsAppInteractiveRow row : reply.customRows()) {
+            cleaned.add(
+                    new WhatsAppInteractiveRow(
+                            row.rowId().strip(),
+                            sanitizeOutboundBody(row.title()),
+                            sanitizeOutboundBody(row.description())));
+        }
+        String lb = sanitizeOutboundBody(reply.listButtonText());
+        if (lb.isBlank()) {
+            lb =
+                    reply.kind() == WhatsAppInteractiveKind.CONFIRMATION ? "Responder" : "Ver opções";
+        }
+        String ft = sanitizeOutboundBody(reply.footerText());
+        return new WhatsAppInteractiveReply(
+                reply.kind(),
+                sanitizeOutboundBody(reply.title()),
+                sanitizeOutboundBody(reply.description()),
+                List.of(),
+                "",
+                null,
+                lb,
+                ft,
+                cleaned);
+    }
+
+    private static List<WhatsAppInteractiveRow> slotRowsFromTimes(List<String> times) {
+        List<WhatsAppInteractiveRow> rows = new ArrayList<>();
+        for (String time : times) {
+            if (time == null || time.isBlank()) {
+                continue;
+            }
+            String hm = time.strip();
+            rows.add(new WhatsAppInteractiveRow("slot_" + hm.replace(':', '_'), hm, ""));
+        }
+        return rows;
+    }
+
+    private String buildEvolutionSendListJson(
+            String digits, WhatsAppInteractiveReply reply, List<WhatsAppInteractiveRow> rows, String fallbackSectionTitle)
+            throws Exception {
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("number", digits);
+        String title =
+                sanitizeOutboundBody(reply.title()) == null || sanitizeOutboundBody(reply.title()).isBlank()
+                        ? "Opções"
+                        : sanitizeOutboundBody(reply.title());
+        root.put("title", truncateForWhatsApp(title, 72));
+        String desc =
+                sanitizeOutboundBody(reply.description()) == null
+                                || sanitizeOutboundBody(reply.description()).isBlank()
+                        ? "Escolha uma linha na lista."
+                        : sanitizeOutboundBody(reply.description());
+        root.put("description", truncateForWhatsApp(desc, 2048));
+
+        String listBtn =
+                sanitizeOutboundBody(reply.listButtonText()) == null
+                                || sanitizeOutboundBody(reply.listButtonText()).isBlank()
+                        ? (reply.kind() == WhatsAppInteractiveKind.SLOTS ? "Horários" : "Abrir lista")
+                        : sanitizeOutboundBody(reply.listButtonText());
+        root.put("buttonText", truncateForWhatsApp(listBtn, 22));
+
+        String ft = sanitizeOutboundBody(reply.footerText());
+        if (!ft.isBlank()) {
+            root.put("footerText", truncateForWhatsApp(ft, 60));
+        }
+
+        ArrayNode sections = root.putArray("sections");
+        ObjectNode section = sections.addObject();
+        section.put(
+                "title",
+                truncateForWhatsApp(
+                        sanitizeOutboundBody(fallbackSectionTitle) == null
+                                        || sanitizeOutboundBody(fallbackSectionTitle).isBlank()
+                                ? " "
+                                : sanitizeOutboundBody(fallbackSectionTitle),
+                        23));
+
+        ArrayNode rowNodes = section.putArray("rows");
+        for (WhatsAppInteractiveRow r : rows) {
+            if (r.rowId().isBlank()) {
+                continue;
+            }
+            ObjectNode rowObj = rowNodes.addObject();
+            rowObj.put("title", truncateForWhatsApp(sanitizeOutboundBody(r.title()), 23));
+            String rd = sanitizeOutboundBody(r.description());
+            if (!rd.isBlank()) {
+                rowObj.put("description", truncateForWhatsApp(rd, 72));
+            }
+            rowObj.put("rowId", r.rowId().length() > 180 ? truncateForWhatsApp(r.rowId(), 180) : r.rowId());
+        }
+
+        return objectMapper.writeValueAsString(root);
+    }
+
+    private String buildEvolutionSendCustomButtonsJson(String digits, WhatsAppInteractiveReply reply) throws Exception {
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("number", digits);
+        root.put(
+                "title",
+                truncateForWhatsApp(
+                        sanitizeOutboundBody(reply.title()).isBlank() ? "Opções" : sanitizeOutboundBody(reply.title()),
+                        60));
+        root.put("description", truncateForWhatsApp(sanitizeOutboundBody(reply.description()), 1024));
+        String footer = sanitizeOutboundBody(reply.footerText());
+        root.put(
+                "footer",
+                truncateForWhatsApp(
+                        footer.isBlank() ? "Toque num botão." : footer, 60));
+
+        ArrayNode buttons = root.putArray("buttons");
+        int sent = 0;
+        for (WhatsAppInteractiveRow r : reply.customRows()) {
+            if (sent >= 3 || r.rowId().isBlank()) {
+                continue;
+            }
+            ObjectNode b = buttons.addObject();
+            b.put("type", "reply");
+            b.put("displayText", truncateForWhatsApp(sanitizeOutboundBody(r.title()), 20));
+            b.put("id", r.rowId());
+            sent++;
+        }
         return objectMapper.writeValueAsString(root);
     }
 

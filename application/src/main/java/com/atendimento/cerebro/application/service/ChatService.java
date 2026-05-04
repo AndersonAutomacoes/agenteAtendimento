@@ -10,6 +10,8 @@ import com.atendimento.cerebro.application.dto.ChatCommand;
 
 import com.atendimento.cerebro.application.dto.ChatResult;
 
+import com.atendimento.cerebro.application.dto.WhatsAppInteractiveReply;
+
 import com.atendimento.cerebro.application.dto.CrmCustomerRecord;
 
 import com.atendimento.cerebro.application.dto.TenantAppointmentListItem;
@@ -490,7 +492,12 @@ public class ChatService implements ChatUseCase {
             Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(stored));
             ConversationContext updated = context.append(userMessage, assistantMessage);
             conversationContextStore.save(updated);
-            return new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(stored));
+            Optional<WhatsAppInteractiveReply> outboundInteractive =
+                    slotExpansion.pendingConfirmationDraft().isPresent()
+                            ? Optional.of(WhatsAppInteractiveReply.forConfirmationActions())
+                            : WhatsAppInteractiveReply.forCancelPickIfMapped(stored);
+            return new ChatResult(
+                    SchedulingUserReplyNormalizer.stripInternalSlotAppendix(stored), outboundInteractive);
         }
 
         if (selectedServiceByIndex.isPresent()) {
@@ -520,7 +527,9 @@ public class ChatService implements ChatUseCase {
                 Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(stored));
                 ConversationContext updated = context.append(userMessage, assistantMessage);
                 conversationContextStore.save(updated);
-                return new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(stored));
+                return new ChatResult(
+                        SchedulingUserReplyNormalizer.stripInternalSlotAppendix(stored),
+                        Optional.of(WhatsAppInteractiveReply.forConfirmationActions()));
             }
             String hardcoded =
                     "Perfeito! Você escolheu *"
@@ -744,8 +753,18 @@ public class ChatService implements ChatUseCase {
         ConversationContext updated = context.append(userMessage, assistantMessage);
         conversationContextStore.save(updated);
 
+        Optional<WhatsAppInteractiveReply> whatsAppInteractiveOutbound = aiResponse.whatsAppInteractive();
+        if (whatsAppInteractiveOutbound.isEmpty()) {
+            if (schedulingTools && slotExpansion.pendingConfirmationDraft().isPresent()) {
+                whatsAppInteractiveOutbound =
+                        Optional.of(WhatsAppInteractiveReply.forConfirmationActions());
+            } else if (schedulingTools) {
+                whatsAppInteractiveOutbound = WhatsAppInteractiveReply.forCancelPickIfMapped(assistantContent);
+            }
+        }
+
         return new ChatResult(
-                outboundForWhatsapp, aiResponse.whatsAppInteractive(), aiResponse.additionalOutboundMessages());
+                outboundForWhatsapp, whatsAppInteractiveOutbound, aiResponse.additionalOutboundMessages());
 
     }
 

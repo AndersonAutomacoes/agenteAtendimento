@@ -85,6 +85,12 @@ public final class CancelOptionMap {
             return appointmentIdRaw;
         }
         String raw = appointmentIdRaw.strip();
+        if (raw.regionMatches(true, 0, "cancel_", 0, "cancel_".length())) {
+            String tail = raw.substring("cancel_".length()).strip();
+            if (tail.matches("^\\d+$")) {
+                return tail;
+            }
+        }
         Map<Integer, Long> map = parseLastFromText(transcriptBlob != null ? transcriptBlob : "");
         if (map.isEmpty()) {
             map = SchedulingCancelSessionCapture.getSelectionMap();

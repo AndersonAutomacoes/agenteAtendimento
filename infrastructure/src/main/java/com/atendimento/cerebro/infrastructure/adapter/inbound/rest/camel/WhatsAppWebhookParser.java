@@ -1,6 +1,7 @@
 package com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import java.util.Locale;
 import org.springframework.stereotype.Component;
 
 /**
@@ -8,7 +9,8 @@ import org.springframework.stereotype.Component;
  * <ul>
  *   <li>WhatsApp Cloud API (Meta): envelope {@code entry/changes/...}</li>
  *   <li>Evolution API v2: {@code event = messages.upsert}, corpo em {@code data} (remoteJid, message, fromMe); respostas a
- *       botões (reply) expostas como texto do rótulo ou id do slot (ver {@code buttonsResponseMessage})</li>
+ *       botões (reply) expostas como texto do rótulo ou id do slot (ver {@code buttonsResponseMessage}); respostas a
+ *       listas em {@code listResponseMessage.singleSelectReply}</li>
  *   <li>JSON simples (testes): {@code {"from":"...","text":"..."}} ou {@code message} em vez de {@code text}</li>
  * </ul>
  */
@@ -225,6 +227,9 @@ public class WhatsAppWebhookParser {
         if (message.has("buttonsResponseMessage")) {
             return textFromButtonsResponse(message.path("buttonsResponseMessage"));
         }
+        if (message.has("listResponseMessage")) {
+            return textFromListResponse(message.path("listResponseMessage"));
+        }
         if (message.has("conversation")) {
             return message.path("conversation").asText("");
         }
@@ -243,6 +248,33 @@ public class WhatsAppWebhookParser {
         return "";
     }
 
+    /** Resposta a lista interativa; prioriza {@code selectedRowId}. */
+    private static String textFromListResponse(JsonNode lm) {
+        if (lm == null || lm.isMissingNode() || lm.isNull()) {
+            return "";
+        }
+        JsonNode single = lm.path("singleSelectReply");
+        if (single.isMissingNode() || single.isNull()) {
+            single = lm.path("single_select_reply");
+        }
+        if ((single.isMissingNode() || single.isNull()) && lm.has("listResponse")) {
+            JsonNode lr = lm.path("listResponse");
+            single = lr.path("singleSelectReply");
+            if (single.isMissingNode() || single.isNull()) {
+                single = lr.path("single_select_reply");
+            }
+        }
+        String rowId = single.path("selectedRowId").asText("").strip();
+        if (rowId.isEmpty()) {
+            rowId = single.path("selected_row_id").asText("").strip();
+        }
+        if (!rowId.isEmpty()) {
+            return canonicalReplyFromInteractiveRowId(rowId);
+        }
+        String displayTitle = single.path("title").asText("").strip();
+        return displayTitle.isEmpty() ? "" : displayTitle;
+    }
+
     /** Resposta a mensagem com botões (Baileys / Evolution). */
     private static String textFromButtonsResponse(JsonNode br) {
         if (br == null || br.isMissingNode() || br.isNull()) {
@@ -257,6 +289,24 @@ public class WhatsAppWebhookParser {
             return t;
         }
         String id = br.path("selectedButtonId").asText("").strip();
+        return id.isEmpty() ? "" : canonicalReplyFromInteractiveRowId(id);
+    }
+
+    /**
+     * Mapeia IDs de lista/botões ({@code confirm_*}, {@code slot_*}) para texto que o normalizador de agendamento entende.
+     */
+    static String canonicalReplyFromInteractiveRowId(String rowOrButtonId) {
+        if (rowOrButtonId == null || rowOrButtonId.isBlank()) {
+            return "";
+        }
+        String id = rowOrButtonId.strip();
+        String lower = id.toLowerCase(Locale.ROOT);
+        if ("confirm_yes".equals(lower)) {
+            return "sim";
+        }
+        if ("confirm_no".equals(lower)) {
+            return "não";
+        }
         return labelFromSlotButtonId(id);
     }
 
