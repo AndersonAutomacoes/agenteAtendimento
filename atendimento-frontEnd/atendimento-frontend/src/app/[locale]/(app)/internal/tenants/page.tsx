@@ -34,16 +34,24 @@ import {
   postInternalTenantInvite,
   putInternalTenant,
   putTenantServices,
+  postTenantEvolutionPairingQr,
   putTenantSettings,
   toUserFacingApiError,
   type InternalTenantListItem,
   type PortalUserRow,
   type ProfileLevel,
   type TenantServiceRow,
+  type WhatsAppProviderType,
 } from "@/services/apiService";
 
 const SLOT_MINUTES = [15, 30, 45, 60, 90, 120] as const;
 type ServiceDraft = { name: string; duration: string; active: boolean };
+
+const selectClassName = cn(
+  "flex h-9 w-full rounded-xl border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors",
+  "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+  "disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+);
 
 function InternalTenantsPageContent() {
   const t = useTranslations("internalTenants");
@@ -100,6 +108,14 @@ function InternalTenantsPageContent() {
   const [calendarAccessNotes, setCalendarAccessNotes] = React.useState("");
   const [spreadsheetUrl, setSpreadsheetUrl] = React.useState("");
   const [whatsappBusinessNumber, setWhatsappBusinessNumber] = React.useState("");
+  const [whatsappProviderType, setWhatsappProviderType] =
+    React.useState<WhatsAppProviderType>("SIMULATED");
+  const [whatsappApiKey, setWhatsappApiKey] = React.useState("");
+  const [whatsappInstanceId, setWhatsappInstanceId] = React.useState("");
+  const [whatsappBaseUrl, setWhatsappBaseUrl] = React.useState("");
+  const [showAccessToken, setShowAccessToken] = React.useState(false);
+  const [pairingQrLoading, setPairingQrLoading] = React.useState(false);
+  const [pairingQrSrc, setPairingQrSrc] = React.useState<string | null>(null);
   const [inviteRecipientEmail, setInviteRecipientEmail] = React.useState("");
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const [invitePayload, setInvitePayload] = React.useState<{
@@ -124,6 +140,9 @@ function InternalTenantsPageContent() {
     if (v === "clientes") setActiveTab("clientes");
     else setActiveTab("tenants");
   }, [searchParams]);
+
+  /** Backoffice interno: integração técnica editável para qualquer plano do cliente. */
+  const whatsappIntegrationDisabled = savingTenantData || loadingTenantData;
 
   const refreshList = React.useCallback(async () => {
     setLoadingList(true);
@@ -171,6 +190,12 @@ function InternalTenantsPageContent() {
         setCalendarAccessNotes(settings.calendarAccessNotes ?? "");
         setSpreadsheetUrl(settings.spreadsheetUrl ?? "");
         setWhatsappBusinessNumber(settings.whatsappBusinessNumber ?? "");
+        setWhatsappProviderType(settings.whatsappProviderType);
+        setWhatsappApiKey(settings.whatsappApiKey ?? "");
+        setWhatsappInstanceId(settings.whatsappInstanceId ?? "");
+        setWhatsappBaseUrl(settings.whatsappBaseUrl ?? "");
+        setShowAccessToken(false);
+        setPairingQrSrc(null);
         setPortalUsers(users);
         setServiceRows(
           services.length > 0
@@ -213,6 +238,12 @@ function InternalTenantsPageContent() {
     setCalendarAccessNotes("");
     setSpreadsheetUrl("");
     setWhatsappBusinessNumber("");
+    setWhatsappProviderType("SIMULATED");
+    setWhatsappApiKey("");
+    setWhatsappInstanceId("");
+    setWhatsappBaseUrl("");
+    setShowAccessToken(false);
+    setPairingQrSrc(null);
     setPortalUsers([]);
     setServiceRows([{ name: "", duration: "30", active: true }]);
     void loadTenantClientData(selectedTenantId, { signal: ac.signal });
@@ -324,6 +355,30 @@ function InternalTenantsPageContent() {
     }
   };
 
+  const fetchEvolutionQr = React.useCallback(async () => {
+    const tid = selectedTenantId?.trim();
+    if (!tid) {
+      return;
+    }
+    setPairingQrLoading(true);
+    try {
+      const r = await postTenantEvolutionPairingQr(tid);
+      const src =
+        r.qrcodeDataUri ||
+        (r.qrcodePlainBase64 ? `data:image/png;base64,${r.qrcodePlainBase64}` : "");
+      if (!src) {
+        toast.error(tApi("errors.serverUnavailable"));
+        return;
+      }
+      setPairingQrSrc(src);
+      toast.success(tSettings("evoPairingLoaded"));
+    } catch (e) {
+      toast.error(toUserFacingApiError(e, translateApi));
+    } finally {
+      setPairingQrLoading(false);
+    }
+  }, [selectedTenantId, tApi, tSettings, translateApi]);
+
   const saveTenantData = async () => {
     const tid = selectedTenantId?.trim();
     if (!tid) {
@@ -331,13 +386,33 @@ function InternalTenantsPageContent() {
     }
     setSavingTenantData(true);
     try {
+      const type = whatsappProviderType;
+      const wa =
+        type === "SIMULATED"
+          ? {
+              whatsappProviderType: type,
+              whatsappApiKey: "",
+              whatsappInstanceId: "",
+              whatsappBaseUrl: "",
+            }
+          : type === "META"
+            ? {
+                whatsappProviderType: type,
+                whatsappApiKey: whatsappApiKey || null,
+                whatsappInstanceId: whatsappInstanceId || null,
+                whatsappBaseUrl: null as string | null,
+              }
+            : {
+                whatsappProviderType: type,
+                whatsappApiKey: whatsappApiKey || null,
+                whatsappInstanceId: whatsappInstanceId || null,
+                whatsappBaseUrl: whatsappBaseUrl || null,
+              };
+
       await putTenantSettings({
         tenantId: tid,
         systemPrompt: personality,
-        whatsappProviderType: "SIMULATED",
-        whatsappApiKey: "",
-        whatsappInstanceId: "",
-        whatsappBaseUrl: "",
+        ...wa,
         googleCalendarId: nullIfEmpty(googleCalendarId),
         establishmentName: nullIfEmpty(establishmentNameClient),
         businessAddress: nullIfEmpty(businessAddress),
@@ -853,6 +928,146 @@ function InternalTenantsPageContent() {
               <CardContent className="space-y-2">
                 <Label>{tSettings("whatsappBusinessNumber")}</Label>
                 <Input value={whatsappBusinessNumber} onChange={(e) => setWhatsappBusinessNumber(e.target.value)} />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>{tSettings("sectionChannel")}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="internal-tenants-wa-provider">{tSettings("provider")}</Label>
+                  <select
+                    id="internal-tenants-wa-provider"
+                    className={selectClassName}
+                    value={whatsappProviderType}
+                    disabled={whatsappIntegrationDisabled}
+                    onChange={(e) =>
+                      setWhatsappProviderType(e.target.value as WhatsAppProviderType)
+                    }
+                  >
+                    <option value="SIMULATED">{tSettings("optionSimulated")}</option>
+                    <option value="META">{tSettings("optionMeta")}</option>
+                    <option value="EVOLUTION">{tSettings("optionEvolution")}</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground">{tSettings("providerHint")}</p>
+                </div>
+
+                {whatsappProviderType === "SIMULATED" && (
+                  <p className="rounded-xl border border-border bg-card/50 px-4 py-3 text-sm text-muted-foreground">
+                    {tSettings("simulatedBlurb")}
+                  </p>
+                )}
+
+                {whatsappProviderType === "META" && (
+                  <div className="space-y-6 rounded-xl border border-border bg-card/30 p-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="internal-tenants-wa-phone-id">{tSettings("metaPhoneLabel")}</Label>
+                      <Input
+                        id="internal-tenants-wa-phone-id"
+                        placeholder={tSettings("metaPhonePlaceholder")}
+                        value={whatsappInstanceId}
+                        onChange={(e) => setWhatsappInstanceId(e.target.value)}
+                        disabled={whatsappIntegrationDisabled}
+                        autoComplete="off"
+                        className="rounded-xl"
+                      />
+                      <p className="text-xs text-muted-foreground">{tSettings("metaPhoneHint")}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="internal-tenants-wa-access-token">{tSettings("metaTokenLabel")}</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="internal-tenants-wa-access-token"
+                          type={showAccessToken ? "text" : "password"}
+                          placeholder={tSettings("metaTokenPlaceholder")}
+                          value={whatsappApiKey}
+                          onChange={(e) => setWhatsappApiKey(e.target.value)}
+                          disabled={whatsappIntegrationDisabled}
+                          autoComplete="off"
+                          className="rounded-xl"
+                        />
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="shrink-0 rounded-xl"
+                          disabled={whatsappIntegrationDisabled}
+                          onClick={() => setShowAccessToken((v) => !v)}
+                        >
+                          {showAccessToken ? tSettings("metaHide") : tSettings("metaShow")}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{tSettings("metaTokenHint")}</p>
+                    </div>
+                  </div>
+                )}
+
+                {whatsappProviderType === "EVOLUTION" && (
+                  <div className="space-y-6 rounded-xl border border-border bg-card/30 p-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="internal-tenants-wa-evo-url">{tSettings("evoUrlLabel")}</Label>
+                      <Input
+                        id="internal-tenants-wa-evo-url"
+                        placeholder={tSettings("evoUrlPlaceholder")}
+                        value={whatsappBaseUrl}
+                        onChange={(e) => setWhatsappBaseUrl(e.target.value)}
+                        disabled={whatsappIntegrationDisabled}
+                        autoComplete="off"
+                        className="rounded-xl"
+                      />
+                      <p className="text-xs text-muted-foreground">{tSettings("evoUrlHint")}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="internal-tenants-wa-evo-instance">{tSettings("evoInstanceLabel")}</Label>
+                      <Input
+                        id="internal-tenants-wa-evo-instance"
+                        placeholder={tSettings("evoInstancePlaceholder")}
+                        value={whatsappInstanceId}
+                        onChange={(e) => setWhatsappInstanceId(e.target.value)}
+                        disabled={whatsappIntegrationDisabled}
+                        autoComplete="off"
+                        className="rounded-xl"
+                      />
+                      <p className="text-xs text-muted-foreground">{tSettings("evoInstanceHint")}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="internal-tenants-wa-evo-key">{tSettings("evoKeyLabel")}</Label>
+                      <Input
+                        id="internal-tenants-wa-evo-key"
+                        type="password"
+                        placeholder={tSettings("evoKeyPlaceholder")}
+                        value={whatsappApiKey}
+                        onChange={(e) => setWhatsappApiKey(e.target.value)}
+                        disabled={whatsappIntegrationDisabled}
+                        autoComplete="off"
+                        className="rounded-xl"
+                      />
+                      <p className="text-xs text-muted-foreground">{tSettings("evoKeyHint")}</p>
+                    </div>
+                    <div className="space-y-2 border-t border-border pt-4">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="rounded-xl"
+                        disabled={
+                          loadingTenantData || savingTenantData || pairingQrLoading || !selectedTenantId
+                        }
+                        onClick={() => void fetchEvolutionQr()}
+                      >
+                        {pairingQrLoading ? tSettings("evoPairingLoading") : tSettings("evoPairingButton")}
+                      </Button>
+                      <p className="text-xs text-muted-foreground">{tSettings("evoPairingHint")}</p>
+                      {pairingQrSrc ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={pairingQrSrc}
+                          alt={tSettings("evoPairingAlt")}
+                          className="max-w-[260px] rounded-xl border border-border bg-muted/30 p-2"
+                        />
+                      ) : null}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
             <Card>
