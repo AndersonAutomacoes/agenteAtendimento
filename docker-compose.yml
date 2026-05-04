@@ -135,6 +135,7 @@ services:
       CEREBRO_WHATSAPP_EVOLUTION_API_KEY: ${AUTHENTICATION_API_KEY:-}
       # Ex.: ngrok/https público onde a Evolution alcança POST /api/v1/whatsapp/webhook (provisioning por tenant interno).
       CEREBRO_WHATSAPP_EVOLUTION_WEBHOOK_PUBLIC_BASE_URL: ${CEREBRO_WHATSAPP_EVOLUTION_WEBHOOK_PUBLIC_BASE_URL:-}
+      CEREBRO_WHATSAPP_EVOLUTION_INTERACTIVE_MODE: ${CEREBRO_WHATSAPP_EVOLUTION_INTERACTIVE_MODE:-LIST}
       # Local: por defeito false (sem credenciais no container). Para portal Auth: no .env use
       # CEREBRO_FIREBASE_ENABLED=true + FIREBASE_PROJECT_ID + montar o JSON (ver .env.example).
       CEREBRO_FIREBASE_ENABLED: ${CEREBRO_FIREBASE_ENABLED:-true}
