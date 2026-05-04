@@ -82,8 +82,11 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
     /**
      * Fila SEDA (in-process): o REST não pode usar dois .to(direct:iguais); com direct+ponte vimos
      * {@link org.apache.camel.component.direct.DirectConsumerNotAvailableException} em runtime.
+     * O URI completo (incl. {@code timeout}) é montado em {@link #configure()} — o default do Camel
+     * (30s) é inferior a {@code chat.circuit.timeout-ms} e provoca {@link org.apache.camel.ExchangeTimedOutException}
+     * no servlet enquanto o consumidor ainda corre.
      */
-    private static final String WHATSAPP_WEBHOOK_SEDA = "seda:whatsappWebhookIn?concurrentConsumers=1&size=2000";
+    private static final String WHATSAPP_WEBHOOK_SEDA_QUEUE = "whatsappWebhookIn";
 
     private final ChatUseCase chatUseCase;
     private final AudioTranscriptionPort audioTranscriptionPort;
@@ -103,6 +106,8 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
     private final ChatAnalyticsAfterTurnNotifier chatAnalyticsAfterTurnNotifier;
     private final LeadScoringService leadScoringService;
     private final int circuitTimeoutMs;
+    /** Tempo (ms) que o produtor SEDA espera resposta InOut; deve exceder {@link #circuitTimeoutMs} + STT/GCal antes do circuito. */
+    private final int sedaReplyTimeoutMs;
     private final ObjectMapper objectMapper;
 
     public WhatsAppIntegrationRoute(
@@ -124,7 +129,8 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
             @Autowired(required = false) PrimaryIntentTurnNotifier primaryIntentTurnNotifier,
             @Autowired(required = false) ChatAnalyticsAfterTurnNotifier chatAnalyticsAfterTurnNotifier,
             ObjectMapper objectMapper,
-            @Value("${chat.circuit.timeout-ms:15000}") int circuitTimeoutMs) {
+            @Value("${chat.circuit.timeout-ms:15000}") int circuitTimeoutMs,
+            @Value("${cerebro.whatsapp.webhook.seda-reply-timeout-ms:120000}") int sedaReplyTimeoutMs) {
         this.chatUseCase = chatUseCase;
         this.audioTranscriptionPort = audioTranscriptionPort;
         this.webhookTenantResolver = webhookTenantResolver;
@@ -144,12 +150,18 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
         this.chatAnalyticsAfterTurnNotifier = chatAnalyticsAfterTurnNotifier;
         this.objectMapper = objectMapper;
         this.circuitTimeoutMs = circuitTimeoutMs;
+        this.sedaReplyTimeoutMs = Math.max(sedaReplyTimeoutMs, circuitTimeoutMs + 1);
     }
 
     @Override
     public void configure() {
+        String sedaWebhookUri =
+                "seda:"
+                        + WHATSAPP_WEBHOOK_SEDA_QUEUE
+                        + "?concurrentConsumers=1&size=2000&timeout="
+                        + sedaReplyTimeoutMs;
         // @formatter:off
-        from(WHATSAPP_WEBHOOK_SEDA)
+        from(sedaWebhookUri)
                 .routeId("whatsappWebhook")
                 .onCompletion()
                 .process(exchange -> TenantContext.clear())
@@ -177,12 +189,12 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
                 .bindingMode(RestBindingMode.off)
                 .consumes(MediaType.APPLICATION_JSON_VALUE)
                 .produces(MediaType.APPLICATION_JSON_VALUE)
-                .to("seda:whatsappWebhookIn")
+                .to(sedaWebhookUri)
                 .post("/{event}")
                 .bindingMode(RestBindingMode.off)
                 .consumes(MediaType.APPLICATION_JSON_VALUE)
                 .produces(MediaType.APPLICATION_JSON_VALUE)
-                .to("seda:whatsappWebhookIn");
+                .to(sedaWebhookUri);
     }
 
     private void analisarPedido(Exchange exchange) {
@@ -716,7 +728,9 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
                 return true;
             }
             String name = c.getClass().getName();
-            if (name.contains("Timeout") || name.contains("TimeLimiter")) {
+            if (name.contains("Timeout")
+                    || name.contains("TimeLimiter")
+                    || name.contains("ExchangeTimedOut")) {
                 return true;
             }
         }

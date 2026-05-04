@@ -167,6 +167,9 @@ cerebro:
       enabled: ${CEREBRO_WHATSAPP_INBOUND_DEDUPE_ENABLED:true}
       ttl-seconds: ${CEREBRO_WHATSAPP_INBOUND_DEDUPE_TTL_SECONDS:172800}
       key-prefix: ${CEREBRO_WHATSAPP_INBOUND_DEDUPE_KEY_PREFIX:wa:in}
+    # InOut SEDA: tempo máximo (ms) que o servlet espera pelo consumidor. Deve ser > chat.circuit.timeout-ms (+ STT em áudio).
+    webhook:
+      seda-reply-timeout-ms: ${CEREBRO_WHATSAPP_WEBHOOK_SEDA_REPLY_TIMEOUT_MS:120000}
     # Número (só dígitos) → tenantId. Por omissão tenta-se o interlocutor; se não existir entrada, usa-se o campo
     # "sender" do webhook Evolution (telefone da linha/instância). Alinhe com os dígitos reais do Evolution Manager.
     tenants:
@@ -176,6 +179,9 @@ cerebro:
 
 server:
   port: 8080
+  tomcat:
+    # Fechar a ligação antes do timeout SEDA do webhook devolve 502/reset ao cliente (Evolution/Meta).
+    connection-timeout: ${SERVER_TOMCAT_CONNECTION_TIMEOUT_MS:130000}
 
 management:
   endpoints:
