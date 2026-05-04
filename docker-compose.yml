@@ -70,9 +70,11 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+  # Evolution v2.3.6/2.3.7: sendList falha no servidor com «this.isZero is not a function» (clone JSON no Baileys).
+  # Tag :homolog (atualizada pela Evo) costuma incluir correções antes do release estável. Sobrescreva com EVOLUTION_API_IMAGE.
   evolution-api:
     container_name: evolution_api
-    image: evoapicloud/evolution-api:v2.3.6
+    image: ${EVOLUTION_API_IMAGE:-evoapicloud/evolution-api:homolog}
     restart: always
     networks:
       - cerebro_internal

@@ -616,7 +616,14 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
                         buildEvolutionSendTextJson(digits, sanitizeOutboundBody(extra.toString())));
             }
         } catch (Exception e) {
-            LOG.error("Evolution: sendList falhou (instance={} to={}): {}", instanceId, digits, e.toString());
+            String err = e.toString();
+            LOG.error("Evolution: sendList falhou (instance={} to={}): {}", instanceId, digits, err);
+            if (err.contains("isZero")) {
+                LOG.warn(
+                        "Evolution sendList: bug conhecido em v2.3.6/2.3.7 (Baileys/Long após JSON.clone). "
+                                + "Actualize a imagem Docker p.ex. evoapicloud/evolution-api:homolog ou PR #2461 em upstream. "
+                                + "Refs: https://github.com/EvolutionAPI/evolution-api/issues/2305");
+            }
             String body = sanitizeOutboundBody(buildSlotsFormattedPlainText(safeReply, validTimes));
             evolutionOutboundHttp.postJson(
                     base + "/message/sendText/" + instanceId, apiKey, buildEvolutionSendTextJson(digits, body));

@@ -159,7 +159,7 @@ cerebro:
       # URL HTTPS pública onde a Evolution faz POST ao webhook (path /api/v1/whatsapp/webhook). Obrigatório para provisioning automático por tenant (ngrok/production).
       webhook-public-base-url: ${CEREBRO_WHATSAPP_EVOLUTION_WEBHOOK_PUBLIC_BASE_URL:}
       # TEXT | BUTTONS | LIST — vagas na Evolution: texto; sendButtons (máx. 3); sendList (lista nativa WhatsApp, ~10 linhas/seção + overflow em texto).
-      # LIST é o omissão para reduzir erros de digitação; use TEXT se a sua imagem Evolution não suportar sendList.
+      # LIST é o omissão. Se a Evolution devolver 400 «isZero», actualize a imagem Docker (ex.: evoapicloud/evolution-api:homolog) ou use TEXT.
       interactive-mode: ${CEREBRO_WHATSAPP_EVOLUTION_INTERACTIVE_MODE:LIST}
       # Legacy: só usado quando interactive-mode está vazio; true = modo BUTTONS, false = modo TEXT.
       send-interactive-buttons: ${CEREBRO_WHATSAPP_EVOLUTION_SEND_INTERACTIVE_BUTTONS:false}

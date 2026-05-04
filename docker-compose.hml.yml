@@ -55,9 +55,10 @@ services:
       timeout: 3s
       retries: 5
 
+  # v2.3.6/2.3.7 quebram sendList (isZero); :homolog tende a corrigir. Ver EvolutionAPI/evolution-api#2305
   evolution-api:
     container_name: evolution_api
-    image: evoapicloud/evolution-api:v2.3.6
+    image: ${EVOLUTION_API_IMAGE:-evoapicloud/evolution-api:homolog}
     restart: always
     networks:
       - cerebro_internal
