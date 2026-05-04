@@ -54,6 +54,11 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
     /** Limite típico de linhas por secção nas listas WhatsApp Evolution. */
     private static final int EVOLUTION_INTERACTIVE_LIST_MAX_ROWS = 10;
 
+    /**
+     * A Evolution (schema sendList) exige a propriedade {@code footerText}; quando o reply não traz rodapé, usamos este texto.
+     */
+    private static final String EVOLUTION_SENDLIST_DEFAULT_FOOTER = "Toque na lista para escolher.";
+
     private final TenantConfigurationStorePort tenantConfigurationStore;
     private final ChatMessageRepository chatMessageRepository;
     private final LeadScoringService leadScoringService;
@@ -736,9 +741,9 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         root.put("buttonText", truncateForWhatsApp(listBtn, 22));
 
         String ft = sanitizeOutboundBody(reply.footerText());
-        if (!ft.isBlank()) {
-            root.put("footerText", truncateForWhatsApp(ft, 60));
-        }
+        root.put(
+                "footerText",
+                truncateForWhatsApp(ft.isBlank() ? EVOLUTION_SENDLIST_DEFAULT_FOOTER : ft, 60));
 
         ArrayNode sections = root.putArray("sections");
         ObjectNode section = sections.addObject();
