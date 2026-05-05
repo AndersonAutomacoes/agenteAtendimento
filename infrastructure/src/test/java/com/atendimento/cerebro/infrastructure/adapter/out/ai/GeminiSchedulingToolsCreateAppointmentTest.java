@@ -294,14 +294,63 @@ class GeminiSchedulingToolsCreateAppointmentTest {
                         false,
                         Optional.empty());
         assertThat(tools.cancel_appointment("5511", "42")).isEqualTo("delegated");
+        assertThat(tools.hasSuccessfulCancellationThisTurn()).isFalse();
         verify(appointmentService)
                 .cancelAppointment(eq(TID), eq("wa-5511"), eq("5511"), eq("42"), eq(ZoneId.of("America/Sao_Paulo")));
     }
 
     @Test
+    void cancelAppointment_emptySuccessMeansSuccessfulCancellationThisTurn() {
+        AppointmentService appointmentService = Mockito.mock(AppointmentService.class);
+        when(appointmentService.cancelAppointment(any(), any(), any(), any(), any())).thenReturn("");
+        AppointmentSchedulingPort port =
+                new AppointmentSchedulingPort() {
+                    @Override
+                    public String checkAvailability(TenantId tenantId, String isoDate) {
+                        return "";
+                    }
+
+                    @Override
+                    public CreateAppointmentResult createAppointment(
+                            TenantId tenantId,
+                            String isoDate,
+                            String localTime,
+                            String clientName,
+                            Long serviceId,
+                            String serviceName,
+                            String conversationId) {
+                        return CreateAppointmentResult.failure("");
+                    }
+
+                    @Override
+                    public boolean deleteCalendarEvent(TenantId tenantId, String googleEventId) {
+                        return true;
+                    }
+                };
+        GeminiSchedulingTools tools =
+                new GeminiSchedulingTools(
+                        TID,
+                        "wa-5511",
+                        port,
+                        new AppointmentValidationService(),
+                        appointmentService,
+                        ZoneId.of("America/Sao_Paulo"),
+                        "19",
+                        "",
+                        List.of(Message.assistantMessage("lista\n[cancel_option_map:19=19]")),
+                        Optional.empty(),
+                        false,
+                        Optional.empty());
+        assertThat(tools.cancel_appointment("", "19")).isEmpty();
+        assertThat(tools.hasSuccessfulCancellationThisTurn()).isTrue();
+    }
+
+    @Test
     void getActiveAppointments_delegatesToAppointmentService() {
         AppointmentService appointmentService = Mockito.mock(AppointmentService.class);
-        when(appointmentService.getActiveAppointments(any(), any(), any())).thenReturn("listed");
+        when(appointmentService.getActiveAppointments(
+                        eq(TID), eq("wa-5511"), eq(ZoneId.of("America/Sao_Paulo")), eq(false)))
+                .thenReturn("listed");
         AppointmentSchedulingPort port =
                 new AppointmentSchedulingPort() {
                     @Override
@@ -341,7 +390,57 @@ class GeminiSchedulingToolsCreateAppointmentTest {
                         false,
                         Optional.empty());
         assertThat(tools.get_active_appointments()).isEqualTo("listed");
-        verify(appointmentService).getActiveAppointments(TID, "wa-5511", ZoneId.of("America/Sao_Paulo"));
+        verify(appointmentService)
+                .getActiveAppointments(TID, "wa-5511", ZoneId.of("America/Sao_Paulo"), false);
+    }
+
+    @Test
+    void getActiveAppointments_cancelOnLatestIgnoresEarlierRescheduleIntentInHistory() {
+        AppointmentService appointmentService = Mockito.mock(AppointmentService.class);
+        when(appointmentService.getActiveAppointments(
+                        eq(TID), eq("wa-5511"), eq(ZoneId.of("America/Sao_Paulo")), eq(false)))
+                .thenReturn("listed");
+        AppointmentSchedulingPort port =
+                new AppointmentSchedulingPort() {
+                    @Override
+                    public String checkAvailability(TenantId tenantId, String isoDate) {
+                        return "";
+                    }
+
+                    @Override
+                    public CreateAppointmentResult createAppointment(
+                            TenantId tenantId,
+                            String isoDate,
+                            String localTime,
+                            String clientName,
+                            Long serviceId,
+                            String serviceName,
+                            String conversationId) {
+                        return CreateAppointmentResult.failure("");
+                    }
+
+                    @Override
+                    public boolean deleteCalendarEvent(TenantId tenantId, String googleEventId) {
+                        return true;
+                    }
+                };
+        GeminiSchedulingTools tools =
+                new GeminiSchedulingTools(
+                        TID,
+                        "wa-5511",
+                        port,
+                        new AppointmentValidationService(),
+                        appointmentService,
+                        ZoneId.of("America/Sao_Paulo"),
+                        "Quero cancelar",
+                        "",
+                        List.of(Message.userMessage("Quero reagendar")),
+                        Optional.empty(),
+                        false,
+                        Optional.empty());
+        assertThat(tools.get_active_appointments()).isEqualTo("listed");
+        verify(appointmentService)
+                .getActiveAppointments(TID, "wa-5511", ZoneId.of("America/Sao_Paulo"), false);
     }
 
     @Test

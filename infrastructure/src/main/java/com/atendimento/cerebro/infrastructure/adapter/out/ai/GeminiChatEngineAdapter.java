@@ -290,11 +290,12 @@ public class GeminiChatEngineAdapter {
                         content = listing;
                     }
                 }
+                boolean successfulCancellationThisTurn = tools.hasSuccessfulCancellationThisTurn();
                 String canonicalList = tools.peekLastGetActiveAppointmentsListText();
                 if (canonicalList != null && !canonicalList.isBlank()) {
-                    if (cancelContext) {
+                    if (cancelContext && !successfulCancellationThisTurn) {
                         content = canonicalList.strip();
-                    } else if (content == null || content.isBlank()) {
+                    } else if ((content == null || content.isBlank()) && !successfulCancellationThisTurn) {
                         // Modelo frequentemente devolve texto vazio após get_active_appointments; injir o canónico.
                         content = canonicalList.strip();
                     }
@@ -373,7 +374,11 @@ public class GeminiChatEngineAdapter {
                 }
                 if (content == null || content.isBlank()) {
                     if (cancelContext) {
-                        if (cancelFlowListingResult == null) {
+                        if (successfulCancellationThisTurn) {
+                            // Sucesso em cancelAppointment devolve texto vazio por desígnio — a confirmação vai pelo
+                            // AppointmentNotificationListener; não voltar a listar agendamentos neste turno.
+                            content = "";
+                        } else if (cancelFlowListingResult == null) {
                             LOG.warn(
                                     "Gemini (agendamento): resposta vazia do modelo em contexto de cancelamento/gestão; "
                                             + "a obter lista via get_active_appointments (tenant={})",
@@ -381,7 +386,7 @@ public class GeminiChatEngineAdapter {
                             String listed = tools.get_active_appointments();
                             content = listed != null && !listed.isBlank() ? listed.strip() : "";
                         }
-                        if (content == null || content.isBlank()) {
+                        if ((content == null || content.isBlank()) && !successfulCancellationThisTurn) {
                             content = AppointmentService.CANCEL_LIST_UNAVAILABLE_FRIENDLY_MESSAGE;
                         }
                     } else {
@@ -1395,7 +1400,9 @@ public class GeminiChatEngineAdapter {
                 request.tenantId().value());
         String listed = appointmentService.getActiveAppointments(request.tenantId(), request.conversationId(), calendarZone);
         String content = listed != null ? listed.strip() : "";
-        return Optional.of(new AICompletionResponse(content));
+        Optional<WhatsAppInteractiveReply> interactive =
+                SchedulingServiceCatalogInteractive.mergeWithSlotInteractive(content, calendarZone);
+        return Optional.of(new AICompletionResponse(content, interactive));
     }
 
     /**

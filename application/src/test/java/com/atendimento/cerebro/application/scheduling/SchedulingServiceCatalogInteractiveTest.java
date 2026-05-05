@@ -34,4 +34,15 @@ class SchedulingServiceCatalogInteractiveTest {
         assertThat(merged.get().kind()).isEqualTo(WhatsAppInteractiveKind.SLOTS);
         assertThat(merged.get().slotTimes()).isNotEmpty();
     }
+
+    @Test
+    void merge_includesAppointmentPickListWhenCancelMapPresent() {
+        String content =
+                "*Agendamentos*\n\n1) *Serviço* — 06/05/2026 09:00\n\n[cancel_option_map:1=55]";
+        var merged =
+                SchedulingServiceCatalogInteractive.mergeWithSlotInteractive(content, ZoneId.of("America/Bahia"));
+        assertThat(merged).isPresent();
+        assertThat(merged.get().kind()).isEqualTo(WhatsAppInteractiveKind.APPOINTMENT_LIST);
+        assertThat(merged.get().customRows()).anyMatch(r -> r.rowId().equals("pick_appt_55"));
+    }
 }

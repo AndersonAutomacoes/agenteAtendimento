@@ -25,7 +25,12 @@ public final class SchedulingServiceCatalogInteractive {
         if (slots.isPresent()) {
             return slots;
         }
-        return fromAssistantText(content);
+        Optional<WhatsAppInteractiveReply> svc = fromAssistantText(content);
+        if (svc.isPresent()) {
+            return svc;
+        }
+        // Lista activa ([cancel_option_map:…]): Evolution envia o mesmo corpo como texto + lista nativa WhatsApp.
+        return WhatsAppInteractiveReply.forAppointmentPickListIfMapped(content);
     }
 
     public static Optional<WhatsAppInteractiveReply> fromAssistantText(String content) {

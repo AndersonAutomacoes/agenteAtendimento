@@ -624,8 +624,22 @@ public class GeminiSchedulingTools {
      */
     private String lastGetActiveAppointmentsListText;
 
+    /**
+     * Preenchido quando {@link #cancel_appointment(String, String)} corre neste pedido (qualquer retorno). Ausente se a
+     * ferramenta não foi invocada — o adaptador usa para não voltar a listar após cancelamento concluído (o WhatsApp já
+     * recebe o card assíncrono).
+     */
+    private Optional<String> lastCancelAppointmentOutcome = Optional.empty();
+
     public String peekLastGetActiveAppointmentsListText() {
         return lastGetActiveAppointmentsListText;
+    }
+
+    /** {@code true} se {@link #cancel_appointment} foi chamado e devolveu sucesso (incluindo string vazia = sucesso). */
+    public boolean hasSuccessfulCancellationThisTurn() {
+        return lastCancelAppointmentOutcome
+                .map(AppointmentService::isSuccessfulCancellationReply)
+                .orElse(false);
     }
 
     @Tool(
@@ -640,12 +654,16 @@ public class GeminiSchedulingTools {
         boolean newBookingOngoing =
                 SchedulingUserReplyNormalizer.hasRecentNewAppointmentBookingRequestInHistory(
                         conversationHistory, 12);
+        boolean cancelOnLatest =
+                latestUserMessage != null
+                        && SchedulingUserReplyNormalizer.looksLikeCancellationIntent(latestUserMessage);
         boolean rescheduleOnLatest =
                 SchedulingUserReplyNormalizer.looksLikeRescheduleOrTimeChangeIntent(latestUserMessage);
         boolean recentRescheduleInHistory =
                 SchedulingUserReplyNormalizer.hasRecentRescheduleUserIntentInHistory(conversationHistory, 12);
+        /** Histórico com «reagendar» não deve forçar rodapê de remarcação se o turno actual é só cancelamento. */
         boolean rescheduleContext =
-                rescheduleOnLatest || (recentRescheduleInHistory && !newBookingOngoing);
+                !cancelOnLatest && (rescheduleOnLatest || (recentRescheduleInHistory && !newBookingOngoing));
         String listed =
                 appointmentService.getActiveAppointments(
                         tenantId, conversationId, calendarZone, rescheduleContext);
@@ -686,9 +704,12 @@ public class GeminiSchedulingTools {
             LOG.warn(
                     "cancel_appointment recusado: mensagem é data/hora nova após reagendar (tenant={})",
                     tenantId.value());
-            return "Não cancele nesta etapa: o cliente indicou apenas data/horário para reagendar. "
-                    + "Use check_availability para a data escolhida, apresente os horários livres e seguidamente "
-                    + "create_appointment após confirmação. Não invoque cancel_appointment para esta mensagem.";
+            String refused =
+                    "Não cancele nesta etapa: o cliente indicou apenas data/horário para reagendar. "
+                            + "Use check_availability para a data escolhida, apresente os horários livres e seguidamente "
+                            + "create_appointment após confirmação. Não invoque cancel_appointment para esta mensagem.";
+            lastCancelAppointmentOutcome = Optional.of(refused);
+            return refused;
         }
         toolInvocationCount.incrementAndGet();
         String c = contact == null ? "" : contact;
@@ -698,6 +719,7 @@ public class GeminiSchedulingTools {
                         : transcriptForServiceHint + "\n" + latestUserMessage;
         String resolved = CancelOptionMap.resolveAppointmentIdForCancel(appointment_id, blobForCancel);
         String result = appointmentService.cancelAppointment(tenantId, conversationId, c, resolved, calendarZone);
+        lastCancelAppointmentOutcome = Optional.of(result != null ? result.strip() : "");
         ChatService.clearCancellationContext(conversationId);
         return result;
     }
