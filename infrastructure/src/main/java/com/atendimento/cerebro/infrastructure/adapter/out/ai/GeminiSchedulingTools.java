@@ -340,13 +340,20 @@ public class GeminiSchedulingTools {
 
                         : transcriptForServiceHint + "\n" + latestUserMessage;
 
+        final LocalDate resolvedDay = day;
         String mainText =
                 SchedulingServiceResolution.resolveForSlotCardTitle(
                                 tenantId, conversationHistory, latestUserMessage, appointmentService)
-                        .map(svc -> SchedulingSlotCapture.buildWhatsAppMainTextWithExplicitService(day, calendarZone, svc))
-                        .orElseGet(() -> SchedulingSlotCapture.buildWhatsAppMainText(day, calendarZone, hintBlob));
+                        .map(
+                                svc ->
+                                        SchedulingSlotCapture.buildWhatsAppMainTextWithExplicitService(
+                                                resolvedDay, calendarZone, svc))
+                        .orElseGet(
+                                () ->
+                                        SchedulingSlotCapture.buildWhatsAppMainText(
+                                                resolvedDay, calendarZone, hintBlob));
 
-        SchedulingSlotCapture.setStructuredAvailability(mainText, times, day);
+        SchedulingSlotCapture.setStructuredAvailability(mainText, times, resolvedDay);
 
 
 
