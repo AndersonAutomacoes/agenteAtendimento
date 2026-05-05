@@ -31,7 +31,7 @@ public class PostgresTenantConfigurationStore implements TenantConfigurationStor
                         SELECT system_prompt, whatsapp_provider_type, whatsapp_api_key,
                                whatsapp_instance_id, whatsapp_base_url,
                                profile_level, portal_password_hash, google_calendar_id,
-                               establishment_name, business_address, opening_hours, business_contacts, business_facilities,
+                               establishment_name, business_address, business_maps_url, opening_hours, business_contacts, business_facilities,
                                default_appointment_minutes, billing_compliant,
                                calendar_access_notes, google_spreadsheet_url, whatsapp_business_number
                         FROM tenant_configuration WHERE tenant_id = ?
@@ -66,6 +66,7 @@ public class PostgresTenantConfigurationStore implements TenantConfigurationStor
                 rs.getString("google_calendar_id"),
                 rs.getString("establishment_name"),
                 rs.getString("business_address"),
+                rs.getString("business_maps_url"),
                 rs.getString("opening_hours"),
                 rs.getString("business_contacts"),
                 rs.getString("business_facilities"),
@@ -97,10 +98,10 @@ public class PostgresTenantConfigurationStore implements TenantConfigurationStor
                             tenant_id, system_prompt, whatsapp_provider_type,
                             whatsapp_api_key, whatsapp_instance_id, whatsapp_base_url,
                             profile_level, portal_password_hash, google_calendar_id,
-                            establishment_name, business_address, opening_hours, business_contacts, business_facilities,
+                            establishment_name, business_address, business_maps_url, opening_hours, business_contacts, business_facilities,
                             default_appointment_minutes, billing_compliant,
                             calendar_access_notes, google_spreadsheet_url, whatsapp_business_number)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT (tenant_id) DO UPDATE SET
                             system_prompt = EXCLUDED.system_prompt,
                             whatsapp_provider_type = EXCLUDED.whatsapp_provider_type,
@@ -112,6 +113,7 @@ public class PostgresTenantConfigurationStore implements TenantConfigurationStor
                             google_calendar_id = EXCLUDED.google_calendar_id,
                             establishment_name = EXCLUDED.establishment_name,
                             business_address = EXCLUDED.business_address,
+                            business_maps_url = EXCLUDED.business_maps_url,
                             opening_hours = EXCLUDED.opening_hours,
                             business_contacts = EXCLUDED.business_contacts,
                             business_facilities = EXCLUDED.business_facilities,
@@ -132,6 +134,7 @@ public class PostgresTenantConfigurationStore implements TenantConfigurationStor
                 .param(configuration.googleCalendarId())
                 .param(configuration.establishmentName())
                 .param(configuration.businessAddress())
+                .param(configuration.businessMapsUrl())
                 .param(configuration.openingHours())
                 .param(configuration.businessContacts())
                 .param(configuration.businessFacilities())

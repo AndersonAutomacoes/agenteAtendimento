@@ -122,7 +122,7 @@ cerebro:
       slot-minutes: 30
       work-start-hour: 9
       work-end-hour: 18
-  # Card de confirmação no WhatsApp após create_appointment bem-sucedido; maps-url envia segunda mensagem só com o link.
+  # Fallback do card de confirmação no WhatsApp quando o tenant não tem endereço/link Maps em tenant_configuration.
   appointment:
     confirmation:
       location-line: "Oficina AxeZap - Salvador, BA"

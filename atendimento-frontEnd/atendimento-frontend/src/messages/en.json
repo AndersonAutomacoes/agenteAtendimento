@@ -454,6 +454,8 @@
     "sectionBusinessDesc": "Reference data for the establishment (may be used for internal context; not all fields are auto-posted to WhatsApp).",
     "establishmentName": "Business / establishment name",
     "businessAddress": "Address",
+    "businessMapsUrl": "Google Maps link",
+    "businessMapsUrlHint": "Shown in the WhatsApp appointment confirmation card (directions). Use the same Maps link as your business listing.",
     "openingHours": "Opening hours",
     "businessContacts": "Contacts (phone, email, …)",
     "businessFacilities": "Facilities / differentiators",

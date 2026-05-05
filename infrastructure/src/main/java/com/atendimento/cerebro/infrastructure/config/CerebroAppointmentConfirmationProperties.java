@@ -12,8 +12,8 @@ public class CerebroAppointmentConfirmationProperties {
     private String locationLine = "Oficina AxeZap - Salvador, BA";
 
     /**
-     * Se não vazio, envia-se uma segunda mensagem só com o link (facilita abrir no Maps no telefone).
-     * Ex.: {@code https://maps.app.goo.gl/...}
+     * Fallback quando {@code tenant_configuration.business_maps_url} está vazio. O link também entra no card
+     * (junto com {@link #locationLine}). Ex.: {@code https://maps.app.goo.gl/...}
      */
     private String mapsUrl = "";
 

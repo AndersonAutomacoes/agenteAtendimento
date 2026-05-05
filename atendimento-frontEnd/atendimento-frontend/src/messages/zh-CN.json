@@ -454,6 +454,8 @@
     "sectionBusinessDesc": "机构参考信息。",
     "establishmentName": "机构名称",
     "businessAddress": "地址",
+    "businessMapsUrl": "Google 地图链接",
+    "businessMapsUrlHint": "显示在 WhatsApp 预约确认卡片中（路线）。请使用与门店一致的地图链接。",
     "openingHours": "营业时间",
     "businessContacts": "联系方式",
     "businessFacilities": "设施/特点",

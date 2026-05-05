@@ -351,6 +351,8 @@ export type TenantSettings = {
   googleCalendarId: string | null;
   establishmentName: string | null;
   businessAddress: string | null;
+  /** Link Google Maps (confirmação de agendamento no WhatsApp). */
+  businessMapsUrl: string | null;
   openingHours: string | null;
   businessContacts: string | null;
   businessFacilities: string | null;
@@ -371,6 +373,8 @@ export type TenantSettingsPayload = {
   googleCalendarId: string | null;
   establishmentName: string | null;
   businessAddress: string | null;
+  /** Link Google Maps (confirmação de agendamento no WhatsApp). */
+  businessMapsUrl: string | null;
   openingHours: string | null;
   businessContacts: string | null;
   businessFacilities: string | null;
@@ -515,6 +519,7 @@ export async function getTenantSettings(tenantId: string): Promise<TenantSetting
     googleCalendarId: typeof o.googleCalendarId === "string" ? o.googleCalendarId : null,
     establishmentName: typeof o.establishmentName === "string" ? o.establishmentName : null,
     businessAddress: typeof o.businessAddress === "string" ? o.businessAddress : null,
+    businessMapsUrl: typeof o.businessMapsUrl === "string" ? o.businessMapsUrl : null,
     openingHours: typeof o.openingHours === "string" ? o.openingHours : null,
     businessContacts: typeof o.businessContacts === "string" ? o.businessContacts : null,
     businessFacilities: typeof o.businessFacilities === "string" ? o.businessFacilities : null,

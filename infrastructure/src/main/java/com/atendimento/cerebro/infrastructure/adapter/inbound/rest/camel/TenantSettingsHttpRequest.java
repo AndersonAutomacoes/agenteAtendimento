@@ -13,6 +13,7 @@ public record TenantSettingsHttpRequest(
         String googleCalendarId,
         String establishmentName,
         String businessAddress,
+        String businessMapsUrl,
         String openingHours,
         String businessContacts,
         String businessFacilities,

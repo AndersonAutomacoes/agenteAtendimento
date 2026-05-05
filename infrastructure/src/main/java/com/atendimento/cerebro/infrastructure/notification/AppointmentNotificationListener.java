@@ -6,6 +6,7 @@ import com.atendimento.cerebro.application.logging.AppointmentAuditLog;
 import com.atendimento.cerebro.application.event.AppointmentCancelledEvent;
 import com.atendimento.cerebro.application.event.AppointmentConfirmedEvent;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentStorePort;
+import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort;
 import com.atendimento.cerebro.application.port.out.WhatsAppTextOutboundPort;
 import com.atendimento.cerebro.application.scheduling.AppointmentConfirmationCardFormatter;
 import com.atendimento.cerebro.domain.tenant.TenantId;
@@ -36,14 +37,17 @@ public class AppointmentNotificationListener {
 
     private final WhatsAppTextOutboundPort whatsAppTextOutboundPort;
     private final TenantAppointmentStorePort appointmentStore;
+    private final TenantConfigurationStorePort tenantConfigurationStore;
     private final CerebroAppointmentConfirmationProperties appointmentConfirmationProperties;
 
     public AppointmentNotificationListener(
             WhatsAppTextOutboundPort whatsAppTextOutboundPort,
             TenantAppointmentStorePort appointmentStore,
+            TenantConfigurationStorePort tenantConfigurationStore,
             CerebroAppointmentConfirmationProperties appointmentConfirmationProperties) {
         this.whatsAppTextOutboundPort = whatsAppTextOutboundPort;
         this.appointmentStore = appointmentStore;
+        this.tenantConfigurationStore = tenantConfigurationStore;
         this.appointmentConfirmationProperties = appointmentConfirmationProperties;
     }
 
@@ -68,6 +72,19 @@ public class AppointmentNotificationListener {
         String timeBr = ldt.format(TIME_BR);
         String service = sanitizeServiceNameForCustomer(event.serviceName());
 
+        String locationLine = appointmentConfirmationProperties.getLocationLine();
+        String mapsUrl = appointmentConfirmationProperties.getMapsUrl();
+        var tenantCfg = tenantConfigurationStore.findByTenantId(tenantId);
+        if (tenantCfg.isPresent()) {
+            var cfg = tenantCfg.get();
+            if (cfg.businessAddress() != null && !cfg.businessAddress().isBlank()) {
+                locationLine = cfg.businessAddress().strip();
+            }
+            if (cfg.businessMapsUrl() != null && !cfg.businessMapsUrl().isBlank()) {
+                mapsUrl = cfg.businessMapsUrl().strip();
+            }
+        }
+
         String text =
                 AppointmentConfirmationCardFormatter.formatConfirmationCard(
                         event.appointmentId(),
@@ -75,8 +92,8 @@ public class AppointmentNotificationListener {
                         nullSafe(event.clientName()),
                         day,
                         timeBr,
-                        appointmentConfirmationProperties.getLocationLine(),
-                        appointmentConfirmationProperties.getMapsUrl());
+                        locationLine,
+                        mapsUrl);
 
         var payload = new WhatsAppTextPayload(tenantId, number, text);
 

@@ -35,6 +35,8 @@ public class TenantSettingsService implements UpdateTenantSettingsUseCase {
 
         String est = c.establishmentName() != null ? nullIfBlankToNull(c.establishmentName()) : base.establishmentName();
         String addr = c.businessAddress() != null ? nullIfBlankToNull(c.businessAddress()) : base.businessAddress();
+        String mapsUrl =
+                c.businessMapsUrl() != null ? nullIfBlankToNull(c.businessMapsUrl()) : base.businessMapsUrl();
         String hours = c.openingHours() != null ? nullIfBlankToNull(c.openingHours()) : base.openingHours();
         String contacts = c.businessContacts() != null ? nullIfBlankToNull(c.businessContacts()) : base.businessContacts();
         String facilities =
@@ -64,6 +66,7 @@ public class TenantSettingsService implements UpdateTenantSettingsUseCase {
                 googleCal,
                 est,
                 addr,
+                mapsUrl,
                 hours,
                 contacts,
                 facilities,

@@ -18,6 +18,8 @@ public record TenantSettingsUpdateCommand(
         String googleCalendarId,
         String establishmentName,
         String businessAddress,
+        /** {@code null} = manter; string vazia = limpar. */
+        String businessMapsUrl,
         String openingHours,
         String businessContacts,
         String businessFacilities,
@@ -50,6 +52,7 @@ public record TenantSettingsUpdateCommand(
                 whatsappInstanceId,
                 whatsappBaseUrl,
                 googleCalendarId,
+                null,
                 null,
                 null,
                 null,

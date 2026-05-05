@@ -99,6 +99,7 @@ function InternalTenantsPageContent() {
   const [personality, setPersonality] = React.useState("");
   const [establishmentNameClient, setEstablishmentNameClient] = React.useState("");
   const [businessAddress, setBusinessAddress] = React.useState("");
+  const [businessMapsUrl, setBusinessMapsUrl] = React.useState("");
   const [openingHours, setOpeningHours] = React.useState("");
   const [businessContacts, setBusinessContacts] = React.useState("");
   const [businessFacilities, setBusinessFacilities] = React.useState("");
@@ -176,6 +177,7 @@ function InternalTenantsPageContent() {
         setPersonality(settings.systemPrompt);
         setEstablishmentNameClient(settings.establishmentName ?? "");
         setBusinessAddress(settings.businessAddress ?? "");
+        setBusinessMapsUrl(settings.businessMapsUrl ?? "");
         setOpeningHours(settings.openingHours ?? "");
         setBusinessContacts(settings.businessContacts ?? "");
         setInviteRecipientEmail(extractEmailFromContacts(settings.businessContacts ?? ""));
@@ -416,6 +418,7 @@ function InternalTenantsPageContent() {
         googleCalendarId: nullIfEmpty(googleCalendarId),
         establishmentName: nullIfEmpty(establishmentNameClient),
         businessAddress: nullIfEmpty(businessAddress),
+        businessMapsUrl: nullIfEmpty(businessMapsUrl),
         openingHours: nullIfEmpty(openingHours),
         businessContacts: nullIfEmpty(businessContacts),
         businessFacilities: nullIfEmpty(businessFacilities),
@@ -858,6 +861,18 @@ function InternalTenantsPageContent() {
                 <div className="space-y-2">
                   <Label>{tSettings("businessAddress")}</Label>
                   <Textarea value={businessAddress} onChange={(e) => setBusinessAddress(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>{tSettings("businessMapsUrl")}</Label>
+                  <Input
+                    value={businessMapsUrl}
+                    onChange={(e) => setBusinessMapsUrl(e.target.value)}
+                    disabled={loadingTenantData || savingTenantData}
+                    placeholder="https://maps.app.goo.gl/…"
+                    className="font-mono text-sm"
+                    autoComplete="off"
+                  />
+                  <p className="text-xs text-muted-foreground">{tSettings("businessMapsUrlHint")}</p>
                 </div>
                 <div className="space-y-2">
                   <Label>{tSettings("openingHours")}</Label>

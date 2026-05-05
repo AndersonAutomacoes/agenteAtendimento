@@ -95,6 +95,7 @@ public class EvolutionTenantProvisioningService {
                         base.googleCalendarId(),
                         base.establishmentName(),
                         base.businessAddress(),
+                        base.businessMapsUrl(),
                         base.openingHours(),
                         base.businessContacts(),
                         base.businessFacilities(),

@@ -449,6 +449,8 @@
     "sectionBusinessDesc": "Información de referencia del establecimiento.",
     "establishmentName": "Nombre del establecimiento",
     "businessAddress": "Dirección",
+    "businessMapsUrl": "Enlace de Google Maps",
+    "businessMapsUrlHint": "Se muestra en la tarjeta de confirmación de cita en WhatsApp (cómo llegar). Use el mismo enlace que el establecimiento.",
     "openingHours": "Horario de atención",
     "businessContacts": "Contactos (teléfono, e-mail, …)",
     "businessFacilities": "Comodidades / diferenciales",
