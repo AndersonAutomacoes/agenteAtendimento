@@ -337,7 +337,9 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
                     am.evolutionLineDigits(),
                     am.providerMessageId(),
                     am.contactDisplayName(),
-                    am.contactProfilePicUrl());
+                    am.contactProfilePicUrl(),
+                    null,
+                    null);
             persistInboundUserMessage(tenant.get(), tm);
             exchange.setProperty(PROP_DECISION, DECISION_CHAT);
             exchange.getIn().setBody(tm);
@@ -408,6 +410,8 @@ public class WhatsAppIntegrationRoute extends RouteBuilder {
                                 tm.text().strip(),
                                 null,
                                 AiChatProvider.GEMINI,
+                                tm.interactiveKind(),
+                                tm.interactiveRowId(),
                                 priorTurns));
     }
 

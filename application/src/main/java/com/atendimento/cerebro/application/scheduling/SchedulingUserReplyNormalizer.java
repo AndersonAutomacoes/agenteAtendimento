@@ -191,6 +191,23 @@ public final class SchedulingUserReplyNormalizer {
         return parseLastServiceOptionMapFromHistory(history).flatMap(map -> mapServiceIndex(idx.get(), map));
     }
 
+    public static Optional<String> resolveSelectedServiceFromInteractiveRowId(
+            String interactiveRowId, List<Message> history) {
+        if (interactiveRowId == null || interactiveRowId.isBlank() || history == null || history.isEmpty()) {
+            return Optional.empty();
+        }
+        String row = interactiveRowId.strip().toLowerCase(Locale.ROOT);
+        if (!row.startsWith("service_")) {
+            return Optional.empty();
+        }
+        String idxRaw = row.substring("service_".length()).strip();
+        if (!idxRaw.matches("\\d+")) {
+            return Optional.empty();
+        }
+        int idx = Integer.parseInt(idxRaw);
+        return parseLastServiceOptionMapFromHistory(history).flatMap(map -> mapServiceIndex(idx, map));
+    }
+
     public static Optional<String> parseLastSelectedServiceFromHistory(List<Message> history) {
         if (history == null || history.isEmpty()) {
             return Optional.empty();
@@ -321,6 +338,34 @@ public final class SchedulingUserReplyNormalizer {
             return false;
         }
         return serviceOptionMapIsAuthoritativeOverSlotList(history);
+    }
+
+    /**
+     * Mesmo critério de cancelamento, mas somente quando o último prompt do assistente foi de cancelamento.
+     */
+    public static boolean lastAssistantExplicitlyRequestedCancellationChoice(List<Message> history) {
+        if (history == null || history.isEmpty()) {
+            return false;
+        }
+        for (int i = history.size() - 1; i >= 0; i--) {
+            Message m = history.get(i);
+            if (m.role() != MessageRole.ASSISTANT) {
+                continue;
+            }
+            String c = m.content();
+            if (c == null || c.isBlank()) {
+                continue;
+            }
+            if (c.contains(CancelOptionMap.APPENDIX_PREFIX)) {
+                return true;
+            }
+            String lower = c.toLowerCase(Locale.ROOT);
+            return lower.contains("diga apenas o código do agendamento")
+                    || lower.contains("diga apenas o codigo do agendamento")
+                    || lower.contains("qual deseja cancelar")
+                    || lower.contains("cancelar");
+        }
+        return false;
     }
 
     /**

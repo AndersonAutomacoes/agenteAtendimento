@@ -2,6 +2,7 @@ package com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.atendimento.cerebro.application.dto.WhatsAppInteractiveKind;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -186,11 +187,13 @@ class WhatsAppWebhookParserTest {
         var tm = (WhatsAppWebhookParser.Incoming.TextMessage) parser.parse(mapper.readTree(json));
         assertThat(tm.text()).isEqualTo("14:45");
         assertThat(tm.providerMessageId()).isEqualTo("LST1");
+        assertThat(tm.interactiveKind()).isEqualTo(WhatsAppInteractiveKind.SLOTS);
+        assertThat(tm.interactiveRowId()).isEqualTo("slot_14_45");
 
         assertThat(WhatsAppWebhookParser.canonicalReplyFromInteractiveRowId("confirm_yes")).isEqualTo("sim");
         assertThat(WhatsAppWebhookParser.canonicalReplyFromInteractiveRowId("confirm_no")).isEqualTo("não");
         assertThat(WhatsAppWebhookParser.canonicalReplyFromInteractiveRowId("cancel_7")).isEqualTo("cancel_7");
-        assertThat(WhatsAppWebhookParser.canonicalReplyFromInteractiveRowId("service_2")).isEqualTo("2");
+        assertThat(WhatsAppWebhookParser.canonicalReplyFromInteractiveRowId("service_2")).isEqualTo("service_2");
     }
 
     @Test

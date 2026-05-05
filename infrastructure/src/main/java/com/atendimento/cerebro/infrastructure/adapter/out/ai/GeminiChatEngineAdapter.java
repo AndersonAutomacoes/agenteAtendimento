@@ -1107,7 +1107,6 @@ public class GeminiChatEngineAdapter {
         if (msg == null || msg.isBlank()) {
             return;
         }
-        String stripped = msg.strip();
         if (!isAvailabilityListingIntent(msg)
                 && !isSchedulingAvailabilityFollowUpNudge(request)
                 && !isConcreteDateInSchedulingFlow(request, calendarZone)
@@ -1289,7 +1288,8 @@ public class GeminiChatEngineAdapter {
             // primeiro o cliente precisa informar o novo dia/horário.
             return false;
         }
-        return SchedulingUserReplyNormalizer.lastAssistantSuggestedAppointmentCancellation(request.conversationHistory());
+        return SchedulingUserReplyNormalizer.lastAssistantExplicitlyRequestedCancellationChoice(
+                request.conversationHistory());
     }
 
     private static boolean lastAssistantRequestedRescheduleCode(AICompletionRequest request) {

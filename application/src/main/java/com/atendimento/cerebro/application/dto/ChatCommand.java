@@ -12,6 +12,8 @@ public record ChatCommand(
         String userMessage,
         Integer topK,
         AiChatProvider chatProvider,
+        WhatsAppInteractiveKind whatsAppInteractiveKind,
+        String whatsAppInteractiveRowId,
         /**
          * Mensagens anteriores (ex.: WhatsApp em {@code chat_message}) a injetar como histórico no modelo
          * em ordem cronológica crescente. Vazio quando não aplicável.
@@ -19,7 +21,7 @@ public record ChatCommand(
         List<Message> whatsAppHistoryPriorTurns) {
 
     public ChatCommand(TenantId tenantId, ConversationId conversationId, String userMessage) {
-        this(tenantId, conversationId, userMessage, null, AiChatProvider.GEMINI, List.of());
+        this(tenantId, conversationId, userMessage, null, AiChatProvider.GEMINI, null, null, List.of());
     }
 
     public ChatCommand(
@@ -28,7 +30,7 @@ public record ChatCommand(
             String userMessage,
             Integer topK,
             AiChatProvider chatProvider) {
-        this(tenantId, conversationId, userMessage, topK, chatProvider, List.of());
+        this(tenantId, conversationId, userMessage, topK, chatProvider, null, null, List.of());
     }
 
     public ChatCommand {
@@ -40,6 +42,10 @@ public record ChatCommand(
         }
         whatsAppHistoryPriorTurns =
                 whatsAppHistoryPriorTurns == null ? List.of() : List.copyOf(whatsAppHistoryPriorTurns);
+        whatsAppInteractiveRowId =
+                whatsAppInteractiveRowId == null || whatsAppInteractiveRowId.isBlank()
+                        ? null
+                        : whatsAppInteractiveRowId.strip();
     }
 
     public int resolvedTopK() {

@@ -1,5 +1,6 @@
 package com.atendimento.cerebro.infrastructure.adapter.inbound.rest.camel;
 
+import com.atendimento.cerebro.application.dto.WhatsAppInteractiveKind;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Locale;
 import org.springframework.stereotype.Component;
@@ -33,18 +34,20 @@ public class WhatsAppWebhookParser {
                 String evolutionLineDigits,
                 String providerMessageId,
                 String contactDisplayName,
-                String contactProfilePicUrl)
+                String contactProfilePicUrl,
+                WhatsAppInteractiveKind interactiveKind,
+                String interactiveRowId)
                 implements Incoming {
             public TextMessage(String fromRaw, String text) {
-                this(fromRaw, text, null, null, null, null);
+                this(fromRaw, text, null, null, null, null, null, null);
             }
 
             public TextMessage(String fromRaw, String text, String evolutionLineDigits) {
-                this(fromRaw, text, evolutionLineDigits, null, null, null);
+                this(fromRaw, text, evolutionLineDigits, null, null, null, null, null);
             }
 
             public TextMessage(String fromRaw, String text, String evolutionLineDigits, String providerMessageId) {
-                this(fromRaw, text, evolutionLineDigits, providerMessageId, null, null);
+                this(fromRaw, text, evolutionLineDigits, providerMessageId, null, null, null, null);
             }
 
             public TextMessage(
@@ -53,7 +56,7 @@ public class WhatsAppWebhookParser {
                     String evolutionLineDigits,
                     String providerMessageId,
                     String contactDisplayName) {
-                this(fromRaw, text, evolutionLineDigits, providerMessageId, contactDisplayName, null);
+                this(fromRaw, text, evolutionLineDigits, providerMessageId, contactDisplayName, null, null, null);
             }
         }
 
@@ -114,10 +117,19 @@ public class WhatsAppWebhookParser {
         String lineDigits = evolutionWebhookLineDigits(root);
         String contactName = evolutionContactDisplayName(root, data);
         String profilePic = evolutionProfilePicUrl(root, data);
+        String interactiveRowId = extractInteractiveRowId(message);
+        WhatsAppInteractiveKind interactiveKind = classifyInteractiveKind(interactiveRowId);
         String text = extractEvolutionMessageText(message, data.path("messageType").asText(""));
         if (text != null && !text.isBlank()) {
             return new Incoming.TextMessage(
-                    fromDigits, text.strip(), lineDigits, evolutionKeyId(key), contactName, profilePic);
+                    fromDigits,
+                    text.strip(),
+                    lineDigits,
+                    evolutionKeyId(key),
+                    contactName,
+                    profilePic,
+                    interactiveKind,
+                    interactiveRowId);
         }
         JsonNode audio = message.path("audioMessage");
         String audioUrl = audio.path("url").asText("").strip();
@@ -248,6 +260,56 @@ public class WhatsAppWebhookParser {
         return "";
     }
 
+    private static String extractInteractiveRowId(JsonNode message) {
+        if (message == null || message.isMissingNode() || message.isNull()) {
+            return null;
+        }
+        if (message.has("listResponseMessage")) {
+            JsonNode lm = message.path("listResponseMessage");
+            JsonNode single = lm.path("singleSelectReply");
+            if (single.isMissingNode() || single.isNull()) {
+                single = lm.path("single_select_reply");
+            }
+            if ((single.isMissingNode() || single.isNull()) && lm.has("listResponse")) {
+                JsonNode lr = lm.path("listResponse");
+                single = lr.path("singleSelectReply");
+                if (single.isMissingNode() || single.isNull()) {
+                    single = lr.path("single_select_reply");
+                }
+            }
+            String rowId = single.path("selectedRowId").asText("").strip();
+            if (rowId.isEmpty()) {
+                rowId = single.path("selected_row_id").asText("").strip();
+            }
+            return rowId.isEmpty() ? null : rowId;
+        }
+        if (message.has("buttonsResponseMessage")) {
+            String id = message.path("buttonsResponseMessage").path("selectedButtonId").asText("").strip();
+            return id.isEmpty() ? null : id;
+        }
+        return null;
+    }
+
+    private static WhatsAppInteractiveKind classifyInteractiveKind(String rowOrButtonId) {
+        if (rowOrButtonId == null || rowOrButtonId.isBlank()) {
+            return null;
+        }
+        String lower = rowOrButtonId.strip().toLowerCase(Locale.ROOT);
+        if (lower.startsWith("service_")) {
+            return WhatsAppInteractiveKind.SERVICES;
+        }
+        if (lower.startsWith("cancel_")) {
+            return WhatsAppInteractiveKind.CANCEL_PICK;
+        }
+        if (lower.startsWith("confirm_")) {
+            return WhatsAppInteractiveKind.CONFIRMATION;
+        }
+        if (lower.startsWith("slot_")) {
+            return WhatsAppInteractiveKind.SLOTS;
+        }
+        return null;
+    }
+
     /** Resposta a lista interativa; prioriza {@code selectedRowId}. */
     private static String textFromListResponse(JsonNode lm) {
         if (lm == null || lm.isMissingNode() || lm.isNull()) {
@@ -319,8 +381,8 @@ public class WhatsAppWebhookParser {
             return id.substring("slot_".length()).replace('_', ':');
         }
         if (id.startsWith("service_")) {
-            String rest = id.substring("service_".length()).strip();
-            return rest.matches("\\d+") ? rest : id;
+            // Preserve service_* semantic to avoid collisions with numeric cancel options.
+            return id;
         }
         return id;
     }

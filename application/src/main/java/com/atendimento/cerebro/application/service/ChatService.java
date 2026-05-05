@@ -10,6 +10,7 @@ import com.atendimento.cerebro.application.dto.ChatCommand;
 
 import com.atendimento.cerebro.application.dto.ChatResult;
 
+import com.atendimento.cerebro.application.dto.WhatsAppInteractiveKind;
 import com.atendimento.cerebro.application.dto.WhatsAppInteractiveReply;
 
 import com.atendimento.cerebro.application.dto.CrmCustomerRecord;
@@ -53,7 +54,6 @@ import com.atendimento.cerebro.application.scheduling.SchedulingToolContext;
 import com.atendimento.cerebro.application.scheduling.SystemPromptPlaceholders;
 import com.atendimento.cerebro.application.scheduling.SchedulingCreateAppointmentResult;
 import com.atendimento.cerebro.application.scheduling.SchedulingSlotCapture;
-import com.atendimento.cerebro.application.scheduling.SchedulingServiceAttribution;
 import com.atendimento.cerebro.application.scheduling.SchedulingUserReplyNormalizer;
 import com.atendimento.cerebro.application.scheduling.CancelOptionMap;
 
@@ -104,6 +104,7 @@ public class ChatService implements ChatUseCase {
                     Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern CLOCK_TIME = Pattern.compile("\\b([01]?\\d|2[0-3]):([0-5]\\d)\\b");
     private static final Pattern CLOCK_TIME_ONLY = Pattern.compile("^\\s*([01]?\\d|2[0-3]):([0-5]\\d)\\s*$");
+    private static final Pattern SERVICE_ROW_ID = Pattern.compile("^service_(\\d+)$", Pattern.CASE_INSENSITIVE);
 
     private static final Logger LOG = LoggerFactory.getLogger(ChatService.class);
 
@@ -331,7 +332,15 @@ public class ChatService implements ChatUseCase {
             return numericChoiceSanityCheck.get();
         }
 
-        boolean cancelIntent = SchedulingUserReplyNormalizer.looksLikeCancellationIntent(userText);
+        Optional<ChatResult> duplicateInteractiveSelection =
+                maybeIgnoreDuplicateInteractiveSelection(command, historyForAi, context, userMessage);
+        if (duplicateInteractiveSelection.isPresent()) {
+            return duplicateInteractiveSelection.get();
+        }
+
+        boolean isServiceInteractiveSelection = command.whatsAppInteractiveKind() == WhatsAppInteractiveKind.SERVICES;
+        boolean cancelIntent =
+                !isServiceInteractiveSelection && SchedulingUserReplyNormalizer.looksLikeCancellationIntent(userText);
         if (cancelIntent) {
             historyForAi = SchedulingUserReplyNormalizer.stripSchedulingStateFromHistory(historyForAi);
             LOG.info(
@@ -365,13 +374,21 @@ public class ChatService implements ChatUseCase {
 
         final List<Message> historyForSlotExpansion = historyForAi;
 
-        Optional<String> selectedServiceByIndex =
+        Optional<String> selectedServiceByInteractiveRow =
                 schedulingTools && !cancelIntent && !rescheduleIntent
-                        && SchedulingUserReplyNormalizer
-                                .shouldInterpretNumericChoiceAsServiceSelection(historyForSlotExpansion)
-                        ? SchedulingUserReplyNormalizer.resolveSelectedServiceFromUserChoice(
-                                userText, historyForSlotExpansion)
+                        ? SchedulingUserReplyNormalizer.resolveSelectedServiceFromInteractiveRowId(
+                                command.whatsAppInteractiveRowId(), historyForSlotExpansion)
                         : Optional.empty();
+
+        Optional<String> selectedServiceByIndex =
+                selectedServiceByInteractiveRow.isPresent()
+                        ? selectedServiceByInteractiveRow
+                        : schedulingTools && !cancelIntent && !rescheduleIntent
+                                && SchedulingUserReplyNormalizer
+                                        .shouldInterpretNumericChoiceAsServiceSelection(historyForSlotExpansion)
+                                ? SchedulingUserReplyNormalizer.resolveSelectedServiceFromUserChoice(
+                                        userText, historyForSlotExpansion)
+                                : Optional.empty();
 
         SlotChoiceExpansion slotExpansion =
                 schedulingTools && !cancelIntent && !rescheduleIntent
@@ -574,12 +591,12 @@ public class ChatService implements ChatUseCase {
             Optional<String> serviceNameOpt =
                     SchedulingExplicitTimeShortcut.parseServiceNameForCreateFromHistory(historyForAi);
             if (serviceNameOpt.isEmpty()) {
-                String recentUserText =
-                        SchedulingServiceAttribution.mergeRecentUserText(
-                                historyForAi, userText != null ? userText : "", 20);
+                serviceNameOpt = SchedulingUserReplyNormalizer.parseLastSelectedServiceFromHistory(historyForAi);
+            }
+            if (serviceNameOpt.isEmpty()) {
                 serviceNameOpt =
-                        appointmentService.resolveCatalogServiceMentionFromText(
-                                tenantId, recentUserText);
+                        SchedulingUserReplyNormalizer.resolveSelectedServiceFromInteractiveRowId(
+                                command.whatsAppInteractiveRowId(), historyForAi);
             }
             Optional<Long> toCancelId = Optional.empty();
             if (recentRescheduleRequest.isPresent()) {
@@ -920,6 +937,87 @@ public class ChatService implements ChatUseCase {
             }
         }
         return Optional.empty();
+    }
+
+    private Optional<ChatResult> maybeIgnoreDuplicateInteractiveSelection(
+            ChatCommand command, List<Message> historyForAi, ConversationContext context, Message userMessage) {
+        if (command == null || historyForAi == null || historyForAi.isEmpty()) {
+            return Optional.empty();
+        }
+        String rowId = command.whatsAppInteractiveRowId();
+        if (rowId == null || rowId.isBlank()) {
+            return Optional.empty();
+        }
+        WhatsAppInteractiveKind interactiveKind = command.whatsAppInteractiveKind();
+        if (interactiveKind == null) {
+            return Optional.empty();
+        }
+        int lastAssistantStageIndex =
+                switch (interactiveKind) {
+                    case SERVICES -> findLastAssistantIndexContaining(historyForAi, "[service_option_map:");
+                    case CANCEL_PICK -> findLastAssistantIndexContaining(historyForAi, CancelOptionMap.APPENDIX_PREFIX);
+                    case SLOTS -> findLastAssistantIndexContaining(historyForAi, "[slot_options:");
+                    case CONFIRMATION ->
+                            findLastAssistantIndexContaining(
+                                    historyForAi, SchedulingUserReplyNormalizer.SCHEDULING_DRAFT_APPENDIX_TOKEN);
+                };
+        if (lastAssistantStageIndex < 0) {
+            return Optional.empty();
+        }
+        if (!hasUserSelectionAfterStage(historyForAi, lastAssistantStageIndex, interactiveKind)) {
+            return Optional.empty();
+        }
+        String msg =
+                "Recebi sua seleção anterior e já estou processando. "
+                        + "Se quiser trocar a opção, peça um novo agendamento ou reagendamento.";
+        Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(msg));
+        ConversationContext updated = context.append(userMessage, assistantMessage);
+        conversationContextStore.save(updated);
+        return Optional.of(new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(msg)));
+    }
+
+    private static int findLastAssistantIndexContaining(List<Message> history, String token) {
+        if (history == null || history.isEmpty() || token == null || token.isBlank()) {
+            return -1;
+        }
+        for (int i = history.size() - 1; i >= 0; i--) {
+            Message m = history.get(i);
+            if (m.role() != MessageRole.ASSISTANT || m.content() == null) {
+                continue;
+            }
+            if (m.content().contains(token)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static boolean hasUserSelectionAfterStage(
+            List<Message> history, int stageIndex, WhatsAppInteractiveKind kind) {
+        for (int i = stageIndex + 1; i < history.size(); i++) {
+            Message m = history.get(i);
+            if (m.role() != MessageRole.USER || m.content() == null || m.content().isBlank()) {
+                continue;
+            }
+            String c = m.content().strip();
+            if (matchesInteractiveKind(c, kind)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean matchesInteractiveKind(String content, WhatsAppInteractiveKind kind) {
+        if (content == null || content.isBlank() || kind == null) {
+            return false;
+        }
+        String lower = content.strip().toLowerCase(Locale.ROOT);
+        return switch (kind) {
+            case SERVICES -> SERVICE_ROW_ID.matcher(lower).matches();
+            case CANCEL_PICK -> lower.startsWith("cancel_");
+            case SLOTS -> lower.startsWith("slot_");
+            case CONFIRMATION -> lower.startsWith("confirm_") || SHORT_CONFIRMATION.matcher(lower).matches();
+        };
     }
 
     /**

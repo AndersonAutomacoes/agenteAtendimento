@@ -133,6 +133,8 @@ public class ChatRestRoute extends RouteBuilder {
                         req.message(),
                         req.topK(),
                         chatProvider,
+                        null,
+                        null,
                         List.of()));
     }
 

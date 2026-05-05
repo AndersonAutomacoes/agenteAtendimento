@@ -421,7 +421,7 @@ class ChatServiceTest {
 
                 new ChatCommand(
 
-                        tenantId, conversationId, "next", null, AiChatProvider.GEMINI, wa));
+                        tenantId, conversationId, "next", null, AiChatProvider.GEMINI, null, null, wa));
 
 
 
@@ -1214,6 +1214,75 @@ class ChatServiceTest {
         assertThat(result.assistantMessage())
                 .contains("Você escolheu *Revisão*")
                 .contains("me diga a data desejada");
+    }
+
+    @Test
+    void chat_interactiveServiceRowId_afterCancelContext_keepsServiceSelectionFlow() {
+        ConversationContext existing =
+                ConversationContext.builder()
+                        .tenantId(tenantId)
+                        .conversationId(conversationId)
+                        .messages(
+                                List.of(
+                                        Message.assistantMessage(
+                                                "*Agendamentos*\n\n1) Revisão\n\n[cancel_option_map:1=77]"),
+                                        Message.assistantMessage(
+                                                "Serviços disponíveis para agendamento:\n1) Alinhamento\n2) Revisão\n\n[service_option_map:1=Alinhamento|2=Revisão]")))
+                        .build();
+        when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.empty());
+        when(conversationContextStore.load(tenantId, conversationId)).thenReturn(Optional.of(existing));
+        when(knowledgeBase.findTopThreeRelevantFragments(tenantId, "service_2")).thenReturn(List.of());
+
+        var result =
+                chatService.chat(
+                        new ChatCommand(
+                                tenantId,
+                                conversationId,
+                                "service_2",
+                                null,
+                                AiChatProvider.GEMINI,
+                                WhatsAppInteractiveKind.SERVICES,
+                                "service_2",
+                                List.of()));
+
+        verify(aiEngine, never()).complete(any());
+        verify(tenantAppointmentQuery, never())
+                .listAgendadoByConversationOrderedAscending(any(), any(), any());
+        assertThat(result.assistantMessage())
+                .contains("Você escolheu *Revisão*")
+                .contains("me diga a data desejada");
+    }
+
+    @Test
+    void chat_duplicateInteractiveServiceSelection_sameStage_ignoresSecondClick() {
+        ConversationContext existing =
+                ConversationContext.builder()
+                        .tenantId(tenantId)
+                        .conversationId(conversationId)
+                        .messages(
+                                List.of(
+                                        Message.assistantMessage(
+                                                "Serviços disponíveis para agendamento:\n1) Alinhamento\n2) Revisão\n\n[service_option_map:1=Alinhamento|2=Revisão]"),
+                                        Message.userMessage("service_1")))
+                        .build();
+        when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.empty());
+        when(conversationContextStore.load(tenantId, conversationId)).thenReturn(Optional.of(existing));
+        when(knowledgeBase.findTopThreeRelevantFragments(tenantId, "service_2")).thenReturn(List.of());
+
+        var result =
+                chatService.chat(
+                        new ChatCommand(
+                                tenantId,
+                                conversationId,
+                                "service_2",
+                                null,
+                                AiChatProvider.GEMINI,
+                                WhatsAppInteractiveKind.SERVICES,
+                                "service_2",
+                                List.of()));
+
+        verify(aiEngine, never()).complete(any());
+        assertThat(result.assistantMessage()).contains("já estou processando");
     }
 
     @Test
