@@ -24,6 +24,9 @@ public final class SchedulingServiceResolution {
         Pattern.compile("(?is)para\\s+\\*([^*\\n]+)\\*"),
         Pattern.compile("(?is)agendar\\s+(?:o|a|um|uma)?\\s*\\*([^*\\n]+)\\*"),
     };
+    private static final Pattern RECENT_SERVICE_PHRASE =
+            Pattern.compile(
+                    "(?is)servi[çc]o\\s+(?:de|do)?\\s*([\\p{L}0-9\\s\\-_/]+?)\\s+para\\b");
 
     private SchedulingServiceResolution() {}
 
@@ -76,6 +79,12 @@ public final class SchedulingServiceResolution {
         Optional<String> hint = SchedulingExplicitTimeShortcut.recoverServiceHintFromUserHistory(history);
         if (hint.isPresent()) {
             return appointmentService.resolveCatalogServiceMentionFromText(tenantId, hint.get());
+        }
+
+        Optional<String> fromRecentPhrase =
+                resolveFromRecentServicePhrase(tenantId, history, appointmentService);
+        if (fromRecentPhrase.isPresent()) {
+            return fromRecentPhrase;
         }
 
         return Optional.empty();
@@ -205,5 +214,28 @@ public final class SchedulingServiceResolution {
             }
         }
         return -1;
+    }
+
+    private static Optional<String> resolveFromRecentServicePhrase(
+            TenantId tenantId, List<Message> history, AppointmentService appointmentService) {
+        int lowerBound = Math.max(0, history.size() - 10);
+        for (int i = history.size() - 1; i >= lowerBound; i--) {
+            Message m = history.get(i);
+            String c = m.content();
+            if (c == null || c.isBlank()) {
+                continue;
+            }
+            String sanitized = SchedulingUserReplyNormalizer.stripInternalSlotAppendix(c);
+            Matcher matcher = RECENT_SERVICE_PHRASE.matcher(sanitized);
+            while (matcher.find()) {
+                String candidate = matcher.group(1).strip();
+                Optional<String> mapped =
+                        appointmentService.resolveCatalogServiceMentionFromText(tenantId, candidate);
+                if (mapped.isPresent()) {
+                    return mapped;
+                }
+            }
+        }
+        return Optional.empty();
     }
 }
