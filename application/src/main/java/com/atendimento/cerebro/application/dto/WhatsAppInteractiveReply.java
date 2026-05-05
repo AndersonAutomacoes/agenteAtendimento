@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Mensagem interativa Evolution API: horários (lista/botões), confirmação de rascunho, lista de compromissos e acções
@@ -25,6 +27,9 @@ public record WhatsAppInteractiveReply(
         String listButtonText,
         String footerText,
         List<WhatsAppInteractiveRow> customRows) {
+
+    private static final Pattern APPOINTMENT_LINE =
+            Pattern.compile("(?m)^\\s*(\\d+)\\)\\s*\\*?([^\\n*]+?)\\*?\\s*[—-]\\s*(\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2})\\s*$");
 
     public WhatsAppInteractiveReply {
         kind = kind != null ? kind : WhatsAppInteractiveKind.SLOTS;
@@ -105,15 +110,22 @@ public record WhatsAppInteractiveReply(
         if (map.isEmpty()) {
             return Optional.empty();
         }
+        Map<Integer, AppointmentLabel> labels = parseAppointmentLabels(transcriptWithAppendixOrEmpty);
         List<WhatsAppInteractiveRow> rows = new ArrayList<>();
         for (var e : new TreeMap<>(map).entrySet()) {
             int idx = e.getKey();
             long apptId = e.getValue();
+            AppointmentLabel label = labels.get(idx);
+            String title = label != null && !label.serviceName().isBlank() ? label.serviceName() : "Opção " + idx;
+            String desc =
+                    label != null && !label.dateTimePtBr().isBlank()
+                            ? label.dateTimePtBr()
+                            : "Toque para escolher este compromisso";
             rows.add(
                     new WhatsAppInteractiveRow(
                             "pick_appt_" + apptId,
-                            "Opção " + idx,
-                            "Toque para escolher este compromisso"));
+                            title,
+                            desc));
         }
         return Optional.of(
                 new WhatsAppInteractiveReply(
@@ -127,6 +139,24 @@ public record WhatsAppInteractiveReply(
                         "",
                         rows));
     }
+
+    private static Map<Integer, AppointmentLabel> parseAppointmentLabels(String transcript) {
+        TreeMap<Integer, AppointmentLabel> out = new TreeMap<>();
+        Matcher matcher = APPOINTMENT_LINE.matcher(transcript != null ? transcript : "");
+        while (matcher.find()) {
+            try {
+                int idx = Integer.parseInt(matcher.group(1));
+                String service = matcher.group(2) != null ? matcher.group(2).strip() : "";
+                String when = matcher.group(3) != null ? matcher.group(3).strip() : "";
+                out.put(idx, new AppointmentLabel(service, when));
+            } catch (RuntimeException ignored) {
+                // Ignore malformed rows and keep fallback label.
+            }
+        }
+        return out;
+    }
+
+    private record AppointmentLabel(String serviceName, String dateTimePtBr) {}
 
     /** Botões Reagendar / Cancelar para o compromisso escolhido (passo 2). */
     public static WhatsAppInteractiveReply forAppointmentActions(long appointmentId) {

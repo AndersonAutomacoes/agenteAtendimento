@@ -262,7 +262,7 @@ public class GoogleCalendarAppointmentSchedulingService implements AppointmentSc
         }
         try {
             String title = formatCalendarEventSummary(serviceName, time, clientName);
-            String description = formatCalendarEventDescription(conversationId);
+            String description = formatCalendarEventDescription(serviceName, day, localTime, clientName, conversationId);
             GoogleCalendarCreatedEvent created =
                     googleCalendarService.createEvent(
                             title,
@@ -392,8 +392,21 @@ public class GoogleCalendarAppointmentSchedulingService implements AppointmentSc
         return service + " - " + hhmm + " - " + client;
     }
 
-    static String formatCalendarEventDescription(String conversationId) {
+    static String formatCalendarEventDescription(
+            String serviceName, LocalDate date, String localTime, String clientName, String conversationId) {
         StringBuilder out = new StringBuilder("Agendamento via agente de atendimento AxeZap.");
+        if (serviceName != null && !serviceName.isBlank()) {
+            out.append("\nServiço: ").append(serviceName.strip());
+        }
+        if (date != null) {
+            out.append("\nData: ").append(date.format(PT_BR_DATE));
+        }
+        if (localTime != null && !localTime.isBlank()) {
+            out.append("\nHora: ").append(localTime.strip());
+        }
+        if (clientName != null && !clientName.isBlank()) {
+            out.append("\nCliente: ").append(clientName.strip());
+        }
         String waDigits = extractWhatsAppDigitsFromConversationId(conversationId);
         if (waDigits != null) {
             out.append("\nWhatsApp cliente: https://wa.me/").append(waDigits);

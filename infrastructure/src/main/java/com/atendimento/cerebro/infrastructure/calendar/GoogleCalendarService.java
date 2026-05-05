@@ -92,8 +92,7 @@ public class GoogleCalendarService {
 
     /**
      * Resolve o ID do calendário: (1) {@code tenant_configuration.google_calendar_id} (cadastro do tenant); (2)
-     * {@code cerebro.google.calendar.calendar-id} / {@code CEREBRO_GOOGLE_CALENDAR_ID} (fallback global); (3)
-     * {@code client_email} do JSON da service account (evitar em produção multi-tenant).
+     * {@code cerebro.google.calendar.calendar-id} / {@code CEREBRO_GOOGLE_CALENDAR_ID} (fallback global).
      */
     public Optional<String> resolveEffectiveCalendarId(Optional<String> tenantGoogleCalendarId) {
         if (tenantGoogleCalendarId.isPresent() && !tenantGoogleCalendarId.get().isBlank()) {
@@ -112,24 +111,9 @@ public class GoogleCalendarService {
                     id);
             return Optional.of(id);
         }
-        try {
-            ensureClientLoaded();
-        } catch (IOException e) {
-            LOG.warn("Não foi possível carregar credenciais para resolver calendário: {}", e.toString());
-            return Optional.empty();
-        }
-        if (cachedServiceAccountEmail != null && !cachedServiceAccountEmail.isBlank()) {
-            String id = cachedServiceAccountEmail.strip();
-            LOG.warn(
-                    "resolveEffectiveCalendarId: origem={} calendarId={} — "
-                            + "calendário \"principal\" da service account. Em produção multi-tenant defina "
-                            + "google_calendar_id no cadastro do tenant (portal) ou CEREBRO_GOOGLE_CALENDAR_ID.",
-                    "credentials.client_email",
-                    id);
-            return Optional.of(id);
-        }
         LOG.error(
-                "resolveEffectiveCalendarId: nenhum ID resolvido (tenant vazio, calendar-id vazio, client_email ausente no JSON)");
+                "resolveEffectiveCalendarId: nenhum ID resolvido (tenant vazio e calendar-id global vazio). "
+                        + "Defina google_calendar_id no tenant ou CEREBRO_GOOGLE_CALENDAR_ID.");
         return Optional.empty();
     }
 

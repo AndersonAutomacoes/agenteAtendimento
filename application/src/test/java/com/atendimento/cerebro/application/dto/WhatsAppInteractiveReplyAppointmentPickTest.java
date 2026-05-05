@@ -8,12 +8,14 @@ class WhatsAppInteractiveReplyAppointmentPickTest {
 
     @Test
     void forAppointmentPickList_mapsCancelOptionAppendixToPickRows() {
-        String blob = "*Agendamentos*\n\n1) X\n\n[cancel_option_map:1=55]";
+        String blob = "*Agendamentos*\n\n1) *Revisão* — 06/05/2026 09:00\n\n[cancel_option_map:1=55]";
         var opt = WhatsAppInteractiveReply.forAppointmentPickListIfMapped(blob);
         assertThat(opt).isPresent();
         assertThat(opt.get().kind()).isEqualTo(WhatsAppInteractiveKind.APPOINTMENT_LIST);
         assertThat(opt.get().customRows()).hasSize(1);
         assertThat(opt.get().customRows().get(0).rowId()).isEqualTo("pick_appt_55");
+        assertThat(opt.get().customRows().get(0).title()).isEqualTo("Revisão");
+        assertThat(opt.get().customRows().get(0).description()).isEqualTo("06/05/2026 09:00");
     }
 
     @Test
