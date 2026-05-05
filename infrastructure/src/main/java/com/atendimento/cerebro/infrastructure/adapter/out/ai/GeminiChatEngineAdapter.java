@@ -14,6 +14,7 @@ import com.atendimento.cerebro.application.scheduling.CancelOptionMap;
 import com.atendimento.cerebro.application.scheduling.ReagendamentoDeParaHint;
 import com.atendimento.cerebro.application.scheduling.SchedulingCancelSessionCapture;
 import com.atendimento.cerebro.application.scheduling.SchedulingCreateAppointmentResult;
+import com.atendimento.cerebro.application.scheduling.SchedulingServiceCatalogInteractive;
 import com.atendimento.cerebro.application.scheduling.SchedulingSlotCapture;
 import com.atendimento.cerebro.application.scheduling.SchedulingEnforcedChoice;
 import com.atendimento.cerebro.application.scheduling.SchedulingExplicitTimeShortcut;
@@ -390,7 +391,7 @@ public class GeminiChatEngineAdapter {
                 }
                 content = ensureCancelOptionMapOnAssistantText(content);
                 Optional<WhatsAppInteractiveReply> interactive =
-                        SchedulingSlotCapture.takeWhatsAppInteractive(content, calendarZone);
+                        SchedulingServiceCatalogInteractive.mergeWithSlotInteractive(content, calendarZone);
                 return new AICompletionResponse(content, interactive, extraOutbound, whatsappTextOverride);
             } finally {
                 SchedulingToolContext.resetContext();
@@ -821,7 +822,7 @@ public class GeminiChatEngineAdapter {
                             + " foi mantido. Escolha uma das opções disponíveis:";
             SchedulingSlotCapture.setStructuredAvailability(msg, slots, hint.day());
             Optional<WhatsAppInteractiveReply> interactive =
-                    SchedulingSlotCapture.takeWhatsAppInteractive(msg, calendarZone);
+                    SchedulingServiceCatalogInteractive.mergeWithSlotInteractive(msg, calendarZone);
             String rich = slots.isEmpty() ? msg : msg + "\n\n" + SchedulingSlotCapture.formatNumberedSlotLines(slots);
             return Optional.of(new AICompletionResponse(rich, interactive, List.of()));
         }
@@ -1446,7 +1447,7 @@ public class GeminiChatEngineAdapter {
         }
         content = ensureCancelOptionMapOnAssistantText(content);
         Optional<WhatsAppInteractiveReply> interactive =
-                SchedulingSlotCapture.takeWhatsAppInteractive(content, calendarZone);
+                SchedulingServiceCatalogInteractive.mergeWithSlotInteractive(content, calendarZone);
         return Optional.of(new AICompletionResponse(content, interactive, extraOutbound, whatsappTextOverride));
     }
 

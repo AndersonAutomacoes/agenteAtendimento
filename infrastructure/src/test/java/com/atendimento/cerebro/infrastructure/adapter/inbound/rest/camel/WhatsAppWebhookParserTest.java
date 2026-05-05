@@ -190,6 +190,7 @@ class WhatsAppWebhookParserTest {
         assertThat(WhatsAppWebhookParser.canonicalReplyFromInteractiveRowId("confirm_yes")).isEqualTo("sim");
         assertThat(WhatsAppWebhookParser.canonicalReplyFromInteractiveRowId("confirm_no")).isEqualTo("não");
         assertThat(WhatsAppWebhookParser.canonicalReplyFromInteractiveRowId("cancel_7")).isEqualTo("cancel_7");
+        assertThat(WhatsAppWebhookParser.canonicalReplyFromInteractiveRowId("service_2")).isEqualTo("2");
     }
 
     @Test

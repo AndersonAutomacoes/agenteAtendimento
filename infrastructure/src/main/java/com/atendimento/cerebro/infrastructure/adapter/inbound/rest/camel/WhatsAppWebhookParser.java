@@ -318,6 +318,10 @@ public class WhatsAppWebhookParser {
         if (id.startsWith("slot_")) {
             return id.substring("slot_".length()).replace('_', ':');
         }
+        if (id.startsWith("service_")) {
+            String rest = id.substring("service_".length()).strip();
+            return rest.matches("\\d+") ? rest : id;
+        }
         return id;
     }
 

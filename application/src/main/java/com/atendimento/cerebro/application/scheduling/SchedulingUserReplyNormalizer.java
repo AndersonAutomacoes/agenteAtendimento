@@ -221,6 +221,22 @@ public final class SchedulingUserReplyNormalizer {
         return Optional.empty();
     }
 
+    /**
+     * Extrai o payload {@code 1=Nome|2=…} da última ocorrência de {@code [service_option_map:…]} num texto (ex.: resposta
+     * do assistente).
+     */
+    public static Optional<String> parseLastServiceOptionMapPayloadFromText(String text) {
+        if (text == null || !text.contains(SERVICE_OPTION_MAP_APPENDIX_TOKEN)) {
+            return Optional.empty();
+        }
+        String last = null;
+        Matcher mat = SERVICE_OPTION_MAP_ANY.matcher(text);
+        while (mat.find()) {
+            last = mat.group(1);
+        }
+        return Optional.ofNullable(last).map(String::strip).filter(s -> !s.isBlank());
+    }
+
     private static Optional<String> parseLastServiceOptionMapFromHistory(List<Message> history) {
         for (int i = history.size() - 1; i >= 0; i--) {
             Message m = history.get(i);

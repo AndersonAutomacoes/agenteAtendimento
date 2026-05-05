@@ -182,7 +182,9 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_TO, to != null ? to : "");
         Object interactive = exchange.getIn().getHeader(WhatsAppOutboundHeaders.WHATSAPP_INTERACTIVE);
         String effectiveText =
-                shouldSuppressPlainTextWhenInteractive(effective, interactive) ? "" : safeBody;
+                shouldSuppressPlainTextWhenInteractive(effective, interactive, evolutionInteractiveMode)
+                        ? ""
+                        : safeBody;
         exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_TEXT, effectiveText);
         exchange.setProperty(WhatsAppOutboundHeaders.PROP_WA_INTERACTIVE, interactive);
         if (interactive instanceof WhatsAppInteractiveReply reply
@@ -295,14 +297,22 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
     }
 
     static boolean shouldSuppressPlainTextWhenInteractive(
-            WhatsAppProviderType provider, Object interactive) {
+            WhatsAppProviderType provider, Object interactive, EvolutionInteractiveMode mode) {
         if (provider != WhatsAppProviderType.EVOLUTION) {
             return false;
         }
         if (!(interactive instanceof WhatsAppInteractiveReply reply)) {
             return false;
         }
-        return reply.replacesPrimaryOutboundTextSlotList();
+        if (mode == EvolutionInteractiveMode.TEXT) {
+            return false;
+        }
+        if (reply.replacesPrimaryOutboundTextSlotList()) {
+            return true;
+        }
+        return reply.kind() == WhatsAppInteractiveKind.SERVICES
+                && reply.customRows() != null
+                && !reply.customRows().isEmpty();
     }
 
     private void prepareMetaHttp(Exchange exchange) throws Exception {
@@ -356,6 +366,15 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
                 && !multiKindReply.customRows().isEmpty()) {
             sendConfirmationOrCancelFollowUpInteractive(
                     base, apiKey, instanceId, digits, exchange, multiKindReply);
+            exchange.getMessage().setBody("");
+            markAssistantSent(exchange);
+            return;
+        }
+        if (raw instanceof WhatsAppInteractiveReply svcReply
+                && svcReply.kind() == WhatsAppInteractiveKind.SERVICES
+                && svcReply.customRows() != null
+                && !svcReply.customRows().isEmpty()) {
+            sendServiceCatalogInteractive(base, apiKey, instanceId, digits, svcReply, exchange);
             exchange.getMessage().setBody("");
             markAssistantSent(exchange);
             return;
@@ -642,6 +661,88 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         }
     }
 
+    /**
+     * Lista interativa de serviços ({@link WhatsAppInteractiveKind#SERVICES}): mesmo padrão que vagas/confirmação com
+     * {@code cerebro.whatsapp.evolution.interactive-mode}.
+     */
+    private void sendServiceCatalogInteractive(
+            String base,
+            String apiKey,
+            String instanceId,
+            String digits,
+            WhatsAppInteractiveReply reply,
+            Exchange exchange)
+            throws Exception {
+        if (evolutionInteractiveMode == EvolutionInteractiveMode.TEXT) {
+            String text = sanitizeOutboundBody(exchange.getProperty(WhatsAppOutboundHeaders.PROP_WA_TEXT, String.class));
+            if (text.isBlank()) {
+                text = sanitizeOutboundBody(exchange.getIn().getBody(String.class));
+            }
+            evolutionOutboundHttp.postJson(
+                    base + "/message/sendText/" + instanceId, apiKey, buildEvolutionSendTextJson(digits, text));
+            return;
+        }
+        WhatsAppInteractiveReply sanitized = sanitizeCustomRowsReply(reply);
+        try {
+            if (evolutionInteractiveMode == EvolutionInteractiveMode.LIST) {
+                postEvolutionSendListRowChunks(
+                        base,
+                        apiKey,
+                        instanceId,
+                        digits,
+                        sanitized,
+                        sanitized.customRows(),
+                        "Serviços",
+                        "services-catalog");
+                return;
+            }
+            if (evolutionInteractiveMode == EvolutionInteractiveMode.BUTTONS) {
+                if (sanitized.customRows().size() > 3) {
+                    LOG.info(
+                            "Evolution: catálogo de serviços com >3 linhas — envio LIST (instance={})",
+                            instanceId);
+                    postEvolutionSendListRowChunks(
+                            base,
+                            apiKey,
+                            instanceId,
+                            digits,
+                            sanitized,
+                            sanitized.customRows(),
+                            "Serviços",
+                            "services-catalog");
+                } else {
+                    evolutionOutboundHttp.postJson(
+                            base + "/message/sendButtons/" + instanceId,
+                            apiKey,
+                            buildEvolutionSendCustomButtonsJson(digits, sanitized));
+                }
+                return;
+            }
+            postEvolutionSendListRowChunks(
+                    base,
+                    apiKey,
+                    instanceId,
+                    digits,
+                    sanitized,
+                    sanitized.customRows(),
+                    "Serviços",
+                    "services-catalog");
+        } catch (Exception e) {
+            LOG.warn("Evolution: falha ao enviar lista interativa de serviços: {}", e.toString());
+            String fallback =
+                    sanitizeOutboundBody(exchange.getProperty(WhatsAppOutboundHeaders.PROP_WA_TEXT, String.class));
+            if (fallback.isBlank()) {
+                fallback = sanitizeOutboundBody(exchange.getIn().getBody(String.class));
+            }
+            if (!fallback.isBlank()) {
+                evolutionOutboundHttp.postJson(
+                        base + "/message/sendText/" + instanceId,
+                        apiKey,
+                        buildEvolutionSendTextJson(digits, fallback));
+            }
+        }
+    }
+
     private void sendConfirmationOrCancelFollowUpInteractive(
             String base,
             String apiKey,
@@ -712,7 +813,11 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         String lb = sanitizeOutboundBody(reply.listButtonText());
         if (lb.isBlank()) {
             lb =
-                    reply.kind() == WhatsAppInteractiveKind.CONFIRMATION ? "Responder" : "Ver opções";
+                    switch (reply.kind()) {
+                        case CONFIRMATION -> "Responder";
+                        case SERVICES -> "Serviços";
+                        default -> "Ver opções";
+                    };
         }
         String ft = sanitizeOutboundBody(reply.footerText());
         return new WhatsAppInteractiveReply(
@@ -818,11 +923,15 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
                         : sanitizeOutboundBody(reply.description());
         root.put("description", truncateForWhatsApp(desc, 2048));
 
+        String listBtnRaw = sanitizeOutboundBody(reply.listButtonText());
         String listBtn =
-                sanitizeOutboundBody(reply.listButtonText()) == null
-                                || sanitizeOutboundBody(reply.listButtonText()).isBlank()
-                        ? (reply.kind() == WhatsAppInteractiveKind.SLOTS ? "Horários" : "Abrir lista")
-                        : sanitizeOutboundBody(reply.listButtonText());
+                listBtnRaw == null || listBtnRaw.isBlank()
+                        ? switch (reply.kind()) {
+                            case SLOTS -> "Horários";
+                            case SERVICES -> "Serviços";
+                            default -> "Abrir lista";
+                        }
+                        : listBtnRaw;
         root.put("buttonText", truncateForWhatsApp(listBtn, 22));
 
         String ft = sanitizeOutboundBody(reply.footerText());

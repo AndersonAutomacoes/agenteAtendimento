@@ -4,6 +4,8 @@ package com.atendimento.cerebro.application.dto;
 public enum WhatsAppInteractiveKind {
     /** Lista de vagas HH:mm gerada por disponibilidade. */
     SLOTS,
+    /** Catálogo de serviços ({@code [service_option_map:…]}). */
+    SERVICES,
     /** Confirmar ou alterar rascunho de agendamento (Sim / Não). */
     CONFIRMATION,
     /** Escolher qual agendamento cancelar quando existe {@code [cancel_option_map:…]}. */
