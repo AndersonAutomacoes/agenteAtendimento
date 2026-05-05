@@ -45,6 +45,7 @@ import com.atendimento.cerebro.domain.conversation.MessageRole;
 import com.atendimento.cerebro.domain.knowledge.KnowledgeHit;
 
 import com.atendimento.cerebro.domain.tenant.TenantConfiguration;
+import com.atendimento.cerebro.domain.tenant.TenantId;
 
 import com.atendimento.cerebro.application.scheduling.SchedulingEnforcedChoice;
 import com.atendimento.cerebro.application.scheduling.SlotChoiceExpansion;
@@ -54,6 +55,7 @@ import com.atendimento.cerebro.application.scheduling.SchedulingToolContext;
 import com.atendimento.cerebro.application.scheduling.SystemPromptPlaceholders;
 import com.atendimento.cerebro.application.scheduling.SchedulingCreateAppointmentResult;
 import com.atendimento.cerebro.application.scheduling.SchedulingServiceCatalogInteractive;
+import com.atendimento.cerebro.application.scheduling.SchedulingServiceResolution;
 import com.atendimento.cerebro.application.scheduling.SchedulingSlotCapture;
 import com.atendimento.cerebro.application.scheduling.SchedulingUserReplyNormalizer;
 import com.atendimento.cerebro.application.scheduling.CancelOptionMap;
@@ -506,7 +508,7 @@ public class ChatService implements ChatUseCase {
             }
             stored =
                     reattachSelectedServiceToSlotConfirmMessageIfMissing(
-                            stored, historyForSlotExpansion);
+                            tenantId, stored, historyForSlotExpansion);
             Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(stored));
             ConversationContext updated = context.append(userMessage, assistantMessage);
             conversationContextStore.save(updated);
@@ -590,15 +592,11 @@ public class ChatService implements ChatUseCase {
             boolean recentRescheduleIntentInHistory =
                     SchedulingUserReplyNormalizer.hasRecentRescheduleUserIntentInHistory(historyForAi, 12);
             Optional<String> serviceNameOpt =
-                    SchedulingUserReplyNormalizer.parseLastSelectedServiceFromHistory(historyForAi);
-            if (serviceNameOpt.isEmpty()) {
-                serviceNameOpt =
-                        SchedulingUserReplyNormalizer.resolveSelectedServiceFromInteractiveRowId(
-                                command.whatsAppInteractiveRowId(), historyForAi);
-            }
-            if (serviceNameOpt.isEmpty()) {
-                serviceNameOpt = SchedulingExplicitTimeShortcut.parseServiceNameForCreateFromHistory(historyForAi);
-            }
+                    SchedulingServiceResolution.resolveForCreateOrConfirm(
+                            tenantId,
+                            historyForAi,
+                            command.whatsAppInteractiveRowId(),
+                            appointmentService);
             Optional<Long> toCancelId = Optional.empty();
             if (recentRescheduleRequest.isPresent()) {
                 toCancelId =
@@ -634,7 +632,12 @@ public class ChatService implements ChatUseCase {
                 Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(ask));
                 ConversationContext updatedAsk = context.append(userMessage, assistantMessage);
                 conversationContextStore.save(updatedAsk);
-                return new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(ask));
+                Optional<WhatsAppInteractiveReply> catalogInteractiveAsk =
+                        SchedulingServiceCatalogInteractive.fromAssistantText(ask);
+                return new ChatResult(
+                        SchedulingUserReplyNormalizer.stripInternalSlotAppendix(ask),
+                        catalogInteractiveAsk,
+                        List.of());
             }
             String serviceName = serviceNameOpt.get();
             if (!appointmentService.isServiceInTenantCatalog(tenantId, serviceName)) {
@@ -651,7 +654,12 @@ public class ChatService implements ChatUseCase {
                 Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(msg));
                 ConversationContext updatedAsk = context.append(userMessage, assistantMessage);
                 conversationContextStore.save(updatedAsk);
-                return new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(msg));
+                Optional<WhatsAppInteractiveReply> catalogInteractiveInvalid =
+                        SchedulingServiceCatalogInteractive.fromAssistantText(msg);
+                return new ChatResult(
+                        SchedulingUserReplyNormalizer.stripInternalSlotAppendix(msg),
+                        catalogInteractiveInvalid,
+                        List.of());
             }
             if (toCancelId.isPresent()) {
                 Optional<String> sameDayPastTimeError =
@@ -759,6 +767,13 @@ public class ChatService implements ChatUseCase {
             assistantContent =
                     SchedulingUserReplyNormalizer.appendSchedulingDraft(
                             assistantContent, slotExpansion.pendingConfirmationDraft().get());
+            if (outboundOverride.isEmpty()) {
+                outboundForWhatsapp = assistantContent;
+            }
+        }
+        if (schedulingTools) {
+            assistantContent =
+                    ensureSchedulingDraftHasSelectedServiceAppendix(tenantId, assistantContent, historyForAi);
             if (outboundOverride.isEmpty()) {
                 outboundForWhatsapp = assistantContent;
             }
@@ -900,8 +915,8 @@ public class ChatService implements ChatUseCase {
      * A linha «Entendido! opção N… [scheduling_draft:…]» não inclui serviço; o «sim» seguinte precisa de
      * {@code [selected_service:…]} (ou eco inválido). Reutiliza a escolha anterior do histórico.
      */
-    private static String reattachSelectedServiceToSlotConfirmMessageIfMissing(
-            String stored, List<Message> history) {
+    private String reattachSelectedServiceToSlotConfirmMessageIfMissing(
+            TenantId tenantId, String stored, List<Message> history) {
         if (stored == null
                 || stored.isBlank()
                 || !stored.contains(SchedulingUserReplyNormalizer.SCHEDULING_DRAFT_APPENDIX_TOKEN)) {
@@ -910,9 +925,28 @@ public class ChatService implements ChatUseCase {
         if (stored.contains(SchedulingUserReplyNormalizer.SELECTED_SERVICE_APPENDIX_TOKEN)) {
             return stored;
         }
-        return SchedulingUserReplyNormalizer.parseLastSelectedServiceFromHistory(history)
+        Optional<String> fromHistory =
+                SchedulingUserReplyNormalizer.parseLastSelectedServiceFromHistory(history);
+        if (fromHistory.isPresent()) {
+            return SchedulingUserReplyNormalizer.appendSelectedService(stored, fromHistory.get());
+        }
+        return SchedulingServiceResolution.resolveForCreateOrConfirm(tenantId, history, null, appointmentService)
                 .map(sv -> SchedulingUserReplyNormalizer.appendSelectedService(stored, sv))
                 .orElse(stored);
+    }
+
+    private String ensureSchedulingDraftHasSelectedServiceAppendix(
+            TenantId tenantId, String assistantContent, List<Message> historyBeforeAssistantTurn) {
+        if (assistantContent == null
+                || !assistantContent.contains(SchedulingUserReplyNormalizer.SCHEDULING_DRAFT_APPENDIX_TOKEN)) {
+            return assistantContent;
+        }
+        if (assistantContent.contains(SchedulingUserReplyNormalizer.SELECTED_SERVICE_APPENDIX_TOKEN)) {
+            return assistantContent;
+        }
+        return SchedulingServiceResolution.resolveForCreateOrConfirm(tenantId, historyBeforeAssistantTurn, null, appointmentService)
+                .map(s -> SchedulingUserReplyNormalizer.appendSelectedService(assistantContent, s))
+                .orElse(assistantContent);
     }
 
     private static Optional<String> findRecentRescheduleRequestFromHistory(

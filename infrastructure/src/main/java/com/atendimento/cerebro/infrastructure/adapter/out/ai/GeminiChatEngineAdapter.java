@@ -19,6 +19,7 @@ import com.atendimento.cerebro.application.scheduling.SchedulingSlotCapture;
 import com.atendimento.cerebro.application.scheduling.SchedulingEnforcedChoice;
 import com.atendimento.cerebro.application.scheduling.SchedulingExplicitTimeShortcut;
 import com.atendimento.cerebro.application.scheduling.SchedulingRescheduleIdExtractor;
+import com.atendimento.cerebro.application.scheduling.SchedulingServiceResolution;
 import com.atendimento.cerebro.application.scheduling.SchedulingToolContext;
 import com.atendimento.cerebro.application.scheduling.SchedulingUserReplyNormalizer;
 import com.atendimento.cerebro.domain.conversation.Message;
@@ -314,7 +315,20 @@ public class GeminiChatEngineAdapter {
                                 SchedulingSlotCapture.extractDateFromAvailabilityText(content).orElse(null);
                         String hintBlob = mergeRecentTranscriptForDate(request);
                         String inferredMainText =
-                                SchedulingSlotCapture.buildWhatsAppMainText(inferredDate, calendarZone, hintBlob);
+                                SchedulingServiceResolution.resolveForSlotCardTitle(
+                                                request.tenantId(),
+                                                request.conversationHistory(),
+                                                request.userMessage(),
+                                                appointmentService)
+                                        .map(
+                                                svc ->
+                                                        SchedulingSlotCapture
+                                                                .buildWhatsAppMainTextWithExplicitService(
+                                                                        inferredDate, calendarZone, svc))
+                                        .orElseGet(
+                                                () ->
+                                                        SchedulingSlotCapture.buildWhatsAppMainText(
+                                                                inferredDate, calendarZone, hintBlob));
                         SchedulingSlotCapture.setStructuredAvailability(inferredMainText, inferredSlots, inferredDate);
                     }
                 }
@@ -1137,7 +1151,20 @@ public class GeminiChatEngineAdapter {
             List<String> times = SchedulingSlotCapture.parseSlotTimesFromAvailabilityLine(result);
             if (!times.isEmpty()) {
                 String hintBlob = mergeRecentTranscriptForDate(request);
-                String mainText = SchedulingSlotCapture.buildWhatsAppMainText(d, calendarZone, hintBlob);
+                String mainText =
+                        SchedulingServiceResolution.resolveForSlotCardTitle(
+                                        request.tenantId(),
+                                        request.conversationHistory(),
+                                        request.userMessage(),
+                                        appointmentService)
+                                .map(
+                                        svc ->
+                                                SchedulingSlotCapture.buildWhatsAppMainTextWithExplicitService(
+                                                        d, calendarZone, svc))
+                                .orElseGet(
+                                        () ->
+                                                SchedulingSlotCapture.buildWhatsAppMainText(
+                                                        d, calendarZone, hintBlob));
                 SchedulingSlotCapture.setStructuredAvailability(mainText, times, d);
                 LOG.info(
                         "Agendamento: horários obtidos no servidor (modelo não invocou check_availability) tenant={} date={}",

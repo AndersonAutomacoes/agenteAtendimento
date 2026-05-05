@@ -412,12 +412,12 @@ class AppointmentServiceTest {
                 .contains("Quais dos atendimentos abaixo gostaria de cancelar?")
                 .contains("2) *A*")
                 .contains("5) *B*")
-                .contains(AppointmentService.LIST_APPOINTMENTS_RESCHEDULE_HINT_FOOTER_PT)
+                .contains(AppointmentService.LIST_APPOINTMENTS_CANCEL_HINT_FOOTER_PT)
                 .contains("[cancel_option_map:2=2,5=5]");
     }
 
     @Test
-    void getActiveAppointments_singleRow_includesRescheduleAndCancelHintFooter() {
+    void getActiveAppointments_singleRow_includesCancelHintFooter_whenNotForReschedule() {
         TenantAppointmentListItem one = sampleRowAgendado("wa-5511", "Serviço", "g1", 24L);
         when(query.listAgendadoByConversationOrderedAscending(eq(TID), eq("wa-5511"), eq(ZONE_STR)))
                 .thenReturn(List.of(one));
@@ -425,6 +425,19 @@ class AppointmentServiceTest {
         String out = service.getActiveAppointments(TID, "wa-5511", ZONE);
         assertThat(out)
                 .contains("Segue o seu agendamento ativo:")
+                .contains("24) *Serviço*")
+                .contains(AppointmentService.LIST_APPOINTMENTS_CANCEL_HINT_FOOTER_PT)
+                .doesNotContain("Para *Reagendar*");
+    }
+
+    @Test
+    void getActiveAppointments_forReschedule_includesRescheduleAndCancelHintFooter() {
+        TenantAppointmentListItem one = sampleRowAgendado("wa-5511", "Serviço", "g1", 24L);
+        when(query.listAgendadoByConversationOrderedAscending(eq(TID), eq("wa-5511"), eq(ZONE_STR)))
+                .thenReturn(List.of(one));
+
+        String out = service.getActiveAppointments(TID, "wa-5511", ZONE, true);
+        assertThat(out)
                 .contains("24) *Serviço*")
                 .contains(AppointmentService.LIST_APPOINTMENTS_RESCHEDULE_HINT_FOOTER_PT);
     }

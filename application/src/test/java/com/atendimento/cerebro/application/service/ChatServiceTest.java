@@ -631,6 +631,8 @@ class ChatServiceTest {
                 .contains("Serviços disponíveis para agendamento")
                 .contains("1) Alinhamento")
                 .contains("2) Revisão");
+        assertThat(result.whatsAppInteractive()).isPresent();
+        assertThat(result.whatsAppInteractive().get().kind()).isEqualTo(WhatsAppInteractiveKind.SERVICES);
     }
 
     @Test
@@ -1405,6 +1407,8 @@ class ChatServiceTest {
                 .contains("Não encontrei no catálogo um serviço válido para este pedido")
                 .doesNotContain("O serviço \"Com o que vcs trabalham?\"")
                 .doesNotContain("não é atendido");
+        assertThat(result.whatsAppInteractive()).isPresent();
+        assertThat(result.whatsAppInteractive().get().kind()).isEqualTo(WhatsAppInteractiveKind.SERVICES);
     }
 
     @Test

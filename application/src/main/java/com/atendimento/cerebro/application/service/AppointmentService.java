@@ -518,7 +518,10 @@ public class AppointmentService {
                     .append("\n");
         }
         sb.append("\n")
-                .append(LIST_APPOINTMENTS_RESCHEDULE_HINT_FOOTER_PT)
+                .append(
+                        forReschedule
+                                ? LIST_APPOINTMENTS_RESCHEDULE_HINT_FOOTER_PT
+                                : LIST_APPOINTMENTS_CANCEL_HINT_FOOTER_PT)
                 .append("\n");
         sb.append(CancelOptionMap.buildAppendix(optionToAppointmentId));
         return sb.toString();

@@ -340,6 +340,41 @@ public final class SchedulingSlotCapture {
         return "Selecione uma opção de horário para " + dateHuman + dateParen + ":";
     }
 
+    /**
+     * Como {@link #buildWhatsAppMainText(LocalDate, ZoneId, String)}, mas com nome de serviço já resolvido pelo backend
+     * (evita coincidência com o primeiro match de regex num transcript que inclua o catálogo inteiro).
+     */
+    public static String buildWhatsAppMainTextWithExplicitService(
+            LocalDate date, ZoneId calendarZone, String explicitServiceName) {
+        ZoneId z = calendarZone != null ? calendarZone : ZoneId.systemDefault();
+        LocalDate today = LocalDate.now(z);
+        String dateHuman;
+        String dateParen;
+        if (date == null) {
+            dateHuman = "a data escolhida";
+            dateParen = "";
+        } else if (date.equals(today.plusDays(1))) {
+            dateHuman = "amanhã";
+            dateParen = " (" + date.format(DateTimeFormatter.ofPattern("dd/MM", Locale.forLanguageTag("pt-BR"))) + ")";
+        } else if (date.equals(today)) {
+            dateHuman = "hoje";
+            dateParen = " (" + date.format(DateTimeFormatter.ofPattern("dd/MM", Locale.forLanguageTag("pt-BR"))) + ")";
+        } else {
+            dateHuman = date.format(PT_BR_DATE);
+            dateParen = "";
+        }
+        String svc = explicitServiceName == null ? "" : explicitServiceName.strip();
+        if (!svc.isBlank()) {
+            return "Selecione uma opção de horário para "
+                    + svc
+                    + " "
+                    + dateHuman
+                    + dateParen
+                    + ":";
+        }
+        return "Selecione uma opção de horário para " + dateHuman + dateParen + ":";
+    }
+
     private static String extractServiceSnippet(String blob) {
         if (blob == null || blob.isBlank()) {
             return null;

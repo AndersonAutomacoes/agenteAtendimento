@@ -13,6 +13,7 @@ import com.atendimento.cerebro.application.scheduling.SchedulingEnforcedChoice;
 import com.atendimento.cerebro.application.scheduling.SchedulingCancelSessionCapture;
 import com.atendimento.cerebro.application.scheduling.SchedulingSlotCapture;
 import com.atendimento.cerebro.application.scheduling.SchedulingExplicitTimeShortcut;
+import com.atendimento.cerebro.application.scheduling.SchedulingServiceResolution;
 import com.atendimento.cerebro.application.scheduling.SchedulingServiceAttribution;
 import com.atendimento.cerebro.application.scheduling.SchedulingUserReplyNormalizer;
 import com.atendimento.cerebro.application.scheduling.ToolCreateAppointmentPreparation;
@@ -339,7 +340,11 @@ public class GeminiSchedulingTools {
 
                         : transcriptForServiceHint + "\n" + latestUserMessage;
 
-        String mainText = SchedulingSlotCapture.buildWhatsAppMainText(day, calendarZone, hintBlob);
+        String mainText =
+                SchedulingServiceResolution.resolveForSlotCardTitle(
+                                tenantId, conversationHistory, latestUserMessage, appointmentService)
+                        .map(svc -> SchedulingSlotCapture.buildWhatsAppMainTextWithExplicitService(day, calendarZone, svc))
+                        .orElseGet(() -> SchedulingSlotCapture.buildWhatsAppMainText(day, calendarZone, hintBlob));
 
         SchedulingSlotCapture.setStructuredAvailability(mainText, times, day);
 
