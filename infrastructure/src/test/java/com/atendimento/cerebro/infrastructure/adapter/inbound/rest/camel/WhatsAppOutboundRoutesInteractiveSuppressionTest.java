@@ -23,7 +23,7 @@ class WhatsAppOutboundRoutesInteractiveSuppressionTest {
     }
 
     @Test
-    void shouldSuppress_falseInTextModeEvenWithSlots() {
+    void shouldSuppress_falseInTextModeWithSlots() {
         WhatsAppInteractiveReply interactive =
                 new WhatsAppInteractiveReply("t", "d", List.of("09:00", "09:30"));
         assertThat(
@@ -48,6 +48,25 @@ class WhatsAppOutboundRoutesInteractiveSuppressionTest {
         assertThat(
                         WhatsAppOutboundRoutes.shouldSuppressPlainTextWhenInteractive(
                                 WhatsAppProviderType.EVOLUTION, interactive, EvolutionInteractiveMode.LIST))
+                .isTrue();
+    }
+
+    @Test
+    void shouldSuppress_trueForServiceCatalogEvenInTextMode() {
+        WhatsAppInteractiveReply interactive =
+                new WhatsAppInteractiveReply(
+                        WhatsAppInteractiveKind.SERVICES,
+                        "S",
+                        "D",
+                        List.of(),
+                        "",
+                        null,
+                        "Serviços",
+                        "",
+                        List.of(new WhatsAppInteractiveRow("service_1", "A", "")));
+        assertThat(
+                        WhatsAppOutboundRoutes.shouldSuppressPlainTextWhenInteractive(
+                                WhatsAppProviderType.EVOLUTION, interactive, EvolutionInteractiveMode.TEXT))
                 .isTrue();
     }
 

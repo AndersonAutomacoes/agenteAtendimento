@@ -303,6 +303,28 @@ class ChatServiceTest {
 
     }
 
+    @Test
+    void chat_aiServiceOptionMap_generatesServicesInteractiveReply() {
+        when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.empty());
+        when(conversationContextStore.load(tenantId, conversationId)).thenReturn(Optional.empty());
+        when(knowledgeBase.findTopThreeRelevantFragments(eq(tenantId), eq("quais serviços vcs tem?")))
+                .thenReturn(List.of());
+        when(aiEngine.complete(any(AICompletionRequest.class)))
+                .thenReturn(
+                        new AICompletionResponse(
+                                "Serviços disponíveis para agendamento:\n1) Pilates Clássico\n2) Pilates com Aparelhos\n\n"
+                                        + "[service_option_map:1=Pilates Clássico|2=Pilates com Aparelhos]"));
+
+        var result =
+                chatService.chat(
+                        new ChatCommand(tenantId, conversationId, "quais serviços vcs tem?", null, AiChatProvider.GEMINI));
+
+        assertThat(result.whatsAppInteractive()).isPresent();
+        assertThat(result.whatsAppInteractive().get().kind()).isEqualTo(WhatsAppInteractiveKind.SERVICES);
+        assertThat(result.whatsAppInteractive().get().customRows()).hasSize(2);
+        assertThat(result.whatsAppInteractive().get().customRows().get(0).rowId()).isEqualTo("service_1");
+    }
+
 
 
     @Test
@@ -1354,6 +1376,35 @@ class ChatServiceTest {
         verify(appointmentScheduling, never())
                 .createAppointment(any(), any(), any(), any(), any(), any(), any());
         assertThat(result.assistantMessage()).contains("Esse horário já passou para hoje");
+    }
+
+    @Test
+    void chat_confirmWithDraft_doesNotTreatOldServiceQuestionAsUnknownServiceName() {
+        ConversationContext existing =
+                ConversationContext.builder()
+                        .tenantId(tenantId)
+                        .conversationId(conversationId)
+                        .messages(
+                                List.of(
+                                        Message.userMessage("com o que vcs trabalham?"),
+                                        Message.assistantMessage(
+                                                "Serviços disponíveis para agendamento:\n1) Pilates Clássico\n2) Pilates com Aparelhos\n\n"
+                                                        + "[service_option_map:1=Pilates Clássico|2=Pilates com Aparelhos]"),
+                                        Message.assistantMessage(
+                                                "Entendido! Você escolheu o horário 16:00 do dia 05/05/2026. Posso confirmar o agendamento?\n\n"
+                                                        + "[scheduling_draft:2026-05-05|16:00]")))
+                        .build();
+        when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.empty());
+        when(conversationContextStore.load(tenantId, conversationId)).thenReturn(Optional.of(existing));
+        when(knowledgeBase.findTopThreeRelevantFragments(tenantId, "sim")).thenReturn(List.of());
+
+        var result = chatService.chat(new ChatCommand(tenantId, conversationId, "sim", null, AiChatProvider.GEMINI));
+
+        verify(aiEngine, never()).complete(any());
+        assertThat(result.assistantMessage())
+                .contains("Não encontrei no catálogo um serviço válido para este pedido")
+                .doesNotContain("O serviço \"Com o que vcs trabalham?\"")
+                .doesNotContain("não é atendido");
     }
 
     @Test

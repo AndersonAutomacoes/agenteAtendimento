@@ -53,6 +53,7 @@ import com.atendimento.cerebro.application.scheduling.SchedulingRescheduleIdExtr
 import com.atendimento.cerebro.application.scheduling.SchedulingToolContext;
 import com.atendimento.cerebro.application.scheduling.SystemPromptPlaceholders;
 import com.atendimento.cerebro.application.scheduling.SchedulingCreateAppointmentResult;
+import com.atendimento.cerebro.application.scheduling.SchedulingServiceCatalogInteractive;
 import com.atendimento.cerebro.application.scheduling.SchedulingSlotCapture;
 import com.atendimento.cerebro.application.scheduling.SchedulingUserReplyNormalizer;
 import com.atendimento.cerebro.application.scheduling.CancelOptionMap;
@@ -589,14 +590,14 @@ public class ChatService implements ChatUseCase {
             boolean recentRescheduleIntentInHistory =
                     SchedulingUserReplyNormalizer.hasRecentRescheduleUserIntentInHistory(historyForAi, 12);
             Optional<String> serviceNameOpt =
-                    SchedulingExplicitTimeShortcut.parseServiceNameForCreateFromHistory(historyForAi);
-            if (serviceNameOpt.isEmpty()) {
-                serviceNameOpt = SchedulingUserReplyNormalizer.parseLastSelectedServiceFromHistory(historyForAi);
-            }
+                    SchedulingUserReplyNormalizer.parseLastSelectedServiceFromHistory(historyForAi);
             if (serviceNameOpt.isEmpty()) {
                 serviceNameOpt =
                         SchedulingUserReplyNormalizer.resolveSelectedServiceFromInteractiveRowId(
                                 command.whatsAppInteractiveRowId(), historyForAi);
+            }
+            if (serviceNameOpt.isEmpty()) {
+                serviceNameOpt = SchedulingExplicitTimeShortcut.parseServiceNameForCreateFromHistory(historyForAi);
             }
             Optional<Long> toCancelId = Optional.empty();
             if (recentRescheduleRequest.isPresent()) {
@@ -620,18 +621,6 @@ public class ChatService implements ChatUseCase {
                                 tenantId, toCancelId.get(), conversationId.value(), calendarZone);
             }
             if (serviceNameOpt.isEmpty()) {
-                Optional<String> inferredUnknownService =
-                        SchedulingExplicitTimeShortcut.recoverServiceHintFromUserHistory(historyForAi)
-                                .filter(s -> !appointmentService.isServiceInTenantCatalog(tenantId, s));
-                if (inferredUnknownService.isPresent()) {
-                    String msg =
-                            appointmentService.buildUnknownServiceReplyWithOptions(
-                                    tenantId, inferredUnknownService.get());
-                    Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(msg));
-                    ConversationContext updatedAsk = context.append(userMessage, assistantMessage);
-                    conversationContextStore.save(updatedAsk);
-                    return new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(msg));
-                }
                 String schedulingLabel =
                         toCancelId.isPresent() ? "reagendamento" : "agendamento";
                 String ask =
@@ -649,7 +638,16 @@ public class ChatService implements ChatUseCase {
             }
             String serviceName = serviceNameOpt.get();
             if (!appointmentService.isServiceInTenantCatalog(tenantId, serviceName)) {
-                String msg = appointmentService.buildUnknownServiceReplyWithOptions(tenantId, serviceName);
+                String schedulingLabel =
+                        toCancelId.isPresent() ? "reagendamento" : "agendamento";
+                String msg =
+                        "Não encontrei no catálogo um serviço válido para este pedido. "
+                                + "Para continuar o "
+                                + schedulingLabel
+                                + ", escolha primeiro o serviço desejado. "
+                                + "Responda com o número de uma opção abaixo "
+                                + "ou o nome exato do serviço.\n\n"
+                                + appointmentService.listTenantServicesForScheduling(tenantId);
                 Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(msg));
                 ConversationContext updatedAsk = context.append(userMessage, assistantMessage);
                 conversationContextStore.save(updatedAsk);
@@ -776,7 +774,11 @@ public class ChatService implements ChatUseCase {
                 whatsAppInteractiveOutbound =
                         Optional.of(WhatsAppInteractiveReply.forConfirmationActions());
             } else if (schedulingTools) {
-                whatsAppInteractiveOutbound = WhatsAppInteractiveReply.forCancelPickIfMapped(assistantContent);
+                whatsAppInteractiveOutbound =
+                        SchedulingServiceCatalogInteractive.fromAssistantText(assistantContent);
+                if (whatsAppInteractiveOutbound.isEmpty()) {
+                    whatsAppInteractiveOutbound = WhatsAppInteractiveReply.forCancelPickIfMapped(assistantContent);
+                }
             }
         }
 

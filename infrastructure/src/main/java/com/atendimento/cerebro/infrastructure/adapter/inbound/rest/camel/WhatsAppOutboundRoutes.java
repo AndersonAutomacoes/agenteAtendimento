@@ -304,15 +304,15 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         if (!(interactive instanceof WhatsAppInteractiveReply reply)) {
             return false;
         }
+        if (reply.kind() == WhatsAppInteractiveKind.SERVICES
+                && reply.customRows() != null
+                && !reply.customRows().isEmpty()) {
+            return true;
+        }
         if (mode == EvolutionInteractiveMode.TEXT) {
             return false;
         }
-        if (reply.replacesPrimaryOutboundTextSlotList()) {
-            return true;
-        }
-        return reply.kind() == WhatsAppInteractiveKind.SERVICES
-                && reply.customRows() != null
-                && !reply.customRows().isEmpty();
+        return reply.replacesPrimaryOutboundTextSlotList();
     }
 
     private void prepareMetaHttp(Exchange exchange) throws Exception {
@@ -673,18 +673,13 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
             WhatsAppInteractiveReply reply,
             Exchange exchange)
             throws Exception {
-        if (evolutionInteractiveMode == EvolutionInteractiveMode.TEXT) {
-            String text = sanitizeOutboundBody(exchange.getProperty(WhatsAppOutboundHeaders.PROP_WA_TEXT, String.class));
-            if (text.isBlank()) {
-                text = sanitizeOutboundBody(exchange.getIn().getBody(String.class));
-            }
-            evolutionOutboundHttp.postJson(
-                    base + "/message/sendText/" + instanceId, apiKey, buildEvolutionSendTextJson(digits, text));
-            return;
-        }
         WhatsAppInteractiveReply sanitized = sanitizeCustomRowsReply(reply);
+        EvolutionInteractiveMode servicesMode =
+                evolutionInteractiveMode == EvolutionInteractiveMode.TEXT
+                        ? EvolutionInteractiveMode.LIST
+                        : evolutionInteractiveMode;
         try {
-            if (evolutionInteractiveMode == EvolutionInteractiveMode.LIST) {
+            if (servicesMode == EvolutionInteractiveMode.LIST) {
                 postEvolutionSendListRowChunks(
                         base,
                         apiKey,
@@ -696,7 +691,7 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
                         "services-catalog");
                 return;
             }
-            if (evolutionInteractiveMode == EvolutionInteractiveMode.BUTTONS) {
+            if (servicesMode == EvolutionInteractiveMode.BUTTONS) {
                 if (sanitized.customRows().size() > 3) {
                     LOG.info(
                             "Evolution: catálogo de serviços com >3 linhas — envio LIST (instance={})",
