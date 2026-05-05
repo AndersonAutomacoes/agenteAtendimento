@@ -1347,6 +1347,8 @@ class ChatServiceTest {
                 .contains("50) *Alinhamento e Balanceamento*")
                 .contains("Para *Reagendar*, diga o código do agendamento")
                 .contains("Para *Cancelar*, diga apenas o código do agendamento.");
+        assertThat(result.whatsAppInteractive()).isPresent();
+        assertThat(result.whatsAppInteractive().get().kind()).isEqualTo(WhatsAppInteractiveKind.APPOINTMENT_LIST);
     }
 
     @Test
@@ -1445,6 +1447,53 @@ class ChatServiceTest {
                 .contains("Alinhamento e Balanceamento")
                 .contains("13:00")
                 .contains("Posso confirmar o agendamento");
+    }
+
+    @Test
+    void chat_appointmentListInteractive_pickReturnsRescheduleCancelButtons() {
+        TenantAppointmentListItem active =
+                new TenantAppointmentListItem(
+                        77L,
+                        tenantId.value(),
+                        conversationId.value(),
+                        "João",
+                        "Revisão",
+                        Instant.parse("2026-05-10T17:00:00Z"),
+                        Instant.parse("2026-05-10T17:45:00Z"),
+                        "evt-77",
+                        Instant.parse("2026-05-05T12:00:00Z"),
+                        TenantAppointmentListItem.AppointmentStatus.UPCOMING,
+                        TenantAppointmentListItem.BookingStatus.AGENDADO);
+        ConversationContext existing =
+                ConversationContext.builder()
+                        .tenantId(tenantId)
+                        .conversationId(conversationId)
+                        .messages(List.of())
+                        .build();
+        when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.empty());
+        when(conversationContextStore.load(tenantId, conversationId)).thenReturn(Optional.of(existing));
+        when(knowledgeBase.findTopThreeRelevantFragments(eq(tenantId), eq("pick_appt_77"))).thenReturn(List.of());
+        when(tenantAppointmentQuery.findByIdForTenantAndConversation(
+                        eq(tenantId), eq(77L), eq(conversationId.value()), any()))
+                .thenReturn(Optional.of(active));
+
+        var result =
+                chatService.chat(
+                        new ChatCommand(
+                                tenantId,
+                                conversationId,
+                                "pick_appt_77",
+                                null,
+                                AiChatProvider.GEMINI,
+                                WhatsAppInteractiveKind.APPOINTMENT_LIST,
+                                "pick_appt_77",
+                                List.of()));
+
+        verify(aiEngine, never()).complete(any());
+        assertThat(result.whatsAppInteractive()).isPresent();
+        assertThat(result.whatsAppInteractive().get().kind()).isEqualTo(WhatsAppInteractiveKind.APPOINTMENT_ACTION);
+        assertThat(result.whatsAppInteractive().get().customRows()).hasSize(2);
+        assertThat(result.assistantMessage()).contains("Revisão").contains("O que deseja fazer");
     }
 
 }

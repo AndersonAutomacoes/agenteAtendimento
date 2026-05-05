@@ -194,6 +194,35 @@ class WhatsAppWebhookParserTest {
         assertThat(WhatsAppWebhookParser.canonicalReplyFromInteractiveRowId("confirm_no")).isEqualTo("não");
         assertThat(WhatsAppWebhookParser.canonicalReplyFromInteractiveRowId("cancel_7")).isEqualTo("cancel_7");
         assertThat(WhatsAppWebhookParser.canonicalReplyFromInteractiveRowId("service_2")).isEqualTo("service_2");
+        assertThat(WhatsAppWebhookParser.canonicalReplyFromInteractiveRowId("pick_appt_12")).isEqualTo("pick_appt_12");
+        assertThat(WhatsAppWebhookParser.canonicalReplyFromInteractiveRowId("appt_reschedule_5"))
+                .isEqualTo("reagendar o 5");
+        assertThat(WhatsAppWebhookParser.canonicalReplyFromInteractiveRowId("appt_cancel_9")).isEqualTo("cancel_9");
+    }
+
+    @Test
+    void evolution_messagesUpsert_buttonsResponse_appointmentActionUsesCanonicalEvenWithDisplayLabel()
+            throws Exception {
+        String json =
+                """
+                {
+                  "event": "messages.upsert",
+                  "data": {
+                    "key": { "remoteJid": "557196248348@s.whatsapp.net", "fromMe": false, "id": "B1" },
+                    "message": {
+                      "buttonsResponseMessage": {
+                        "selectedButtonId": "appt_cancel_55",
+                        "selectedDisplayText": "Cancelar"
+                      }
+                    },
+                    "messageType": "buttonsResponseMessage"
+                  }
+                }
+                """;
+        var tm = (WhatsAppWebhookParser.Incoming.TextMessage) parser.parse(mapper.readTree(json));
+        assertThat(tm.text()).isEqualTo("cancel_55");
+        assertThat(tm.interactiveKind()).isEqualTo(WhatsAppInteractiveKind.APPOINTMENT_ACTION);
+        assertThat(tm.interactiveRowId()).isEqualTo("appt_cancel_55");
     }
 
     @Test

@@ -9,7 +9,8 @@ import java.util.Optional;
 import java.util.TreeMap;
 
 /**
- * Mensagem interativa Evolution API: horários (lista/botões), confirmação de rascunho ou escolha de cancelamento.
+ * Mensagem interativa Evolution API: horários (lista/botões), confirmação de rascunho, lista de compromissos e acções
+ * (reagendar/cancelar).
  *
  * @param verificationText linha opcional enviada antes do cartão/lista (ex.: verificação de disponibilidade).
  * @param requestedDate data da consulta de disponibilidade (lista “premium” em texto e contexto).
@@ -92,8 +93,11 @@ public record WhatsAppInteractiveReply(
                         new WhatsAppInteractiveRow("confirm_no", "Não, quero alterar")));
     }
 
-    /** Se o texto contém {@link CancelOptionMap#APPENDIX_PREFIX}, monta linhas {@code cancel_<appointmentId>} alinhadas ao mapa. */
-    public static Optional<WhatsAppInteractiveReply> forCancelPickIfMapped(String transcriptWithAppendixOrEmpty) {
+    /**
+     * Se o texto contém {@link CancelOptionMap#APPENDIX_PREFIX}, monta lista interativa com {@code pick_appt_<id>}; o turno
+     * seguinte oferece reagendar/cancelar via {@link #forAppointmentActions(long)}.
+     */
+    public static Optional<WhatsAppInteractiveReply> forAppointmentPickListIfMapped(String transcriptWithAppendixOrEmpty) {
         if (transcriptWithAppendixOrEmpty == null || transcriptWithAppendixOrEmpty.isBlank()) {
             return Optional.empty();
         }
@@ -107,21 +111,41 @@ public record WhatsAppInteractiveReply(
             long apptId = e.getValue();
             rows.add(
                     new WhatsAppInteractiveRow(
-                            "cancel_" + apptId,
+                            "pick_appt_" + apptId,
                             "Opção " + idx,
-                            "Seleção para pedido de cancelamento"));
+                            "Toque para escolher este compromisso"));
         }
         return Optional.of(
                 new WhatsAppInteractiveReply(
-                        WhatsAppInteractiveKind.CANCEL_PICK,
-                        "Escolha o agendamento",
-                        "Selecione a linha correspondente à lista anterior.",
+                        WhatsAppInteractiveKind.APPOINTMENT_LIST,
+                        "Escolha o compromisso",
+                        "Selecione o agendamento na lista abaixo.",
                         List.of(),
                         "",
                         null,
-                        "Ver opções",
+                        "Ver agendamentos",
                         "",
                         rows));
+    }
+
+    /** Botões Reagendar / Cancelar para o compromisso escolhido (passo 2). */
+    public static WhatsAppInteractiveReply forAppointmentActions(long appointmentId) {
+        return new WhatsAppInteractiveReply(
+                WhatsAppInteractiveKind.APPOINTMENT_ACTION,
+                "Este atendimento",
+                "Deseja reagendar ou cancelar?",
+                List.of(),
+                "",
+                null,
+                "Responder",
+                "",
+                List.of(
+                        new WhatsAppInteractiveRow(
+                                "appt_reschedule_" + appointmentId,
+                                "Reagendar",
+                                "Pedir novo data e horário"),
+                        new WhatsAppInteractiveRow(
+                                "appt_cancel_" + appointmentId, "Cancelar", "Anular este agendamento")));
     }
 
     /** True quando este payload deve substituir o envio só com o corpo texto (lista de vagas Evolution). */

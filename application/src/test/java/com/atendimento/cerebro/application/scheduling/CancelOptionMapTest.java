@@ -14,6 +14,11 @@ class CancelOptionMapTest {
     }
 
     @Test
+    void resolveAppointmentId_stripPickApptPrefix() {
+        assertThat(CancelOptionMap.resolveAppointmentIdForCancel("pick_appt_42", "")).isEqualTo("42");
+    }
+
+    @Test
     void buildAppendix_roundTrip() {
         String a = CancelOptionMap.buildAppendix(Map.of(1, 42L, 2, 99L));
         assertThat(a).isEqualTo("[cancel_option_map:1=42,2=99]");

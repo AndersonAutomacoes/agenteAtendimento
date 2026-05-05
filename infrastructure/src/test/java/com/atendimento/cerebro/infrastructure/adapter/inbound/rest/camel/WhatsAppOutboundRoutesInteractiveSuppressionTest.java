@@ -81,6 +81,44 @@ class WhatsAppOutboundRoutesInteractiveSuppressionTest {
     }
 
     @Test
+    void shouldSuppress_trueForAppointmentPickListInListMode() {
+        WhatsAppInteractiveReply interactive =
+                new WhatsAppInteractiveReply(
+                        WhatsAppInteractiveKind.APPOINTMENT_LIST,
+                        "A",
+                        "D",
+                        List.of(),
+                        "",
+                        null,
+                        "Ver",
+                        "",
+                        List.of(new WhatsAppInteractiveRow("pick_appt_1", "Opção 1", "")));
+        assertThat(
+                        WhatsAppOutboundRoutes.shouldSuppressPlainTextWhenInteractive(
+                                WhatsAppProviderType.EVOLUTION, interactive, EvolutionInteractiveMode.LIST))
+                .isTrue();
+    }
+
+    @Test
+    void shouldSuppress_trueForAppointmentPickListEvenInTextMode() {
+        WhatsAppInteractiveReply interactive =
+                new WhatsAppInteractiveReply(
+                        WhatsAppInteractiveKind.APPOINTMENT_LIST,
+                        "A",
+                        "D",
+                        List.of(),
+                        "",
+                        null,
+                        "Ver",
+                        "",
+                        List.of(new WhatsAppInteractiveRow("pick_appt_1", "Opção 1", "")));
+        assertThat(
+                        WhatsAppOutboundRoutes.shouldSuppressPlainTextWhenInteractive(
+                                WhatsAppProviderType.EVOLUTION, interactive, EvolutionInteractiveMode.TEXT))
+                .isTrue();
+    }
+
+    @Test
     void shouldSuppressPlainTextWhenInteractive_falseForNonEvolutionOrNoSlots() {
         WhatsAppInteractiveReply emptyInteractive =
                 new WhatsAppInteractiveReply("t", "d", List.of());

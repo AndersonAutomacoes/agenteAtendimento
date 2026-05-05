@@ -8,6 +8,10 @@ public enum WhatsAppInteractiveKind {
     SERVICES,
     /** Confirmar ou alterar rascunho de agendamento (Sim / Não). */
     CONFIRMATION,
-    /** Escolher qual agendamento cancelar quando existe {@code [cancel_option_map:…]}. */
-    CANCEL_PICK
+    /** Resposta a ID {@code cancel_<appointmentId>} (ex.: lista interactiva legacy ou eco estruturado). */
+    CANCEL_PICK,
+    /** Lista de agendamentos ativos (passo 1: escolher o compromisso). */
+    APPOINTMENT_LIST,
+    /** Após escolher compromisso: reagendar ou cancelar. */
+    APPOINTMENT_ACTION
 }

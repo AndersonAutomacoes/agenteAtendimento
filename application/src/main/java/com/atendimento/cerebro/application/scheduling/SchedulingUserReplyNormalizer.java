@@ -34,6 +34,9 @@ public final class SchedulingUserReplyNormalizer {
     public static final String SERVICE_OPTION_MAP_APPENDIX_TOKEN = "[service_option_map:";
     public static final String SELECTED_SERVICE_APPENDIX_TOKEN = "[selected_service:";
 
+    /** Após listagem interativa: marca qual ID está em escolha «reagendar / cancelar». */
+    public static final String APPOINTMENT_ACTION_FOR_APPENDIX_TOKEN = "[appointment_action_for:";
+
     private static final Pattern APPENDIX_ANY = Pattern.compile("\\[slot_options:([^\\]]+)\\]");
     private static final Pattern DRAFT_ANY = Pattern.compile("\\[scheduling_draft:([^\\|]+)\\|([^\\]]+)\\]");
 
@@ -152,6 +155,7 @@ public final class SchedulingUserReplyNormalizer {
         }
         String s = stripSlotSchedulingStateOnly(content);
         s = s.replaceAll("(?is)\\[cancel_option_map:[^\\]]+\\]", "");
+        s = s.replaceAll("(?is)\\[appointment_action_for:[^\\]]+\\]", "");
         s = s.replaceAll("(?s)\\n{3,}", "\n\n");
         return s.strip();
     }
@@ -178,6 +182,18 @@ public final class SchedulingUserReplyNormalizer {
         }
         String safe = serviceName.strip().replace("]", ")").replace("|", "/");
         return base + "\n\n" + SELECTED_SERVICE_APPENDIX_TOKEN + safe + "]";
+    }
+
+    /** Marca o compromisso em escolha no passo «reagendar / cancelar» (dedupe de interactivo). */
+    public static String appendAppointmentActionFor(String content, long appointmentId) {
+        if (appointmentId <= 0) {
+            return content;
+        }
+        String base = content == null ? "" : content.strip();
+        if (base.contains(APPOINTMENT_ACTION_FOR_APPENDIX_TOKEN)) {
+            return base;
+        }
+        return base + "\n" + APPOINTMENT_ACTION_FOR_APPENDIX_TOKEN + appointmentId + "]";
     }
 
     public static Optional<String> resolveSelectedServiceFromUserChoice(String userMessage, List<Message> history) {

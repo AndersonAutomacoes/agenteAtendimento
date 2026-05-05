@@ -109,6 +109,9 @@ public class ChatService implements ChatUseCase {
     private static final Pattern CLOCK_TIME_ONLY = Pattern.compile("^\\s*([01]?\\d|2[0-3]):([0-5]\\d)\\s*$");
     private static final Pattern SERVICE_ROW_ID = Pattern.compile("^service_(\\d+)$", Pattern.CASE_INSENSITIVE);
 
+    private static final Pattern PICK_APPT_ROW = Pattern.compile("(?i)^pick_appt_(\\d+)$");
+    private static final Pattern STRUCTURED_CANCEL_REPLY = Pattern.compile("(?i)^cancel_(\\d+)$");
+
     private static final Logger LOG = LoggerFactory.getLogger(ChatService.class);
 
     /**
@@ -341,6 +344,44 @@ public class ChatService implements ChatUseCase {
             return duplicateInteractiveSelection.get();
         }
 
+        ZoneId calendarZoneScheduling = ZoneId.of(schedulingZoneId);
+        Optional<ChatResult> appointmentPickInteractive =
+                maybeHandleAppointmentPickFromInteractiveList(
+                        schedulingTools,
+                        command,
+                        tenantId,
+                        conversationId.value(),
+                        calendarZoneScheduling,
+                        context,
+                        userMessage);
+        if (appointmentPickInteractive.isPresent()) {
+            return appointmentPickInteractive.get();
+        }
+        Optional<ChatResult> rescheduleAskFromAction =
+                maybeHandleRescheduleAskFromAppointmentAction(
+                        schedulingTools,
+                        command,
+                        tenantId,
+                        conversationId.value(),
+                        calendarZoneScheduling,
+                        context,
+                        userMessage);
+        if (rescheduleAskFromAction.isPresent()) {
+            return rescheduleAskFromAction.get();
+        }
+        Optional<ChatResult> structuredCancel =
+                maybeHandleStructuredCancelFromInteractive(
+                        schedulingTools,
+                        command,
+                        tenantId,
+                        conversationId.value(),
+                        calendarZoneScheduling,
+                        context,
+                        userMessage);
+        if (structuredCancel.isPresent()) {
+            return structuredCancel.get();
+        }
+
         boolean isServiceInteractiveSelection = command.whatsAppInteractiveKind() == WhatsAppInteractiveKind.SERVICES;
         boolean cancelIntent =
                 !isServiceInteractiveSelection && SchedulingUserReplyNormalizer.looksLikeCancellationIntent(userText);
@@ -515,7 +556,7 @@ public class ChatService implements ChatUseCase {
             Optional<WhatsAppInteractiveReply> outboundInteractive =
                     slotExpansion.pendingConfirmationDraft().isPresent()
                             ? Optional.of(WhatsAppInteractiveReply.forConfirmationActions())
-                            : WhatsAppInteractiveReply.forCancelPickIfMapped(stored);
+                            : WhatsAppInteractiveReply.forAppointmentPickListIfMapped(stored);
             return new ChatResult(
                     SchedulingUserReplyNormalizer.stripInternalSlotAppendix(stored), outboundInteractive);
         }
@@ -789,10 +830,11 @@ public class ChatService implements ChatUseCase {
                 whatsAppInteractiveOutbound =
                         Optional.of(WhatsAppInteractiveReply.forConfirmationActions());
             } else if (schedulingTools) {
-                whatsAppInteractiveOutbound =
+                    whatsAppInteractiveOutbound =
                         SchedulingServiceCatalogInteractive.fromAssistantText(assistantContent);
                 if (whatsAppInteractiveOutbound.isEmpty()) {
-                    whatsAppInteractiveOutbound = WhatsAppInteractiveReply.forCancelPickIfMapped(assistantContent);
+                    whatsAppInteractiveOutbound =
+                            WhatsAppInteractiveReply.forAppointmentPickListIfMapped(assistantContent);
                 }
             }
         }
@@ -992,6 +1034,12 @@ public class ChatService implements ChatUseCase {
                 switch (interactiveKind) {
                     case SERVICES -> findLastAssistantIndexContaining(historyForAi, "[service_option_map:");
                     case CANCEL_PICK -> findLastAssistantIndexContaining(historyForAi, CancelOptionMap.APPENDIX_PREFIX);
+                    case APPOINTMENT_LIST ->
+                            findLastAssistantIndexContaining(historyForAi, CancelOptionMap.APPENDIX_PREFIX);
+                    case APPOINTMENT_ACTION ->
+                            findLastAssistantIndexContaining(
+                                    historyForAi,
+                                    SchedulingUserReplyNormalizer.APPOINTMENT_ACTION_FOR_APPENDIX_TOKEN);
                     case SLOTS -> findLastAssistantIndexContaining(historyForAi, "[slot_options:");
                     case CONFIRMATION ->
                             findLastAssistantIndexContaining(
@@ -1051,9 +1099,193 @@ public class ChatService implements ChatUseCase {
         return switch (kind) {
             case SERVICES -> SERVICE_ROW_ID.matcher(lower).matches();
             case CANCEL_PICK -> lower.startsWith("cancel_");
+            case APPOINTMENT_LIST -> PICK_APPT_ROW.matcher(lower).matches();
+            case APPOINTMENT_ACTION ->
+                    STRUCTURED_CANCEL_REPLY.matcher(lower).matches()
+                            || lower.matches("(?i)^(reagendar|remarcar)\\s+o\\s+\\d+(?:[.\\s!?…]*)?$");
             case SLOTS -> lower.startsWith("slot_");
             case CONFIRMATION -> lower.startsWith("confirm_") || SHORT_CONFIRMATION.matcher(lower).matches();
         };
+    }
+
+    /** Passo 1 da lista interactiva de agendamentos: escolha → cartão «reagendar / cancelar». */
+    private Optional<ChatResult> maybeHandleAppointmentPickFromInteractiveList(
+            boolean schedulingTools,
+            ChatCommand command,
+            TenantId tenantId,
+            String conversationId,
+            ZoneId calendarZone,
+            ConversationContext context,
+            Message userMessage) {
+        if (!schedulingTools || command.whatsAppInteractiveKind() != WhatsAppInteractiveKind.APPOINTMENT_LIST) {
+            return Optional.empty();
+        }
+        String probe =
+                Optional.ofNullable(command.whatsAppInteractiveRowId())
+                        .map(String::strip)
+                        .filter(s -> !s.isBlank())
+                        .orElse(command.userMessage().strip());
+        Matcher matcher = PICK_APPT_ROW.matcher(probe);
+        if (!matcher.matches()) {
+            return Optional.empty();
+        }
+        long appointmentId = Long.parseLong(matcher.group(1));
+        String zoneId = calendarZone != null ? calendarZone.getId() : ZoneId.systemDefault().getId();
+        Optional<TenantAppointmentListItem> row =
+                tenantAppointmentQuery.findByIdForTenantAndConversation(
+                        tenantId, appointmentId, conversationId, zoneId);
+        if (row.isEmpty() || row.get().bookingStatus() != TenantAppointmentListItem.BookingStatus.AGENDADO) {
+            String msg =
+                    "Não encontrei esse agendamento activo para si. Diga «listar os meus agendamentos» ou peça nova lista.";
+            Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(msg));
+            ConversationContext updated = context.append(userMessage, assistantMessage);
+            conversationContextStore.save(updated);
+            return Optional.of(new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(msg)));
+        }
+        TenantAppointmentListItem slot = row.get();
+        ZoneId z = calendarZone != null ? calendarZone : ZoneId.systemDefault();
+        DateTimeFormatter displayFmt =
+                DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm", Locale.forLanguageTag("pt-BR"));
+        String whenPt = slot.startsAt().atZone(z).format(displayFmt);
+        String svcName = slot.serviceName() != null ? slot.serviceName().strip() : "";
+        String describe =
+                svcName.isBlank()
+                        ? ("Compromisso *#" + appointmentId + "* marcado para *" + whenPt + "*.")
+                        : ("Compromisso *"
+                                + svcName
+                                + "* marcado para *"
+                                + whenPt
+                                + "*.");
+        String body = "Seleccionou o seguinte atendimento:\n" + describe + "\n\nO que deseja fazer em seguida?";
+        String stored =
+                SchedulingUserReplyNormalizer.appendAppointmentActionFor(body, appointmentId);
+        Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(stored));
+        ConversationContext updated = context.append(userMessage, assistantMessage);
+        conversationContextStore.save(updated);
+        return Optional.of(
+                new ChatResult(
+                        SchedulingUserReplyNormalizer.stripInternalSlotAppendix(stored),
+                        Optional.of(WhatsAppInteractiveReply.forAppointmentActions(appointmentId))));
+    }
+
+    /** Botão ou eco «reagendar o N»: pede nova data/hora antes do fluxo habitual. */
+    private Optional<ChatResult> maybeHandleRescheduleAskFromAppointmentAction(
+            boolean schedulingTools,
+            ChatCommand command,
+            TenantId tenantId,
+            String conversationId,
+            ZoneId calendarZone,
+            ConversationContext context,
+            Message userMessage) {
+        if (!schedulingTools || calendarZone == null) {
+            return Optional.empty();
+        }
+        if (command.whatsAppInteractiveKind() != WhatsAppInteractiveKind.APPOINTMENT_ACTION) {
+            return Optional.empty();
+        }
+        Optional<Long> idOpt = Optional.empty();
+        String rid = command.whatsAppInteractiveRowId();
+        if (rid != null && !rid.isBlank()) {
+            Matcher m = Pattern.compile("(?i)^appt_reschedule_(\\d+)$").matcher(rid.strip());
+            if (m.matches()) {
+                idOpt = Optional.of(Long.parseLong(m.group(1)));
+            }
+        }
+        if (idOpt.isEmpty()) {
+            return Optional.empty();
+        }
+        Optional<SchedulingEnforcedChoice> explicit =
+                SchedulingExplicitTimeShortcut.tryParseExplicitDateAndTimeInUserText(
+                                command.userMessage().strip(), calendarZone)
+                        .or(() -> parseTodayTimeFallback(command.userMessage(), calendarZone));
+        String normalized = command.userMessage().toLowerCase(Locale.ROOT);
+        boolean sameDayWithClock =
+                (normalized.contains("mesmo dia")
+                                || normalized.contains("do mesmo dia")
+                                || normalized.contains("no mesmo dia"))
+                        && CLOCK_TIME.matcher(command.userMessage()).find();
+        if (explicit.isPresent() || sameDayWithClock) {
+            return Optional.empty();
+        }
+        long appointmentId = idOpt.get();
+        return askNewDateTimeForRescheduleAppointment(
+                tenantId, conversationId, appointmentId, calendarZone, context, userMessage);
+    }
+
+    private Optional<ChatResult> askNewDateTimeForRescheduleAppointment(
+            TenantId tenantId,
+            String conversationId,
+            long appointmentId,
+            ZoneId calendarZone,
+            ConversationContext context,
+            Message userMessage) {
+        String zoneId = calendarZone != null ? calendarZone.getId() : ZoneId.systemDefault().getId();
+        Optional<TenantAppointmentListItem> active =
+                tenantAppointmentQuery.findByIdForTenantAndConversation(
+                        tenantId, appointmentId, conversationId, zoneId);
+        if (active.isEmpty() || active.get().bookingStatus() != TenantAppointmentListItem.BookingStatus.AGENDADO) {
+            return Optional.empty();
+        }
+        String service = active.get().serviceName() != null ? active.get().serviceName().strip() : "";
+        String ask =
+                service.isBlank()
+                        ? "Perfeito, vamos reagendar o atendimento *"
+                                + appointmentId
+                                + "*. Informe a nova data e horário desejados (ex.: hoje 11:00)."
+                        : "Perfeito, vamos reagendar o *"
+                                + service
+                                + "* (ID "
+                                + appointmentId
+                                + "). Informe a nova data e horário desejados (ex.: hoje 11:00).";
+        Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(ask));
+        ConversationContext updated = context.append(userMessage, assistantMessage);
+        conversationContextStore.save(updated);
+        return Optional.of(new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(ask)));
+    }
+
+    /**
+     * Cancelamento estruturado a partir dos botões (mensagem canonificada como {@code cancel_<id>}) ou de lista legacy
+     * {@link WhatsAppInteractiveKind#CANCEL_PICK}.
+     */
+    private Optional<ChatResult> maybeHandleStructuredCancelFromInteractive(
+            boolean schedulingTools,
+            ChatCommand command,
+            TenantId tenantId,
+            String conversationId,
+            ZoneId calendarZone,
+            ConversationContext context,
+            Message userMessage) {
+        if (!schedulingTools || calendarZone == null) {
+            return Optional.empty();
+        }
+        WhatsAppInteractiveKind k = command.whatsAppInteractiveKind();
+        if (k != WhatsAppInteractiveKind.APPOINTMENT_ACTION && k != WhatsAppInteractiveKind.CANCEL_PICK) {
+            return Optional.empty();
+        }
+        Optional<Long> idOpt = Optional.empty();
+        String row = command.whatsAppInteractiveRowId();
+        if (row != null && !row.isBlank()) {
+            Matcher mc = Pattern.compile("(?i)^appt_cancel_(\\d+)$").matcher(row.strip());
+            if (mc.matches()) {
+                idOpt = Optional.of(Long.parseLong(mc.group(1)));
+            }
+        }
+        if (idOpt.isEmpty()) {
+            Matcher usr = STRUCTURED_CANCEL_REPLY.matcher(command.userMessage().strip());
+            if (usr.matches()) {
+                idOpt = Optional.of(Long.parseLong(usr.group(1)));
+            }
+        }
+        if (idOpt.isEmpty()) {
+            return Optional.empty();
+        }
+        String cancelReply =
+                appointmentService.cancelAppointment(
+                        tenantId, conversationId, "", String.valueOf(idOpt.get()), calendarZone);
+        Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(cancelReply));
+        ConversationContext updated = context.append(userMessage, assistantMessage);
+        conversationContextStore.save(updated);
+        return Optional.of(new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(cancelReply)));
     }
 
     /**
@@ -1299,28 +1531,8 @@ public class ChatService implements ChatUseCase {
             return Optional.empty();
         }
         long appointmentId = idOpt.get();
-        String zoneId = calendarZone != null ? calendarZone.getId() : ZoneId.systemDefault().getId();
-        Optional<TenantAppointmentListItem> active =
-                tenantAppointmentQuery.findByIdForTenantAndConversation(
-                        tenantId, appointmentId, conversationId, zoneId);
-        if (active.isEmpty() || active.get().bookingStatus() != TenantAppointmentListItem.BookingStatus.AGENDADO) {
-            return Optional.empty();
-        }
-        String service = active.get().serviceName() != null ? active.get().serviceName().strip() : "";
-        String ask =
-                service.isBlank()
-                        ? "Perfeito, vamos reagendar o atendimento *"
-                                + appointmentId
-                                + "*. Informe a nova data e horário desejados (ex.: hoje 11:00)."
-                        : "Perfeito, vamos reagendar o *"
-                                + service
-                                + "* (ID "
-                                + appointmentId
-                                + "). Informe a nova data e horário desejados (ex.: hoje 11:00).";
-        Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(ask));
-        ConversationContext updated = context.append(userMessage, assistantMessage);
-        conversationContextStore.save(updated);
-        return Optional.of(new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(ask)));
+        return askNewDateTimeForRescheduleAppointment(
+                tenantId, conversationId, appointmentId, calendarZone, context, userMessage);
     }
 
     private Optional<ChatResult> maybeContinueSchedulingAfterPastTimeRejection(
@@ -1443,7 +1655,9 @@ public class ChatService implements ChatUseCase {
         Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(listed));
         ConversationContext updated = context.append(userMessage, assistantMessage);
         conversationContextStore.save(updated);
-        return Optional.of(new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(listed)));
+        Optional<WhatsAppInteractiveReply> interactive =
+                WhatsAppInteractiveReply.forAppointmentPickListIfMapped(listed);
+        return Optional.of(new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(listed), interactive));
     }
 
     private Optional<ChatResult> maybeExecuteDirectRescheduleWithExplicitAppointmentId(

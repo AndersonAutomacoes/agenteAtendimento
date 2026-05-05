@@ -298,6 +298,12 @@ public class WhatsAppWebhookParser {
         if (lower.startsWith("service_")) {
             return WhatsAppInteractiveKind.SERVICES;
         }
+        if (lower.startsWith("pick_appt_")) {
+            return WhatsAppInteractiveKind.APPOINTMENT_LIST;
+        }
+        if (lower.startsWith("appt_reschedule_") || lower.startsWith("appt_cancel_")) {
+            return WhatsAppInteractiveKind.APPOINTMENT_ACTION;
+        }
         if (lower.startsWith("cancel_")) {
             return WhatsAppInteractiveKind.CANCEL_PICK;
         }
@@ -342,6 +348,10 @@ public class WhatsAppWebhookParser {
         if (br == null || br.isMissingNode() || br.isNull()) {
             return "";
         }
+        String selectedId = br.path("selectedButtonId").asText("").strip();
+        if (!selectedId.isEmpty() && classifyInteractiveKind(selectedId) == WhatsAppInteractiveKind.APPOINTMENT_ACTION) {
+            return canonicalReplyFromInteractiveRowId(selectedId);
+        }
         String t = br.path("selectedDisplayText").asText("").strip();
         if (!t.isEmpty()) {
             return t;
@@ -368,6 +378,17 @@ public class WhatsAppWebhookParser {
         }
         if ("confirm_no".equals(lower)) {
             return "não";
+        }
+        if (lower.startsWith("pick_appt_")) {
+            return id;
+        }
+        if (lower.startsWith("appt_cancel_")) {
+            String tail = id.substring("appt_cancel_".length()).strip();
+            return tail.matches("^\\d+$") ? "cancel_" + tail : id;
+        }
+        if (lower.startsWith("appt_reschedule_")) {
+            String tail = id.substring("appt_reschedule_".length()).strip();
+            return tail.matches("^\\d+$") ? ("reagendar o " + tail) : id;
         }
         return labelFromSlotButtonId(id);
     }

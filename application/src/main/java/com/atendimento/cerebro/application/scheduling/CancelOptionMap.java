@@ -85,6 +85,12 @@ public final class CancelOptionMap {
             return appointmentIdRaw;
         }
         String raw = appointmentIdRaw.strip();
+        if (raw.regionMatches(true, 0, "pick_appt_", 0, "pick_appt_".length())) {
+            String tail = raw.substring("pick_appt_".length()).strip();
+            if (tail.matches("^\\d+$")) {
+                return tail;
+            }
+        }
         if (raw.regionMatches(true, 0, "cancel_", 0, "cancel_".length())) {
             String tail = raw.substring("cancel_".length()).strip();
             if (tail.matches("^\\d+$")) {

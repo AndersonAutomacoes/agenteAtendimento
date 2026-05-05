@@ -309,6 +309,11 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
                 && !reply.customRows().isEmpty()) {
             return true;
         }
+        if (reply.kind() == WhatsAppInteractiveKind.APPOINTMENT_LIST
+                && reply.customRows() != null
+                && !reply.customRows().isEmpty()) {
+            return true;
+        }
         if (mode == EvolutionInteractiveMode.TEXT) {
             return false;
         }
@@ -361,7 +366,8 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         Object raw = exchange.getProperty(WhatsAppOutboundHeaders.PROP_WA_INTERACTIVE);
         if (raw instanceof WhatsAppInteractiveReply multiKindReply
                 && (multiKindReply.kind() == WhatsAppInteractiveKind.CONFIRMATION
-                        || multiKindReply.kind() == WhatsAppInteractiveKind.CANCEL_PICK)
+                        || multiKindReply.kind() == WhatsAppInteractiveKind.CANCEL_PICK
+                        || multiKindReply.kind() == WhatsAppInteractiveKind.APPOINTMENT_ACTION)
                 && multiKindReply.customRows() != null
                 && !multiKindReply.customRows().isEmpty()) {
             sendConfirmationOrCancelFollowUpInteractive(
@@ -375,6 +381,15 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
                 && svcReply.customRows() != null
                 && !svcReply.customRows().isEmpty()) {
             sendServiceCatalogInteractive(base, apiKey, instanceId, digits, svcReply, exchange);
+            exchange.getMessage().setBody("");
+            markAssistantSent(exchange);
+            return;
+        }
+        if (raw instanceof WhatsAppInteractiveReply apptReply
+                && apptReply.kind() == WhatsAppInteractiveKind.APPOINTMENT_LIST
+                && apptReply.customRows() != null
+                && !apptReply.customRows().isEmpty()) {
+            sendAppointmentPickListInteractive(base, apiKey, instanceId, digits, apptReply, exchange);
             exchange.getMessage().setBody("");
             markAssistantSent(exchange);
             return;
@@ -738,6 +753,80 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
         }
     }
 
+    /**
+     * Lista interativa dos agendamentos activos ({@link WhatsAppInteractiveKind#APPOINTMENT_LIST}); mesmo formato que o
+     * catálogo de serviços.
+     */
+    private void sendAppointmentPickListInteractive(
+            String base,
+            String apiKey,
+            String instanceId,
+            String digits,
+            WhatsAppInteractiveReply reply,
+            Exchange exchange)
+            throws Exception {
+        WhatsAppInteractiveReply sanitized = sanitizeCustomRowsReply(reply);
+        EvolutionInteractiveMode listMode =
+                evolutionInteractiveMode == EvolutionInteractiveMode.TEXT
+                        ? EvolutionInteractiveMode.LIST
+                        : evolutionInteractiveMode;
+        try {
+            if (listMode == EvolutionInteractiveMode.LIST) {
+                postEvolutionSendListRowChunks(
+                        base,
+                        apiKey,
+                        instanceId,
+                        digits,
+                        sanitized,
+                        sanitized.customRows(),
+                        "Agendamentos",
+                        "appointments-list");
+                return;
+            }
+            if (listMode == EvolutionInteractiveMode.BUTTONS) {
+                if (sanitized.customRows().size() > 3) {
+                    postEvolutionSendListRowChunks(
+                            base,
+                            apiKey,
+                            instanceId,
+                            digits,
+                            sanitized,
+                            sanitized.customRows(),
+                            "Agendamentos",
+                            "appointments-list");
+                } else {
+                    evolutionOutboundHttp.postJson(
+                            base + "/message/sendButtons/" + instanceId,
+                            apiKey,
+                            buildEvolutionSendCustomButtonsJson(digits, sanitized));
+                }
+                return;
+            }
+            postEvolutionSendListRowChunks(
+                    base,
+                    apiKey,
+                    instanceId,
+                    digits,
+                    sanitized,
+                    sanitized.customRows(),
+                    "Agendamentos",
+                    "appointments-list");
+        } catch (Exception e) {
+            LOG.warn("Evolution: falha ao enviar lista interativa de agendamentos: {}", e.toString());
+            String fallback =
+                    sanitizeOutboundBody(exchange.getProperty(WhatsAppOutboundHeaders.PROP_WA_TEXT, String.class));
+            if (fallback.isBlank()) {
+                fallback = sanitizeOutboundBody(exchange.getIn().getBody(String.class));
+            }
+            if (!fallback.isBlank()) {
+                evolutionOutboundHttp.postJson(
+                        base + "/message/sendText/" + instanceId,
+                        apiKey,
+                        buildEvolutionSendTextJson(digits, fallback));
+            }
+        }
+    }
+
     private void sendConfirmationOrCancelFollowUpInteractive(
             String base,
             String apiKey,
@@ -811,6 +900,8 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
                     switch (reply.kind()) {
                         case CONFIRMATION -> "Responder";
                         case SERVICES -> "Serviços";
+                        case APPOINTMENT_LIST -> "Agendamentos";
+                        case APPOINTMENT_ACTION -> "Responder";
                         default -> "Ver opções";
                     };
         }
@@ -924,6 +1015,7 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
                         ? switch (reply.kind()) {
                             case SLOTS -> "Horários";
                             case SERVICES -> "Serviços";
+                            case APPOINTMENT_LIST -> "Compromissos";
                             default -> "Abrir lista";
                         }
                         : listBtnRaw;
