@@ -467,7 +467,7 @@
     "sectionCalendar": "Google Calendar and spreadsheet",
     "sectionCalendarDesc": "Calendar ID (service account), spreadsheet URL, and access notes (credentials, how-to).",
     "googleCalendarId": "Google Calendar ID",
-    "googleCalendarIdHint": "Calendar email or xxx@group.calendar.google.com for the Calendar API.",
+    "googleCalendarIdHint": "This tenant's calendar ID (email or xxx@group.calendar.google.com). Share that calendar with the AxeZap service account. Saving with an empty field clears the stored ID.",
     "spreadsheetUrl": "Spreadsheet URL (Google Sheets)",
     "spreadsheetUrlHint": "Link to a planning sheet if the team uses one alongside the product.",
     "calendarAccessNotes": "Access notes (credentials, internal instructions)",

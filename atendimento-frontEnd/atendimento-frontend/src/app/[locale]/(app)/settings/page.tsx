@@ -70,6 +70,8 @@ export default function SettingsPage() {
   const [whatsappApiKey, setWhatsappApiKey] = React.useState("");
   const [whatsappInstanceId, setWhatsappInstanceId] = React.useState("");
   const [whatsappBaseUrl, setWhatsappBaseUrl] = React.useState("");
+  /** ID do calendário Google do tenant (`tenant_configuration.google_calendar_id`). */
+  const [googleCalendarId, setGoogleCalendarId] = React.useState("");
   const [showAccessToken, setShowAccessToken] = React.useState(false);
   const [loadingInitial, setLoadingInitial] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -110,6 +112,7 @@ export default function SettingsPage() {
         setWhatsappApiKey(data.whatsappApiKey ?? "");
         setWhatsappInstanceId(data.whatsappInstanceId ?? "");
         setWhatsappBaseUrl(data.whatsappBaseUrl ?? "");
+        setGoogleCalendarId(data.googleCalendarId ?? "");
       })
       .catch((e: unknown) => {
         if (!cancelled) toast.error(toUserFacingApiError(e, translateApi));
@@ -137,7 +140,7 @@ export default function SettingsPage() {
         whatsappApiKey: "",
         whatsappInstanceId: "",
         whatsappBaseUrl: "",
-        googleCalendarId: null,
+        googleCalendarId: googleCalendarId.trim(),
         establishmentName: null,
         businessAddress: null,
         openingHours: null,
@@ -158,7 +161,7 @@ export default function SettingsPage() {
         whatsappApiKey: whatsappApiKey || null,
         whatsappInstanceId: whatsappInstanceId || null,
         whatsappBaseUrl: null as string | null,
-        googleCalendarId: null,
+        googleCalendarId: googleCalendarId.trim(),
         establishmentName: null,
         businessAddress: null,
         openingHours: null,
@@ -178,7 +181,7 @@ export default function SettingsPage() {
       whatsappApiKey: whatsappApiKey || null,
       whatsappInstanceId: whatsappInstanceId || null,
       whatsappBaseUrl: whatsappBaseUrl || null,
-      googleCalendarId: null,
+      googleCalendarId: googleCalendarId.trim(),
       establishmentName: null,
       businessAddress: null,
       openingHours: null,
@@ -297,6 +300,26 @@ export default function SettingsPage() {
             className="rounded-xl"
           />
           <p className="text-xs text-muted-foreground">{t("personalityHint")}</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("sectionCalendar")}</CardTitle>
+          <CardDescription>{t("sectionCalendarDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Label htmlFor="google-calendar-id">{t("googleCalendarId")}</Label>
+          <Input
+            id="google-calendar-id"
+            placeholder="exemplo@group.calendar.google.com"
+            value={googleCalendarId}
+            onChange={(e) => setGoogleCalendarId(e.target.value)}
+            disabled={busy}
+            autoComplete="off"
+            className="rounded-xl font-mono text-sm"
+          />
+          <p className="text-xs text-muted-foreground">{t("googleCalendarIdHint")}</p>
         </CardContent>
       </Card>
 

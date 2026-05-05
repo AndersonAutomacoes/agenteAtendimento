@@ -467,7 +467,7 @@
     "sectionCalendar": "Google Calendar e planilha",
     "sectionCalendarDesc": "ID do calendário partilhado com a service account, link da planilha e notas de acesso (credenciais, instruções).",
     "googleCalendarId": "ID do calendário Google",
-    "googleCalendarIdHint": "E-mail do calendário ou xxx@group.calendar.google.com usado no Google Calendar API.",
+    "googleCalendarIdHint": "ID da agenda deste tenant (e-mail ou xxx@group.calendar.google.com). Partilhe este calendário com o e-mail da service account AxeZap. Gravar com o campo vazio remove o ID na base.",
     "spreadsheetUrl": "URL da planilha (Google Sheets)",
     "spreadsheetUrlHint": "Ligação à planilha de planeamento, se a equipa a utilizar em paralelo com o AxeZap.",
     "calendarAccessNotes": "Notas de acesso (credenciais, instruções internas)",

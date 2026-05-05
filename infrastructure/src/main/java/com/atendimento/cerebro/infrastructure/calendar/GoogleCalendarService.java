@@ -91,8 +91,9 @@ public class GoogleCalendarService {
     }
 
     /**
-     * Resolve o ID do calendário: (1) tenant; (2) {@code cerebro.google.calendar.calendar-id}; (3) {@code client_email}
-     * do JSON.
+     * Resolve o ID do calendário: (1) {@code tenant_configuration.google_calendar_id} (cadastro do tenant); (2)
+     * {@code cerebro.google.calendar.calendar-id} / {@code CEREBRO_GOOGLE_CALENDAR_ID} (fallback global); (3)
+     * {@code client_email} do JSON da service account (evitar em produção multi-tenant).
      */
     public Optional<String> resolveEffectiveCalendarId(Optional<String> tenantGoogleCalendarId) {
         if (tenantGoogleCalendarId.isPresent() && !tenantGoogleCalendarId.get().isBlank()) {
@@ -121,8 +122,8 @@ public class GoogleCalendarService {
             String id = cachedServiceAccountEmail.strip();
             LOG.warn(
                     "resolveEffectiveCalendarId: origem={} calendarId={} — "
-                            + "este calendário é o da própria service account (equivalente ao \"principal\" dessa conta), "
-                            + "não a agenda Oficina partilhada. Defina cerebro.google.calendar.calendar-id ou google_calendar_id no tenant.",
+                            + "calendário \"principal\" da service account. Em produção multi-tenant defina "
+                            + "google_calendar_id no cadastro do tenant (portal) ou CEREBRO_GOOGLE_CALENDAR_ID.",
                     "credentials.client_email",
                     id);
             return Optional.of(id);

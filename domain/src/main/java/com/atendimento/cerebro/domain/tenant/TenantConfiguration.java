@@ -12,7 +12,10 @@ public record TenantConfiguration(
         String whatsappBaseUrl,
         ProfileLevel profileLevel,
         String portalPasswordHash,
-        /** ID do calendário Google (ex.: e-mail ou {@code xxx@group.calendar.google.com}); partilhado com a SA global. */
+        /**
+         * ID do calendário Google deste tenant (e-mail ou {@code xxx@group.calendar.google.com}); tem prioridade sobre
+         * {@code cerebro.google.calendar.calendar-id}. Partilhar com a service account AxeZap.
+         */
         String googleCalendarId,
         String establishmentName,
         String businessAddress,

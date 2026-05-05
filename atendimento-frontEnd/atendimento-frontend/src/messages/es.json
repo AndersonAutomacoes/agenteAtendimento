@@ -462,7 +462,7 @@
     "sectionCalendar": "Google Calendar y hoja de cálculo",
     "sectionCalendarDesc": "ID del calendario, enlace a la hoja, notas de acceso.",
     "googleCalendarId": "ID del calendario Google",
-    "googleCalendarIdHint": "Correo o xxx@group.calendar.google.com.",
+    "googleCalendarIdHint": "ID del calendario de este tenant. Compártalo con la service account AxeZap. Guardar vacío borra el ID almacenado.",
     "spreadsheetUrl": "URL de la hoja (Google Sheets)",
     "spreadsheetUrlHint": "Enlace a la hoja de planificación, si aplica.",
     "calendarAccessNotes": "Notas de acceso (internas)",

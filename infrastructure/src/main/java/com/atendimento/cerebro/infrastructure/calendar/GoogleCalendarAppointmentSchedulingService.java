@@ -32,8 +32,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
- * Google Calendar com service account global; o calendário do tenant deve estar partilhado com o e-mail da SA.
- * Criação de eventos delegada a {@link GoogleCalendarService} (fuso {@link GoogleCalendarService#CALENDAR_ZONE}).
+ * Google Calendar com service account global; o ID efectivo vem de {@code tenant_configuration.google_calendar_id}
+ * (cadastro do tenant), com fallback opcional em {@code cerebro.google.calendar.calendar-id}. O calendário do tenant
+ * deve estar partilhado com o e-mail da SA. Criação de eventos delegada a {@link GoogleCalendarService}.
  */
 @Component
 @ConditionalOnProperty(prefix = "cerebro.google.calendar", name = "mock", havingValue = "false")

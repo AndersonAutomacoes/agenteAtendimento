@@ -467,7 +467,7 @@
     "sectionCalendar": "Google 日历与表格",
     "sectionCalendarDesc": "日历 ID、表格链接、访问说明。",
     "googleCalendarId": "Google 日历 ID",
-    "googleCalendarIdHint": "邮箱或 group 日历。",
+    "googleCalendarIdHint": "本租户的日历 ID。请与 AxeZap 服务账号共享；保存空字段会清除已存 ID。",
     "spreadsheetUrl": "表格 (Sheets) URL",
     "spreadsheetUrlHint": "如有并行使用的规划表。",
     "calendarAccessNotes": "访问说明（内部）",

@@ -51,7 +51,10 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
 
     private static final String PROP_FB_PATH = "fbGraphPath";
 
-    /** Limite típico de linhas por secção nas listas WhatsApp Evolution. */
+    /**
+     * Máximo de linhas por <strong>uma</strong> mensagem de lista WhatsApp (Meta Cloud API: até 10 linhas no total em todas
+     * as secções). Para mais opções, o Cerebro envia várias mensagens {@code sendList} em sequência (parte 1/N, 2/N…).
+     */
     private static final int EVOLUTION_INTERACTIVE_LIST_MAX_ROWS = 10;
 
     /**
@@ -584,36 +587,45 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
                         apiKey,
                         buildEvolutionSendTextJson(digits, sanitizeOutboundBody(verification)));
             }
-            List<String> primary =
-                    validTimes.size() > EVOLUTION_INTERACTIVE_LIST_MAX_ROWS
-                            ? validTimes.subList(0, EVOLUTION_INTERACTIVE_LIST_MAX_ROWS)
-                            : validTimes;
-            List<String> remainder =
-                    validTimes.size() > EVOLUTION_INTERACTIVE_LIST_MAX_ROWS
-                            ? validTimes.subList(EVOLUTION_INTERACTIVE_LIST_MAX_ROWS, validTimes.size())
-                            : List.of();
-            List<WhatsAppInteractiveRow> rows = slotRowsFromTimes(primary);
-            String listJson = buildEvolutionSendListJson(digits, safeReply, rows, "Horários");
+            int maxRows = EVOLUTION_INTERACTIVE_LIST_MAX_ROWS;
+            int totalParts = (validTimes.size() + maxRows - 1) / maxRows;
+            String baseTitle = sanitizeOutboundBody(safeReply.title());
+            if (baseTitle.isBlank()) {
+                baseTitle = "Horários disponíveis";
+            }
             String listUrl = base + "/message/sendList/" + instanceId;
-            LOG.info("Evolution sendList mode=LIST instance={} to={} json={}", instanceId, digits, listJson);
-            evolutionOutboundHttp.postJson(listUrl, apiKey, listJson);
-            if (!remainder.isEmpty()) {
-                StringBuilder extra = new StringBuilder();
-                extra.append(SchedulingSlotCapture.formatPremiumAvailabilityHeader(safeReply.requestedDate(), schedulingCalendarZone));
-                extra.append("\n\n*Demais horários (responda com o número ou HH:mm):*\n\n");
-                for (int i = 0; i < remainder.size(); i++) {
-                    int optionNo = EVOLUTION_INTERACTIVE_LIST_MAX_ROWS + i + 1;
-                    extra.append('*')
-                            .append(optionNo)
-                            .append(") ")
-                            .append(remainder.get(i))
-                            .append("*\n");
-                }
-                extra.append("\n").append(SchedulingSlotCapture.SLOT_LIST_FOOTER_PT);
-                evolutionOutboundHttp.postJson(
-                        base + "/message/sendText/" + instanceId,
-                        apiKey,
-                        buildEvolutionSendTextJson(digits, sanitizeOutboundBody(extra.toString())));
+            String desc0 = sanitizeOutboundBody(safeReply.description());
+            for (int part = 0; part < totalParts; part++) {
+                int from = part * maxRows;
+                int to = Math.min(from + maxRows, validTimes.size());
+                List<String> chunk = validTimes.subList(from, to);
+                List<WhatsAppInteractiveRow> rows = slotRowsFromTimes(chunk);
+                String title =
+                        totalParts > 1 ? baseTitle + " (" + (part + 1) + "/" + totalParts + ")" : baseTitle;
+                String sectionTitle =
+                        totalParts > 1 ? "Horários (" + (part + 1) + "/" + totalParts + ")" : "Horários";
+                String desc =
+                        part > 0 ? "Mais horários no mesmo dia. " + desc0 : desc0;
+                WhatsAppInteractiveReply chunkReply =
+                        new WhatsAppInteractiveReply(
+                                safeReply.kind(),
+                                title,
+                                desc,
+                                chunk,
+                                "",
+                                safeReply.requestedDate(),
+                                safeReply.listButtonText(),
+                                safeReply.footerText(),
+                                List.of());
+                String listJson = buildEvolutionSendListJson(digits, chunkReply, rows, sectionTitle);
+                LOG.info(
+                        "Evolution sendList mode=LIST instance={} to={} part={}/{} json={}",
+                        instanceId,
+                        digits,
+                        part + 1,
+                        totalParts,
+                        listJson);
+                evolutionOutboundHttp.postJson(listUrl, apiKey, listJson);
             }
         } catch (Exception e) {
             String err = e.toString();
@@ -657,8 +669,15 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
                             "Evolution: confirmação/cancelamento com >3 linhas — envio LIST em vez de sendButtons "
                                     + "(instance={})",
                             instanceId);
-                    String listJson = buildEvolutionSendListJson(digits, sanitized, sanitized.customRows(), "Opções");
-                    evolutionOutboundHttp.postJson(base + "/message/sendList/" + instanceId, apiKey, listJson);
+                    postEvolutionSendListRowChunks(
+                            base,
+                            apiKey,
+                            instanceId,
+                            digits,
+                            sanitized,
+                            sanitized.customRows(),
+                            "Opções",
+                            "confirm/cancel");
                 } else {
                     evolutionOutboundHttp.postJson(
                             base + "/message/sendButtons/" + instanceId,
@@ -666,18 +685,15 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
                             buildEvolutionSendCustomButtonsJson(digits, sanitized));
                 }
             } else {
-                List<WhatsAppInteractiveRow> capped = sanitized.customRows();
-                if (capped.size() > EVOLUTION_INTERACTIVE_LIST_MAX_ROWS) {
-                    capped = capped.subList(0, EVOLUTION_INTERACTIVE_LIST_MAX_ROWS);
-                    LOG.warn(
-                            "Evolution: lista confirmação/cancelamento truncada para {} linhas (instance={})",
-                            EVOLUTION_INTERACTIVE_LIST_MAX_ROWS,
-                            instanceId);
-                }
-                String listJson = buildEvolutionSendListJson(digits, sanitized, capped, "Opções");
-                LOG.info(
-                        "Evolution sendList confirm/cancel instance={} to={} json={}", instanceId, digits, listJson);
-                evolutionOutboundHttp.postJson(base + "/message/sendList/" + instanceId, apiKey, listJson);
+                postEvolutionSendListRowChunks(
+                        base,
+                        apiKey,
+                        instanceId,
+                        digits,
+                        sanitized,
+                        sanitized.customRows(),
+                        "Opções",
+                        "confirm/cancel");
             }
         } catch (Exception e) {
             LOG.warn("Evolution: falha ao enviar interativo de confirmação/cancelamento: {}", e.toString());
@@ -709,6 +725,68 @@ public class WhatsAppOutboundRoutes extends RouteBuilder {
                 lb,
                 ft,
                 cleaned);
+    }
+
+    /**
+     * Envia uma ou mais mensagens {@code sendList}: o WhatsApp admite no máximo 10 linhas por mensagem (soma de todas as
+     * secções).
+     */
+    private void postEvolutionSendListRowChunks(
+            String base,
+            String apiKey,
+            String instanceId,
+            String digits,
+            WhatsAppInteractiveReply template,
+            List<WhatsAppInteractiveRow> allRows,
+            String sectionTitleBase,
+            String logLabel)
+            throws Exception {
+        if (allRows == null || allRows.isEmpty()) {
+            return;
+        }
+        int maxRows = EVOLUTION_INTERACTIVE_LIST_MAX_ROWS;
+        int n = allRows.size();
+        int totalParts = (n + maxRows - 1) / maxRows;
+        String baseTitle = sanitizeOutboundBody(template.title());
+        if (baseTitle.isBlank()) {
+            baseTitle = "Opções";
+        }
+        String section0 = sanitizeOutboundBody(sectionTitleBase);
+        if (section0.isBlank()) {
+            section0 = "Opções";
+        }
+        String listUrl = base + "/message/sendList/" + instanceId;
+        String desc0 = sanitizeOutboundBody(template.description());
+        for (int p = 0; p < totalParts; p++) {
+            int from = p * maxRows;
+            int to = Math.min(from + maxRows, n);
+            List<WhatsAppInteractiveRow> chunk = allRows.subList(from, to);
+            String title = totalParts > 1 ? baseTitle + " (" + (p + 1) + "/" + totalParts + ")" : baseTitle;
+            String sectionTitle =
+                    totalParts > 1 ? section0 + " (" + (p + 1) + "/" + totalParts + ")" : section0;
+            String desc = p > 0 ? "Continuação. " + desc0 : desc0;
+            WhatsAppInteractiveReply partReply =
+                    new WhatsAppInteractiveReply(
+                            template.kind(),
+                            title,
+                            desc,
+                            List.of(),
+                            "",
+                            null,
+                            template.listButtonText(),
+                            template.footerText(),
+                            List.of());
+            String listJson = buildEvolutionSendListJson(digits, partReply, chunk, sectionTitle);
+            LOG.info(
+                    "Evolution sendList {} instance={} to={} part={}/{} json={}",
+                    logLabel,
+                    instanceId,
+                    digits,
+                    p + 1,
+                    totalParts,
+                    listJson);
+            evolutionOutboundHttp.postJson(listUrl, apiKey, listJson);
+        }
     }
 
     private static List<WhatsAppInteractiveRow> slotRowsFromTimes(List<String> times) {

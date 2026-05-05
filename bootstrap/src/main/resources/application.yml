@@ -114,9 +114,9 @@ cerebro:
       service-account-json-path: ${GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_PATH:}
       # Se o path acima não for ficheiro (ex. Docker com origem em falta → directório vazio), tentar este (muitas instalações usam a mesma SA que o Firebase; exige Calendar API ativada no GCP para essa conta).
       secondary-service-account-json-path: ${CEREBRO_GOOGLE_CALENDAR_SECONDARY_SERVICE_ACCOUNT_JSON_PATH:${FIREBASE_SERVICE_ACCOUNT_JSON_PATH:}}
-      # ID do calendário (ou omissa para usar client_email do JSON). Ex.: primary da SA ou calendário partilhado.
-      # Agenda "Oficina" (partilhada com a service account). Sobrescreva com CEREBRO_GOOGLE_CALENDAR_ID se necessário.
-      calendar-id: ${CEREBRO_GOOGLE_CALENDAR_ID:40b149d56c987f5c2511159d628af7383cb9194068386363ba9f1067362872ac@group.calendar.google.com}
+      # Por omissão vazio: cada tenant usa `google_calendar_id` (cadastro no portal / internal tenants).
+      # CEREBRO_GOOGLE_CALENDAR_ID = fallback opcional (dev ou mono-tenant). Sem tenant nem env: usa client_email do JSON.
+      calendar-id: ${CEREBRO_GOOGLE_CALENDAR_ID:}
       credentials-classpath: credentials.json
       zone: ${CEREBRO_GOOGLE_CALENDAR_ZONE:America/Bahia}
       slot-minutes: 30
