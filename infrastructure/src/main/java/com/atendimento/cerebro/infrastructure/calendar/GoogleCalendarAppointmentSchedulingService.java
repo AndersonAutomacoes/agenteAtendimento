@@ -9,6 +9,7 @@ import com.atendimento.cerebro.application.port.out.TenantConfigurationStorePort
 import com.atendimento.cerebro.application.service.AppointmentValidationService;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import com.atendimento.cerebro.infrastructure.config.CerebroGoogleCalendarProperties;
+import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.util.DateTime;
 import com.google.api.services.calendar.model.Event;
 import com.google.api.services.calendar.model.Events;
@@ -114,10 +115,58 @@ public class GoogleCalendarAppointmentSchedulingService implements AppointmentSc
                     + zone
                     + "): "
                     + WorkingDaySlotPlanner.formatSlotsLine(free);
+        } catch (GoogleJsonResponseException e) {
+            if (e.getStatusCode() == 404) {
+                LOG.warn(
+                        "checkAvailability: HTTP 404 Calendar API tenant={} calendarId={}",
+                        tenantId.value(),
+                        calId.get());
+                return calendarNotSharedUserHint();
+            }
+            if (e.getStatusCode() == 403) {
+                LOG.warn(
+                        "checkAvailability: HTTP 403 (falta permissão de escrita) tenant={} calendarId={}",
+                        tenantId.value(),
+                        calId.get());
+                return calendarWriterAccessUserHint();
+            }
+            LOG.warn("checkAvailability falhou: {}", e.toString());
+            return "Não foi possível consultar a disponibilidade agora. Tente de novo daqui a pouco.";
         } catch (Exception e) {
             LOG.warn("checkAvailability falhou: {}", e.toString());
             return "Não foi possível consultar a disponibilidade agora. Tente de novo daqui a pouco.";
         }
+    }
+
+    /**
+     * Mensagem para o modelo/cliente quando a API devolve 404 (quase sempre calendário não partilhado com a SA).
+     */
+    private String calendarNotSharedUserHint() {
+        Optional<String> sa = googleCalendarService.serviceAccountEmailForLogs();
+        if (sa.isPresent()) {
+            return "Não consegui aceder à agenda Google: é necessário partilhar este calendário com "
+                    + sa.get()
+                    + " no Google Calendar (Definições da agenda → Partilhar → permissão para alterar eventos). "
+                    + "Peça ao administrador para concluir este passo.";
+        }
+        return "Não consegui aceder à agenda Google: peça ao administrador para partilhar o calendário com a conta de "
+                + "serviço do sistema (permissão para alterar eventos).";
+    }
+
+    /**
+     * 403 «requiredAccessLevel» — calendário partilhado mas só com leitura; criar eventos exige «Alterar eventos».
+     */
+    private String calendarWriterAccessUserHint() {
+        Optional<String> sa = googleCalendarService.serviceAccountEmailForLogs();
+        if (sa.isPresent()) {
+            return "A agenda já está ligada, mas a conta do sistema só pode ver os eventos, não criar. No Google "
+                    + "Calendar → Definições desta agenda → Partilhar → localize "
+                    + sa.get()
+                    + " e altere a permissão para Alterar eventos (Make changes to events), não apenas «Ver todos os "
+                    + "detalhes». Guarde e tente de novo.";
+        }
+        return "A agenda já está ligada, mas falta permissão para criar eventos: na partilha do calendário, use "
+                + "«Alterar eventos» para a conta de serviço do sistema.";
     }
 
     private static Instant eventStart(Event ev) {
@@ -184,6 +233,26 @@ public class GoogleCalendarAppointmentSchedulingService implements AppointmentSc
                 return CreateAppointmentResult.failure(
                         appointmentValidationService.duplicateSlotConflictMessageForGemini());
             }
+        } catch (GoogleJsonResponseException e) {
+            if (e.getStatusCode() == 404) {
+                LOG.warn(
+                        "createAppointment: overlap check 404 tenant={} calendarId={}",
+                        tenantId.value(),
+                        calId.get());
+                return CreateAppointmentResult.failure(calendarNotSharedUserHint());
+            }
+            if (e.getStatusCode() == 403) {
+                LOG.warn(
+                        "createAppointment: overlap check 403 tenant={} calendarId={}",
+                        tenantId.value(),
+                        calId.get());
+                return CreateAppointmentResult.failure(calendarWriterAccessUserHint());
+            }
+            LOG.warn("Verificação de duplicidade no Google Calendar falhou: {}", e.toString());
+            AppointmentAuditLog.appError("GoogleAPI", e.getMessage() != null ? e.getMessage() : e.toString());
+            return CreateAppointmentResult.failure(
+                    "Não foi possível confirmar se este horário ainda está livre. Pode sugerir outro horário ou tentar de novo "
+                            + "daqui a instantes.");
         } catch (Exception e) {
             LOG.warn("Verificação de duplicidade no Google Calendar falhou: {}", e.toString());
             AppointmentAuditLog.appError("GoogleAPI", e.getMessage() != null ? e.getMessage() : e.toString());
@@ -256,6 +325,21 @@ public class GoogleCalendarAppointmentSchedulingService implements AppointmentSc
                             + localTime
                             + ". O horário foi registado na agenda da oficina.",
                     rowIdOpt.get());
+        } catch (GoogleJsonResponseException e) {
+            if (e.getStatusCode() == 404) {
+                LOG.warn("createAppointment: insert 404 tenant={} calendarId={}", tenantId.value(), calId.get());
+                return CreateAppointmentResult.failure(calendarNotSharedUserHint());
+            }
+            if (e.getStatusCode() == 403) {
+                LOG.warn("createAppointment: insert 403 tenant={} calendarId={}", tenantId.value(), calId.get());
+                AppointmentAuditLog.appError(
+                        "GoogleAPI",
+                        "403 writer access required — aumentar permissão de partilha para alterar eventos");
+                return CreateAppointmentResult.failure(calendarWriterAccessUserHint());
+            }
+            LOG.warn("createAppointment falhou: {}", e.toString());
+            AppointmentAuditLog.appError("GoogleAPI", e.getMessage() != null ? e.getMessage() : e.toString());
+            return CreateAppointmentResult.failure("Erro ao criar evento no Google Calendar: " + e.getMessage());
         } catch (IOException e) {
             LOG.warn("createAppointment falhou: {}", e.toString());
             AppointmentAuditLog.appError("GoogleAPI", e.getMessage() != null ? e.getMessage() : e.toString());

@@ -220,7 +220,17 @@ public class GoogleCalendarService {
         LOG.info(
                 "Google Calendar API: a invocar Calendar.Events.Insert.execute() para calendarId={} (confirma que o HTTP foi enviado)",
                 normalizedCalendarId);
-        Event created = insertRequest.execute();
+        Event created;
+        try {
+            created = insertRequest.execute();
+        } catch (GoogleJsonResponseException e) {
+            if (e.getStatusCode() == 404) {
+                logCalendar404AccessHint(normalizedCalendarId);
+            } else if (e.getStatusCode() == 403) {
+                logCalendar403WriterHint(normalizedCalendarId, "events.insert");
+            }
+            throw e;
+        }
         LOG.info(
                 "Google Calendar API: execute() concluído calendarId={} eventId={} htmlLink={} status={} iCalUID={}",
                 normalizedCalendarId,
@@ -249,21 +259,85 @@ public class GoogleCalendarService {
                 calendarId,
                 timeMin,
                 timeMax);
-        Events out =
-                calendar()
-                        .events()
-                        .list(calendarId)
-                        .setTimeMin(timeMin)
-                        .setTimeMax(timeMax)
-                        .setSingleEvents(true)
-                        .setOrderBy("startTime")
-                        .execute();
-        int n = out.getItems() == null ? 0 : out.getItems().size();
-        LOG.info(
-                "Google Calendar API: events.list execute() concluído calendarId={} itemsCount={}",
+        try {
+            Events out =
+                    calendar()
+                            .events()
+                            .list(calendarId)
+                            .setTimeMin(timeMin)
+                            .setTimeMax(timeMax)
+                            .setSingleEvents(true)
+                            .setOrderBy("startTime")
+                            .execute();
+            int n = out.getItems() == null ? 0 : out.getItems().size();
+            LOG.info(
+                    "Google Calendar API: events.list execute() concluído calendarId={} itemsCount={}",
+                    calendarId,
+                    n);
+            return out;
+        } catch (GoogleJsonResponseException e) {
+            if (e.getStatusCode() == 404) {
+                logCalendar404AccessHint(calendarId);
+            } else if (e.getStatusCode() == 403) {
+                logCalendar403WriterHint(calendarId, "events.list");
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * 403 {@code requiredAccessLevel} / «writer access»: a SA vê a agenda (partilha só leitura) mas não pode criar
+     * eventos — aumentar permissão para «Make changes to events».
+     */
+    private void logCalendar403WriterHint(String calendarId, String operation) {
+        try {
+            ensureClientLoaded();
+        } catch (IOException ignored) {
+            // ignorado
+        }
+        String sa =
+                cachedServiceAccountEmail != null && !cachedServiceAccountEmail.isBlank()
+                        ? cachedServiceAccountEmail
+                        : "(client_email no JSON da service account)";
+        LOG.error(
+                "Google Calendar API: 403 em {} calendarId={}. A agenda está partilhada com {}, mas falta permissão de "
+                        + "**escrita**: em Google Calendar → Definições da agenda → Partilhar → para esse e-mail escolha "
+                        + "«Make changes to events» (alterar eventos), não só «See all event details».",
+                operation,
                 calendarId,
-                n);
-        return out;
+                sa);
+    }
+
+    /**
+     * 404 em {@code calendars/…/events} com ID correcto costuma significar: a service account não tem acesso ao
+     * calendário (Google devolve 404 em vez de 403). Partilhe a agenda com o {@code client_email} do JSON.
+     */
+    private void logCalendar404AccessHint(String calendarId) {
+        try {
+            ensureClientLoaded();
+        } catch (IOException ignored) {
+            // já falhou antes ao construir o cliente
+        }
+        String sa =
+                cachedServiceAccountEmail != null && !cachedServiceAccountEmail.isBlank()
+                        ? cachedServiceAccountEmail
+                        : "(abra o JSON da service account e copie client_email)";
+        LOG.error(
+                "Google Calendar API: 404 ao listar calendarId={}. O ID costuma estar correcto; falta **partilhar** esta "
+                        + "agenda no Google Calendar com a service account ({}) — permissão «Make changes to events» "
+                        + "(alterar eventos). Sem isto a API devolve Not Found.",
+                calendarId,
+                sa);
+    }
+
+    /** E-mail da service account (credenciais Calendar); útil para instruções de partilha em suporte. */
+    public Optional<String> serviceAccountEmailForLogs() {
+        try {
+            ensureClientLoaded();
+        } catch (IOException e) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(cachedServiceAccountEmail).filter(s -> !s.isBlank());
     }
 
     /**
