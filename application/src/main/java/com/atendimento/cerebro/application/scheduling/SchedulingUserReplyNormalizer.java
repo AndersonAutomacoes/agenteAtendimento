@@ -60,6 +60,13 @@ public final class SchedulingUserReplyNormalizer {
     private static final Pattern LOOSE_BR_DATE =
             Pattern.compile("\\d{1,2}/\\d{1,2}(?:/\\d{2,4})?");
 
+    /**
+     * Menu numerado típico de catálogo («1. X», «2) X»…) — não usar sozinho: combinar com pistas de serviços no mesmo
+     * texto para não confundir com lista de compromissos.
+     */
+    private static final Pattern NUMBERED_TENANT_SERVICE_MENU_LINE =
+            Pattern.compile("(?m)^\\s*(?:[1-9]|10)\\s*[\\).]\\s+\\S");
+
     private static final DateTimeFormatter PT_BR_DAY = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.forLanguageTag("pt-BR"));
 
     private SchedulingUserReplyNormalizer() {}
@@ -317,8 +324,41 @@ public final class SchedulingUserReplyNormalizer {
     }
 
     /**
-     * A lista {@code [service_option_map:…]} é mais recente no histórico do que {@code [slot_options:…]} — a
-     * resposta numérica deve mapear para serviço, não para horário.
+     * Lista de serviços em prosa sem {@code [service_option_map:…]} (o modelo repetiu só o texto). Critérios
+     * estreitos para não confundir com {@code get_active_appointments} (título «Agendamentos» / cópias de troca /
+     * cancelamento).
+     */
+    public static boolean assistantPlainTextLooksLikeTenantServiceNumericMenu(String content) {
+        if (content == null || content.isBlank()) {
+            return false;
+        }
+        if (content.contains(CancelOptionMap.APPENDIX_PREFIX)) {
+            return false;
+        }
+        String compact = content.strip();
+        String lower = compact.toLowerCase(Locale.ROOT);
+        // Card canónico de compromissos existentes — nunca tratado como catálogo de novos serviços.
+        if (lower.startsWith("*agendamentos*") || lower.contains("*agendamentos*\n")) {
+            return false;
+        }
+        if (lower.contains("quais dos atendimentos abaixo")
+                || lower.contains("qual dos atendimentos abaixo")) {
+            return false;
+        }
+        if (lower.contains("segue o seu agendamento ativo")
+                || lower.contains("serviços agendados")
+                || lower.contains("servicos agendados")) {
+            return false;
+        }
+        if (!NUMBERED_TENANT_SERVICE_MENU_LINE.matcher(compact).find()) {
+            return false;
+        }
+        return lower.contains("serviço") || lower.contains("servico");
+    }
+
+    /**
+     * A lista de serviços (apêndice formal ou menu numerado recente em prosa) é mais recente no histórico do que
+     * {@code [slot_options:…]} — a resposta numérica deve mapear para serviço, não para horário/compromissos.
      */
     private static boolean serviceOptionMapIsAuthoritativeOverSlotList(List<Message> history) {
         if (history == null || history.isEmpty()) {
@@ -338,7 +378,8 @@ public final class SchedulingUserReplyNormalizer {
             if (c.contains(SLOT_OPTIONS_APPENDIX_TOKEN)) {
                 lastSlot = i;
             }
-            if (c.contains(SERVICE_OPTION_MAP_APPENDIX_TOKEN)) {
+            if (c.contains(SERVICE_OPTION_MAP_APPENDIX_TOKEN)
+                    || assistantPlainTextLooksLikeTenantServiceNumericMenu(c)) {
                 lastService = i;
             }
         }
@@ -874,6 +915,10 @@ public final class SchedulingUserReplyNormalizer {
         String n = Normalizer.normalize(stripped, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
         if (n.contains("desagendar")) {
             return false;
+        }
+        // «Outro serviço» pede novo fluxo de marcação mesmo depois do pitch sobre o último agendamento CRM.
+        if (Pattern.compile("\\boutro(?:s)?\\s+servi[cç]", Pattern.CASE_INSENSITIVE).matcher(n).find()) {
+            return true;
         }
         if (Pattern.compile("\\b(agendar|reagendar)\\b").matcher(n).find()) {
             return true;

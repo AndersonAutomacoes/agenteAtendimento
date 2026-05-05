@@ -818,6 +818,15 @@ public class ChatService implements ChatUseCase {
             if (outboundOverride.isEmpty()) {
                 outboundForWhatsapp = assistantContent;
             }
+            if (assistantContent != null
+                    && SchedulingUserReplyNormalizer.assistantPlainTextLooksLikeTenantServiceNumericMenu(
+                            assistantContent)) {
+                assistantContent =
+                        appointmentService.appendServiceOptionMapAppendixIfMissing(tenantId, assistantContent);
+                if (outboundOverride.isEmpty()) {
+                    outboundForWhatsapp = assistantContent;
+                }
+            }
         }
         Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(assistantContent));
 

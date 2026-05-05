@@ -587,4 +587,47 @@ class SchedulingUserReplyNormalizerTest {
                                 "*Cancelamento confirmado*\n\nOlá!"))
                 .isTrue();
     }
+
+    @Test
+    void assistantPlainTextLooksLikeTenantServiceNumericMenu_trueForPitchLikeModelOutput() {
+        String body =
+                "Olá, Anderson! Temos os seguintes serviços disponíveis para agendamento:\n\n"
+                        + "1) Alinhamento 3D\n"
+                        + "2) Balanceamento Dinâmico\n"
+                        + "3) Cambagem\n\n"
+                        + "Qual serviço você gostaria de agendar? Por favor, responda com o número correspondente.";
+        assertThat(SchedulingUserReplyNormalizer.assistantPlainTextLooksLikeTenantServiceNumericMenu(body))
+                .isTrue();
+    }
+
+    @Test
+    void assistantPlainTextLooksLikeTenantServiceNumericMenu_falseForAppointmentListing() {
+        String body =
+                """
+                *Agendamentos*
+
+                Quais dos atendimentos abaixo gostaria de cancelar?
+
+                20) *X* — 24/04/2026 13:30
+                """
+                        .stripIndent();
+        assertThat(SchedulingUserReplyNormalizer.assistantPlainTextLooksLikeTenantServiceNumericMenu(body)).isFalse();
+    }
+
+    @Test
+    void shouldInterpretNumericChoiceAsServiceSelection_trueWhenNumericMenuProseIsAfterSlots() {
+        List<Message> hist =
+                List.of(
+                        Message.assistantMessage(
+                                "Segue lista.\n\n[slot_options:09:00,10:00]\n[slot_date:2026-05-06]"),
+                        Message.assistantMessage(
+                                "Vários serviços:\n\n1) A\n2) B\n\nQual serviço deseja agendar?"));
+        assertThat(SchedulingUserReplyNormalizer.shouldInterpretNumericChoiceAsServiceSelection(hist)).isTrue();
+    }
+
+    @Test
+    void looksLikeSchedulingRestartIntent_trueForOtherServicePhrase() {
+        assertThat(SchedulingUserReplyNormalizer.looksLikeSchedulingRestartIntent("Outro serviço")).isTrue();
+        assertThat(SchedulingUserReplyNormalizer.looksLikeSchedulingRestartIntent("Quero outro serviço")).isTrue();
+    }
 }

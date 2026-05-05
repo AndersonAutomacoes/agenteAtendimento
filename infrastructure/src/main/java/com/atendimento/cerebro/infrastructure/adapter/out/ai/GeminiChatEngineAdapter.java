@@ -1594,6 +1594,9 @@ public class GeminiChatEngineAdapter {
                 && assistantContent.contains(SchedulingUserReplyNormalizer.SERVICE_OPTION_MAP_APPENDIX_TOKEN)) {
             return false;
         }
+        if (SchedulingUserReplyNormalizer.assistantPlainTextLooksLikeTenantServiceNumericMenu(assistantContent)) {
+            return true;
+        }
         if (userAskedToListServices(userMessage)) {
             return true;
         }
