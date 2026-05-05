@@ -17,6 +17,7 @@ import com.atendimento.cerebro.application.event.AppointmentCancelledEvent;
 import com.atendimento.cerebro.application.event.AppointmentConfirmedEvent;
 import com.atendimento.cerebro.application.port.out.TenantAppointmentStorePort;
 import com.atendimento.cerebro.application.scheduling.CreateAppointmentResult;
+import com.atendimento.cerebro.application.scheduling.SchedulingUserReplyNormalizer;
 import com.atendimento.cerebro.domain.tenant.TenantId;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -435,6 +436,28 @@ class AppointmentServiceTest {
 
         String out = service.getActiveAppointments(TID, "wa-5511", ZONE);
         assertThat(out).isEqualTo(AppointmentService.NO_ACTIVE_APPOINTMENTS_FRIENDLY_MESSAGE);
+    }
+
+    @Test
+    void appendServiceOptionMapAppendixIfMissing_appendsCanonicalMapWhenMissing() {
+        when(tenantServiceCatalog.listActiveServiceNames(TID)).thenReturn(List.of("Pilates", "Yoga"));
+        String body = "Escolha um serviço:\n\n1. Pilates\n2. Yoga";
+        String out = service.appendServiceOptionMapAppendixIfMissing(TID, body);
+        assertThat(out).startsWith(body);
+        assertThat(out).endsWith("[service_option_map:1=Pilates|2=Yoga]");
+    }
+
+    @Test
+    void appendServiceOptionMapAppendixIfMissing_noOpWhenAppendixAlreadyPresent() {
+        String already = "x " + SchedulingUserReplyNormalizer.SERVICE_OPTION_MAP_APPENDIX_TOKEN + "1=A]";
+        assertThat(service.appendServiceOptionMapAppendixIfMissing(TID, already)).isEqualTo(already);
+        verify(tenantServiceCatalog, never()).listActiveServiceNames(any());
+    }
+
+    @Test
+    void appendServiceOptionMapAppendixIfMissing_noAppendWhenCatalogEmpty() {
+        when(tenantServiceCatalog.listActiveServiceNames(TID)).thenReturn(List.of());
+        assertThat(service.appendServiceOptionMapAppendixIfMissing(TID, "só texto")).isEqualTo("só texto");
     }
 
     private static TenantAppointmentListItem sampleRowAgendado(String conv, String service, String googleId, long id) {

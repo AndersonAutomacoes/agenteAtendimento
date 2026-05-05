@@ -286,6 +286,25 @@ public class AppointmentService {
     }
 
     /**
+     * Anexa {@code [service_option_map:…]} ao final do texto quando ainda não existe e o tenant tem serviços
+     * activos — necessário para o pipeline WhatsApp ({@code SchedulingServiceCatalogInteractive}) montar lista
+     * interativa Evolution quando o modelo responde em prosa sem chamar {@link #listTenantServicesForScheduling}.
+     */
+    public String appendServiceOptionMapAppendixIfMissing(TenantId tenantId, String content) {
+        if (content == null || content.isBlank()) {
+            return content;
+        }
+        if (content.contains(SchedulingUserReplyNormalizer.SERVICE_OPTION_MAP_APPENDIX_TOKEN)) {
+            return content;
+        }
+        List<String> available = tenantServiceCatalog.listActiveServiceNames(tenantId);
+        if (available.isEmpty()) {
+            return content;
+        }
+        return content.strip() + "\n\n[service_option_map:" + buildServiceOptionMapAppendix(available) + "]";
+    }
+
+    /**
      * Indica se o nome corresponde a um serviço activo do tenant (match exacto alinhado a {@code tenant_services}).
      */
     public boolean isServiceInTenantCatalog(TenantId tenantId, String serviceName) {

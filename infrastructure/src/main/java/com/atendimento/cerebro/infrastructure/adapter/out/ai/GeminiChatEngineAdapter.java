@@ -390,6 +390,9 @@ public class GeminiChatEngineAdapter {
                     }
                 }
                 content = ensureCancelOptionMapOnAssistantText(content);
+                if (shouldBackfillServiceOptionMapForInteractiveCatalog(request.userMessage(), content)) {
+                    content = appointmentService.appendServiceOptionMapAppendixIfMissing(request.tenantId(), content);
+                }
                 Optional<WhatsAppInteractiveReply> interactive =
                         SchedulingServiceCatalogInteractive.mergeWithSlotInteractive(content, calendarZone);
                 return new AICompletionResponse(content, interactive, extraOutbound, whatsappTextOverride);
@@ -1545,6 +1548,52 @@ public class GeminiChatEngineAdapter {
                         || lower.contains("quais")
                         || lower.contains("mostrar")
                         || lower.contains("mostre"));
+    }
+
+    /**
+     * Quando o modelo lista serviços em prosa sem {@code [service_option_map:…]}, anexamos o mapa no backend para o
+     * Evolution montar lista interativa (evita depender só de {@code list_tenant_services} no turno).
+     */
+    private static boolean shouldBackfillServiceOptionMapForInteractiveCatalog(
+            String userMessage, String assistantContent) {
+        if (assistantContent != null
+                && assistantContent.contains(SchedulingUserReplyNormalizer.SERVICE_OPTION_MAP_APPENDIX_TOKEN)) {
+            return false;
+        }
+        if (userAskedToListServices(userMessage)) {
+            return true;
+        }
+        return userMessageSuggestsSchedulingServiceChoice(userMessage)
+                && assistantContentLooksLikeNumberedServiceList(assistantContent);
+    }
+
+    private static boolean userMessageSuggestsSchedulingServiceChoice(String userMessage) {
+        if (userMessage == null || userMessage.isBlank()) {
+            return false;
+        }
+        String lower = userMessage.toLowerCase(Locale.ROOT);
+        return lower.contains("quero agendar")
+                || lower.contains("queria agendar")
+                || lower.contains("vou agendar")
+                || lower.contains("marcar hor")
+                || lower.contains("marcar um hor")
+                || lower.contains("marcar consulta")
+                || lower.contains("marcar atendimento")
+                || (lower.contains("marcar")
+                        && (lower.contains("data") || lower.contains("dia") || lower.contains("hora")))
+                || lower.contains("marcação")
+                || lower.contains("marcacao");
+    }
+
+    /** Linhas tipo «1. Nome» ou «2) Nome» (1–10), evitando falsos positivos com anos (ex. 2025.). */
+    private static final Pattern NUMBERED_SERVICE_LINE =
+            Pattern.compile("(?m)^\\s*(?:[1-9]|10)\\s*[\\).]\\s+\\S");
+
+    private static boolean assistantContentLooksLikeNumberedServiceList(String content) {
+        if (content == null || content.isBlank()) {
+            return false;
+        }
+        return NUMBERED_SERVICE_LINE.matcher(content).find();
     }
 
     private static boolean shortConfirmAfterAssistantListOrCancelPrompt(AICompletionRequest request) {
