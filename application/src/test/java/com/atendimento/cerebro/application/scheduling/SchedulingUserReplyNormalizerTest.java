@@ -34,6 +34,34 @@ class SchedulingUserReplyNormalizerTest {
     }
 
     @Test
+    void looksLikeAppointmentInfoIntent_detectsQuestionAboutScheduledService() {
+        assertThat(
+                        SchedulingUserReplyNormalizer.looksLikeAppointmentInfoIntent(
+                                "Quero saber quanto tempo dura o serviço que agendei"))
+                .isTrue();
+        assertThat(
+                        SchedulingUserReplyNormalizer.looksLikeAppointmentInfoIntent(
+                                "Qual a duração do atendimento desse agendamento?"))
+                .isTrue();
+    }
+
+    @Test
+    void looksLikeAppointmentInfoIntent_rejectsChangeAndCancelRequests() {
+        assertThat(
+                        SchedulingUserReplyNormalizer.looksLikeAppointmentInfoIntent(
+                                "Quero cancelar esse agendamento"))
+                .isFalse();
+        assertThat(
+                        SchedulingUserReplyNormalizer.looksLikeAppointmentInfoIntent(
+                                "Quero alterar o horário do agendamento"))
+                .isFalse();
+        assertThat(
+                        SchedulingUserReplyNormalizer.looksLikeAppointmentInfoIntent(
+                                "Listar meus agendamentos"))
+                .isFalse();
+    }
+
+    @Test
     void parseReagendamentoDeParaHint_extractsDateAndFromToTime() {
         var h =
                 SchedulingUserReplyNormalizer.parseReagendamentoDeParaHint(

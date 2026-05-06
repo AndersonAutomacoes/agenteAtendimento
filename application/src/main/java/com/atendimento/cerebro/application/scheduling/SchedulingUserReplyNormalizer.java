@@ -1173,6 +1173,48 @@ public final class SchedulingUserReplyNormalizer {
     }
 
     /**
+     * Cliente quer apenas informações sobre um agendamento já escolhido/listado (ex.: duração, detalhes, horário),
+     * sem intenção de cancelar/reagendar.
+     */
+    public static boolean looksLikeAppointmentInfoIntent(String userMessage) {
+        if (userMessage == null || userMessage.isBlank()) {
+            return false;
+        }
+        if (looksLikeCancellationIntent(userMessage)
+                || looksLikeRescheduleOrTimeChangeIntent(userMessage)
+                || looksLikeNewAppointmentBookingRequest(userMessage)
+                || looksLikeListActiveAppointmentsIntent(userMessage)) {
+            return false;
+        }
+        String n = Normalizer.normalize(userMessage.strip(), Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
+        if (n.length() > 240) {
+            return false;
+        }
+        boolean hasInfoVerb =
+                n.contains("quanto tempo")
+                        || n.contains("qual o tempo")
+                        || n.contains("qual tempo")
+                        || n.contains("duração")
+                        || n.contains("duracao")
+                        || n.contains("informação")
+                        || n.contains("informacao")
+                        || n.contains("detalhe")
+                        || n.contains("saber")
+                        || n.contains("me diz")
+                        || n.contains("me fale");
+        if (!hasInfoVerb) {
+            return false;
+        }
+        boolean hasAppointmentSubject =
+                n.contains("agendamento")
+                        || n.contains("compromisso")
+                        || n.contains("atendimento")
+                        || n.contains("serviço")
+                        || n.contains("servico");
+        return hasAppointmentSubject;
+    }
+
+    /**
      * @deprecated Preferir {@link #RESCHEDULE_SYSTEM_BLOCK} no system prompt (não prefixar a mensagem do utilizador).
      */
     @Deprecated

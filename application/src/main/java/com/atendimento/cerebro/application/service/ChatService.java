@@ -386,8 +386,18 @@ public class ChatService implements ChatUseCase {
         }
 
         boolean isServiceInteractiveSelection = command.whatsAppInteractiveKind() == WhatsAppInteractiveKind.SERVICES;
+        boolean appointmentInfoIntent =
+                schedulingTools && SchedulingUserReplyNormalizer.looksLikeAppointmentInfoIntent(userText);
+        if (appointmentInfoIntent) {
+            clearCancellationContext(conversationId.value());
+            historyForAi = SchedulingUserReplyNormalizer.stripInternalAppendicesFromHistory(historyForAi);
+            LOG.info(
+                    "[scheduling-info] Contexto interno de gestão (appendices) removido do histórico — pedido de informação sobre agendamento.");
+        }
         boolean cancelIntent =
-                !isServiceInteractiveSelection && SchedulingUserReplyNormalizer.looksLikeCancellationIntent(userText);
+                !appointmentInfoIntent
+                        && !isServiceInteractiveSelection
+                        && SchedulingUserReplyNormalizer.looksLikeCancellationIntent(userText);
         if (cancelIntent) {
             historyForAi = SchedulingUserReplyNormalizer.stripSchedulingStateFromHistory(historyForAi);
             LOG.info(
@@ -395,7 +405,9 @@ public class ChatService implements ChatUseCase {
         }
 
         boolean rescheduleIntent =
-                schedulingTools && SchedulingUserReplyNormalizer.looksLikeRescheduleOrTimeChangeIntent(userText);
+                !appointmentInfoIntent
+                        && schedulingTools
+                        && SchedulingUserReplyNormalizer.looksLikeRescheduleOrTimeChangeIntent(userText);
 
         boolean schedulingRestartIntent =
                 schedulingTools
