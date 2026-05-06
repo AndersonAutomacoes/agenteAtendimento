@@ -93,7 +93,7 @@ import org.slf4j.LoggerFactory;
  */
 
 public class ChatService implements ChatUseCase {
-    private static final String AXEZAP_INTRODUCTION_RULE =
+    private static final String AXEZAP_INTRODUCTION_RULE_TEMPLATE =
             "Regra de apresentação: ao iniciar atendimento com um cliente, apresente-se como: "
                     + "'Olá! Sou o assistente inteligente da [Empresa], operando através da tecnologia AxeZap.'";
 
@@ -260,6 +260,9 @@ public class ChatService implements ChatUseCase {
 
 
         Optional<TenantConfiguration> tenantConfig = tenantConfigurationStore.findByTenantId(tenantId);
+        String establishmentDisplayName = resolveEstablishmentDisplayName(tenantConfig, tenantId);
+        String axezapIntroductionRule =
+                AXEZAP_INTRODUCTION_RULE_TEMPLATE.replace("[Empresa]", establishmentDisplayName);
 
         String systemPrompt =
                 SystemPromptPlaceholders.apply(
@@ -267,8 +270,8 @@ public class ChatService implements ChatUseCase {
                         ZoneId.of(schedulingZoneId));
         systemPrompt =
                 (systemPrompt == null || systemPrompt.isBlank())
-                        ? AXEZAP_INTRODUCTION_RULE
-                        : AXEZAP_INTRODUCTION_RULE + "\n\n" + systemPrompt;
+                        ? axezapIntroductionRule
+                        : axezapIntroductionRule + "\n\n" + systemPrompt;
 
         if (tenantConfig.isEmpty()) {
 
@@ -1874,6 +1877,20 @@ public class ChatService implements ChatUseCase {
             // Invalid time is handled by downstream validators/tooling.
         }
         return Optional.empty();
+    }
+
+    private static String resolveEstablishmentDisplayName(
+            Optional<TenantConfiguration> tenantConfig, TenantId tenantId) {
+        if (tenantConfig != null && tenantConfig.isPresent()) {
+            String establishmentName = tenantConfig.get().establishmentName();
+            if (establishmentName != null && !establishmentName.isBlank()) {
+                return establishmentName.strip();
+            }
+        }
+        if (tenantId != null && tenantId.value() != null && !tenantId.value().isBlank()) {
+            return tenantId.value().strip();
+        }
+        return "empresa";
     }
 
     /**
