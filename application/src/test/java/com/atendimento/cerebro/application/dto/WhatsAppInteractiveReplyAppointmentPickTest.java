@@ -26,4 +26,13 @@ class WhatsAppInteractiveReplyAppointmentPickTest {
         assertThat(r.customRows().get(0).rowId()).isEqualTo("appt_reschedule_12");
         assertThat(r.customRows().get(1).rowId()).isEqualTo("appt_cancel_12");
     }
+
+    @Test
+    void forCancellationConfirmation_buildsYesNoButtonsForSpecificAppointment() {
+        var r = WhatsAppInteractiveReply.forCancellationConfirmation(34L);
+        assertThat(r.kind()).isEqualTo(WhatsAppInteractiveKind.APPOINTMENT_ACTION);
+        assertThat(r.customRows()).hasSize(2);
+        assertThat(r.customRows().get(0).rowId()).isEqualTo("appt_cancel_confirm_34");
+        assertThat(r.customRows().get(1).rowId()).isEqualTo("appt_cancel_abort_34");
+    }
 }

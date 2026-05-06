@@ -178,6 +178,28 @@ public record WhatsAppInteractiveReply(
                                 "appt_cancel_" + appointmentId, "Cancelar", "Anular este agendamento")));
     }
 
+    /** Confirmação explícita antes de executar o cancelamento (passo 3). */
+    public static WhatsAppInteractiveReply forCancellationConfirmation(long appointmentId) {
+        return new WhatsAppInteractiveReply(
+                WhatsAppInteractiveKind.APPOINTMENT_ACTION,
+                "Confirmar cancelamento",
+                "Deseja cancelar este agendamento agora?",
+                List.of(),
+                "",
+                null,
+                "Confirmar",
+                "",
+                List.of(
+                        new WhatsAppInteractiveRow(
+                                "appt_cancel_confirm_" + appointmentId,
+                                "Sim, cancelar",
+                                "Confirma o cancelamento"),
+                        new WhatsAppInteractiveRow(
+                                "appt_cancel_abort_" + appointmentId,
+                                "Não, manter",
+                                "Voltar sem cancelar")));
+    }
+
     /** True quando este payload deve substituir o envio só com o corpo texto (lista de vagas Evolution). */
     public boolean replacesPrimaryOutboundTextSlotList() {
         return kind == WhatsAppInteractiveKind.SLOTS && !slotTimes.isEmpty();

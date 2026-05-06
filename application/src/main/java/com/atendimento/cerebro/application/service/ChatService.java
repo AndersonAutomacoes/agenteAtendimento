@@ -111,6 +111,9 @@ public class ChatService implements ChatUseCase {
 
     private static final Pattern PICK_APPT_ROW = Pattern.compile("(?i)^pick_appt_(\\d+)$");
     private static final Pattern STRUCTURED_CANCEL_REPLY = Pattern.compile("(?i)^cancel_(\\d+)$");
+    private static final Pattern APPT_CANCEL_BUTTON = Pattern.compile("(?i)^appt_cancel_(\\d+)$");
+    private static final Pattern APPT_CANCEL_CONFIRM_BUTTON = Pattern.compile("(?i)^appt_cancel_confirm_(\\d+)$");
+    private static final Pattern APPT_CANCEL_ABORT_BUTTON = Pattern.compile("(?i)^appt_cancel_abort_(\\d+)$");
 
     private static final Logger LOG = LoggerFactory.getLogger(ChatService.class);
 
@@ -1111,6 +1114,9 @@ public class ChatService implements ChatUseCase {
             case APPOINTMENT_LIST -> PICK_APPT_ROW.matcher(lower).matches();
             case APPOINTMENT_ACTION ->
                     STRUCTURED_CANCEL_REPLY.matcher(lower).matches()
+                            || APPT_CANCEL_BUTTON.matcher(lower).matches()
+                            || APPT_CANCEL_CONFIRM_BUTTON.matcher(lower).matches()
+                            || APPT_CANCEL_ABORT_BUTTON.matcher(lower).matches()
                             || lower.matches("(?i)^(reagendar|remarcar)\\s+o\\s+\\d+(?:[.\\s!?…]*)?$");
             case SLOTS -> lower.startsWith("slot_");
             case CONFIRMATION -> lower.startsWith("confirm_") || SHORT_CONFIRMATION.matcher(lower).matches();
@@ -1271,10 +1277,37 @@ public class ChatService implements ChatUseCase {
         if (k != WhatsAppInteractiveKind.APPOINTMENT_ACTION && k != WhatsAppInteractiveKind.CANCEL_PICK) {
             return Optional.empty();
         }
+        String row = Optional.ofNullable(command.whatsAppInteractiveRowId()).orElse("").strip();
+
+        Matcher askConfirm = APPT_CANCEL_BUTTON.matcher(row);
+        if (askConfirm.matches()) {
+            long appointmentId = Long.parseLong(askConfirm.group(1));
+            String prompt = "Antes de concluir, confirme se devo cancelar este agendamento agora.";
+            Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(prompt));
+            ConversationContext updated = context.append(userMessage, assistantMessage);
+            conversationContextStore.save(updated);
+            return Optional.of(
+                    new ChatResult(
+                            SchedulingUserReplyNormalizer.stripInternalSlotAppendix(prompt),
+                            Optional.of(
+                                    WhatsAppInteractiveReply.forCancellationConfirmation(
+                                            appointmentId))));
+        }
+
+        Matcher abortCancel = APPT_CANCEL_ABORT_BUTTON.matcher(row);
+        if (abortCancel.matches()) {
+            String keep =
+                    "Perfeito, mantive o agendamento sem cancelar. Se quiser, posso ajudar com outro assunto.";
+            Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(keep));
+            ConversationContext updated = context.append(userMessage, assistantMessage);
+            conversationContextStore.save(updated);
+            clearCancellationContext(conversationId);
+            return Optional.of(new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(keep)));
+        }
+
         Optional<Long> idOpt = Optional.empty();
-        String row = command.whatsAppInteractiveRowId();
-        if (row != null && !row.isBlank()) {
-            Matcher mc = Pattern.compile("(?i)^appt_cancel_(\\d+)$").matcher(row.strip());
+        if (!row.isBlank()) {
+            Matcher mc = APPT_CANCEL_CONFIRM_BUTTON.matcher(row);
             if (mc.matches()) {
                 idOpt = Optional.of(Long.parseLong(mc.group(1)));
             }
@@ -1291,10 +1324,17 @@ public class ChatService implements ChatUseCase {
         String cancelReply =
                 appointmentService.cancelAppointment(
                         tenantId, conversationId, "", String.valueOf(idOpt.get()), calendarZone);
-        Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(cancelReply));
+        String assistantText = cancelReply == null ? "" : cancelReply.strip();
+        if (AppointmentService.isSuccessfulCancellationReply(assistantText)) {
+            assistantText = "Cancelamento concluido com sucesso. Estou a disposicao se precisar de algo mais.";
+            clearCancellationContext(conversationId);
+        }
+        Message assistantMessage = Message.assistantMessage(forAssistantMessageRecord(assistantText));
         ConversationContext updated = context.append(userMessage, assistantMessage);
         conversationContextStore.save(updated);
-        return Optional.of(new ChatResult(SchedulingUserReplyNormalizer.stripInternalSlotAppendix(cancelReply)));
+        return Optional.of(
+                new ChatResult(
+                        SchedulingUserReplyNormalizer.stripInternalSlotAppendix(assistantText)));
     }
 
     /**

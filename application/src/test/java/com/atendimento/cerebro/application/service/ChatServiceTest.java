@@ -1496,6 +1496,89 @@ class ChatServiceTest {
         assertThat(result.assistantMessage()).contains("Revisão").contains("O que deseja fazer");
     }
 
+    @Test
+    void chat_appointmentCancelAction_asksExplicitCancellationConfirmationBeforeCancelling() {
+        ConversationContext existing =
+                ConversationContext.builder()
+                        .tenantId(tenantId)
+                        .conversationId(conversationId)
+                        .messages(List.of())
+                        .build();
+        when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.empty());
+        when(conversationContextStore.load(tenantId, conversationId)).thenReturn(Optional.of(existing));
+        when(knowledgeBase.findTopThreeRelevantFragments(eq(tenantId), eq("cancel_77"))).thenReturn(List.of());
+
+        var result =
+                chatService.chat(
+                        new ChatCommand(
+                                tenantId,
+                                conversationId,
+                                "cancel_77",
+                                null,
+                                AiChatProvider.GEMINI,
+                                WhatsAppInteractiveKind.APPOINTMENT_ACTION,
+                                "appt_cancel_77",
+                                List.of()));
+
+        verify(aiEngine, never()).complete(any());
+        assertThat(result.whatsAppInteractive()).isPresent();
+        assertThat(result.whatsAppInteractive().get().kind()).isEqualTo(WhatsAppInteractiveKind.APPOINTMENT_ACTION);
+        assertThat(result.whatsAppInteractive().get().customRows()).hasSize(2);
+        assertThat(result.whatsAppInteractive().get().customRows().get(0).rowId())
+                .isEqualTo("appt_cancel_confirm_77");
+        assertThat(result.assistantMessage()).contains("confirme").contains("cancelar");
+    }
+
+    @Test
+    void chat_appointmentCancelConfirmation_executesCancelAndEndsFlow() {
+        ConversationContext existing =
+                ConversationContext.builder()
+                        .tenantId(tenantId)
+                        .conversationId(conversationId)
+                        .messages(List.of())
+                        .build();
+        when(tenantConfigurationStore.findByTenantId(tenantId)).thenReturn(Optional.empty());
+        when(conversationContextStore.load(tenantId, conversationId)).thenReturn(Optional.of(existing));
+        when(knowledgeBase.findTopThreeRelevantFragments(eq(tenantId), eq("appt_cancel_confirm_77")))
+                .thenReturn(List.of());
+        TenantAppointmentListItem active =
+                new TenantAppointmentListItem(
+                        77L,
+                        tenantId.value(),
+                        conversationId.value(),
+                        "João",
+                        "Revisão",
+                        Instant.parse("2026-05-10T17:00:00Z"),
+                        Instant.parse("2026-05-10T17:45:00Z"),
+                        "evt-77",
+                        Instant.parse("2026-05-05T12:00:00Z"),
+                        TenantAppointmentListItem.AppointmentStatus.UPCOMING,
+                        TenantAppointmentListItem.BookingStatus.AGENDADO);
+        when(tenantAppointmentQuery.findByIdForTenantAndConversation(
+                        eq(tenantId), eq(77L), eq(conversationId.value()), any()))
+                .thenReturn(Optional.of(active));
+        when(appointmentScheduling.deleteCalendarEvent(eq(tenantId), eq("evt-77"))).thenReturn(true);
+        when(tenantAppointmentStore.markCancelled(eq(77L), any())).thenReturn(true);
+
+        var result =
+                chatService.chat(
+                        new ChatCommand(
+                                tenantId,
+                                conversationId,
+                                "appt_cancel_confirm_77",
+                                null,
+                                AiChatProvider.GEMINI,
+                                WhatsAppInteractiveKind.APPOINTMENT_ACTION,
+                                "appt_cancel_confirm_77",
+                                List.of()));
+
+        verify(aiEngine, never()).complete(any());
+        verify(appointmentScheduling).deleteCalendarEvent(eq(tenantId), eq("evt-77"));
+        verify(tenantAppointmentStore).markCancelled(eq(77L), any());
+        assertThat(result.whatsAppInteractive()).isEmpty();
+        assertThat(result.assistantMessage()).contains("Cancelamento concluido").contains("disposicao");
+    }
+
 }
 
 
