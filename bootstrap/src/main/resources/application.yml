@@ -225,6 +225,9 @@ resilience4j:
         enableExponentialBackoff: true
         exponentialBackoffMultiplier: 2
 
+billing:
+  past-due-grace-days: ${BILLING_PAST_DUE_GRACE_DAYS:7}
+
 # Stripe (billing por tenant). Substituir price_REPLACE_* pelos IDs reais no Dashboard.
 stripe:
   secret-key: ${STRIPE_SECRET_KEY:}

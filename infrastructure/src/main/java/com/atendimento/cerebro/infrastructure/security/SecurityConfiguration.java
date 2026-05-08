@@ -25,6 +25,7 @@ public class SecurityConfiguration {
             HttpSecurity http,
             FirebasePortalAuthenticationFilter firebasePortalAuthenticationFilter,
             TenantContextFilter tenantContextFilter,
+            BillingEntitlementWebFilter billingEntitlementWebFilter,
             ProfileTierAuthorizationManager profileTierAuthorizationManager)
             throws Exception {
         http.csrf(AbstractHttpConfigurer::disable)
@@ -81,7 +82,8 @@ public class SecurityConfiguration {
                                             response.getWriter().write(body);
                                         }))
                 .addFilterBefore(firebasePortalAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(tenantContextFilter, FirebasePortalAuthenticationFilter.class);
+                .addFilterAfter(tenantContextFilter, FirebasePortalAuthenticationFilter.class)
+                .addFilterAfter(billingEntitlementWebFilter, TenantContextFilter.class);
         return http.build();
     }
 }
