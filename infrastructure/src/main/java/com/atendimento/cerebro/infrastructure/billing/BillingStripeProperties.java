@@ -13,6 +13,8 @@ public record BillingStripeProperties(
         String webhookSecret,
         String successUrl,
         String cancelUrl,
+        /** URL para onde o Stripe redireciona após sair do Customer Portal. */
+        String portalReturnUrl,
         LinkedHashMap<String, String> priceTier) {
 
     /** Stripe {@code Price} ids → nível cobrado. */

@@ -37,6 +37,8 @@ public class SecurityConfiguration {
                                 .permitAll()
                                 .requestMatchers(HttpMethod.POST, "/v1/billing/webhook/stripe")
                                 .permitAll()
+                                .requestMatchers(HttpMethod.POST, "/v1/billing/checkout-session", "/v1/billing/portal-session")
+                                .authenticated()
                                 // AuthController valida Bearer + portal vs convite pendente (401/403 com JSON).
                                 .requestMatchers(HttpMethod.GET, "/v1/auth/me")
                                 .permitAll()

@@ -231,6 +231,7 @@ stripe:
   webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
   success-url: ${STRIPE_CHECKOUT_SUCCESS_URL:http://localhost:3000/pt-BR/billing/success}
   cancel-url: ${STRIPE_CHECKOUT_CANCEL_URL:http://localhost:3000/pt-BR/pricing}
+  portal-return-url: ${STRIPE_PORTAL_RETURN_URL:http://localhost:3000/pt-BR/pricing}
   price-tier:
     price_REPLACE_BASIC_MONTHLY: BASIC
     price_REPLACE_BASIC_YEARLY: BASIC
