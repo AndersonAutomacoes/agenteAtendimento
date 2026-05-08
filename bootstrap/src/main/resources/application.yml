@@ -239,12 +239,12 @@ stripe:
   cancel-url: ${STRIPE_CHECKOUT_CANCEL_URL:http://localhost:3000/pricing}
   portal-return-url: ${STRIPE_PORTAL_RETURN_URL:http://localhost:3000/pricing}
   price-tier:
-    price_1DevBasicMonth: BASIC
-    price_1DevBasicYear: BASIC
-    price_1DevProMonth: PRO
-    price_1DevProYear: PRO
-    price_1DevUltraMonth: ULTRA
-    price_1DevUltraYear: ULTRA
+    price_1TUwrARWktVb3mYIaFEuiRRF: BASIC
+    price_1TUwtiRWktVb3mYIEGEgd23Q: BASIC
+    price_1TUwugRWktVb3mYIS74iJgfJ: PRO
+    price_1TUwwORWktVb3mYIxmCdCVa4: PRO
+    price_1TUwxgRWktVb3mYIkH1WcHRf: ULTRA
+    price_1TUwyYRWktVb3mYIkUhHG4W3: ULTRA
 
 # Contrato único: classpath/static/openapi.yaml — UI em /swagger-ui/index.html
 springdoc:
