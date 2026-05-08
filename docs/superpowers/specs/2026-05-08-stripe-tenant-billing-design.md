@@ -1,7 +1,7 @@
 # Design: Cobrança Stripe por tenant (planos Basic / Pro / Ultra)
 
 **Data:** 2026-05-08  
-**Status:** proposta de design (aguardando revisão explícita antes de implementação)  
+**Status:** aprovada para implementação (2026-05-08)  
 **Provedor:** Stripe (Billing / Subscriptions)  
 **Premissa de negócio:** o **pagador é sempre o dono do tenant** (um “account owner” por tenant). O acesso do tenant aos perfis **Basic**, **Pro** e **Ultra** é **concedido ou revogado** com base no estado da assinatura no Stripe e no período vigente.
 
@@ -182,4 +182,4 @@ Entidades/conceitos mínimos (nomes ilustrativos):
 
 ---
 
-**Próximo passo (fora desta spec):** após sua revisão e aprovação explícita deste arquivo, invocar a skill **writing-plans** para gerar o plano de implementação incremental (API, persistência, testes de webhook, e integração com o fluxo de autorização por tenant).
+**Implementação:** plano incremental em [`.cursor/plans/stripe_tenant_billing_implementation_20260508.plan.md`](../../../.cursor/plans/stripe_tenant_billing_implementation_20260508.plan.md) (skill `writing-plans` não está versionada neste repositório; o plano cumpre o mesmo papel).
