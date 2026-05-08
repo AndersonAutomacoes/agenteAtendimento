@@ -225,9 +225,17 @@ resilience4j:
         enableExponentialBackoff: true
         exponentialBackoffMultiplier: 2
 
-# Stripe (billing por tenant — Task 6 completa keys/URLs restantes).
+# Stripe (billing por tenant). Substituir price_REPLACE_* pelos IDs reais no Dashboard.
 stripe:
+  secret-key: ${STRIPE_SECRET_KEY:}
   webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+  success-url: ${STRIPE_CHECKOUT_SUCCESS_URL:http://localhost:3000/pt-BR/billing/success}
+  cancel-url: ${STRIPE_CHECKOUT_CANCEL_URL:http://localhost:3000/pt-BR/pricing}
+  price-tier:
+    price_REPLACE_BASIC_MONTHLY: BASIC
+    price_REPLACE_BASIC_YEARLY: BASIC
+    price_REPLACE_PRO_MONTHLY: PRO
+    price_REPLACE_ULTRA_YEARLY: ULTRA
 
 # Contrato único: classpath/static/openapi.yaml — UI em /swagger-ui/index.html
 springdoc:

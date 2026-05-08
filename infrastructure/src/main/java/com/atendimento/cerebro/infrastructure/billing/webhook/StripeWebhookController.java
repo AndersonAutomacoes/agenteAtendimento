@@ -1,10 +1,10 @@
 package com.atendimento.cerebro.infrastructure.billing.webhook;
 
+import com.atendimento.cerebro.infrastructure.billing.BillingStripeProperties;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Event;
 import com.stripe.net.Webhook;
 import java.nio.charset.StandardCharsets;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -16,12 +16,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class StripeWebhookController {
 
-    private final String webhookSecret;
+    private final BillingStripeProperties stripeProperties;
     private final StripeValidatedWebhookSink sink;
 
-    public StripeWebhookController(
-            @Value("${stripe.webhook-secret:}") String webhookSecret, StripeValidatedWebhookSink sink) {
-        this.webhookSecret = webhookSecret;
+    public StripeWebhookController(BillingStripeProperties stripeProperties, StripeValidatedWebhookSink sink) {
+        this.stripeProperties = stripeProperties;
         this.sink = sink;
     }
 
@@ -35,6 +34,7 @@ public class StripeWebhookController {
         if (stripeSignature == null || stripeSignature.isBlank()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("missing signature");
         }
+        String webhookSecret = stripeProperties.webhookSecret();
         if (webhookSecret == null || webhookSecret.isBlank()) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body("webhook not configured");
         }
