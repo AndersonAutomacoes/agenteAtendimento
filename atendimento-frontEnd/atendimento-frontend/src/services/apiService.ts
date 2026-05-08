@@ -37,10 +37,15 @@ export type PortalRegisterResponse = {
   profileLevel: ProfileLevel;
 };
 
+export type PortalBilling = {
+  blocked: boolean;
+};
+
 export type PortalSession = {
   tenantId: string;
   profileLevel: ProfileLevel;
   features: Partial<Record<PlanFeatureKey, boolean>>;
+  billing: PortalBilling;
 };
 
 function parseProfileLevel(raw: unknown): ProfileLevel {
@@ -140,11 +145,89 @@ export async function getPortalSession(): Promise<PortalSession> {
       }
     }
   }
+  const billingRaw = o.billing;
+  const billing: PortalBilling =
+    billingRaw &&
+    typeof billingRaw === "object" &&
+    typeof (billingRaw as { blocked?: unknown }).blocked === "boolean"
+      ? { blocked: Boolean((billingRaw as { blocked: boolean }).blocked) }
+      : { blocked: false };
+
   return {
     tenantId: o.tenantId,
     profileLevel: parseProfileLevel(o.profileLevel),
     features,
+    billing,
   };
+}
+
+function billingCheckoutUrl(): string {
+  const base = getApiBaseUrl();
+  return base ? `${base}/v1/billing/checkout-session` : "/api/v1/billing/checkout-session";
+}
+
+function billingPortalSessionUrl(): string {
+  const base = getApiBaseUrl();
+  return base ? `${base}/v1/billing/portal-session` : "/api/v1/billing/portal-session";
+}
+
+/** Checkout Stripe (assinatura). Exige utilizador portal + dono de cobrança no backend. */
+export async function postBillingCheckoutSession(
+  tenantId: string,
+  priceId: string,
+): Promise<{ url: string }> {
+  const res = await fetch(billingCheckoutUrl(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify({ tenantId: tenantId.trim(), priceId: priceId.trim() }),
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(apiI18nKey("errors.serverUnavailable"));
+  }
+  if (!res.ok) {
+    throw new Error(httpErrorUserMessage(res.status, json, "errors.billingCheckoutFailed"));
+  }
+  const o = json as Record<string, unknown>;
+  if (typeof o.url !== "string" || !o.url) {
+    throw new Error(apiI18nKey("errors.billingInvalidCheckoutResponse"));
+  }
+  return { url: o.url };
+}
+
+/** Customer Portal Stripe (cartão, cancelamento ao fim do período). */
+export async function postBillingPortalSession(tenantId: string): Promise<{ url: string }> {
+  const res = await fetch(billingPortalSessionUrl(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify({ tenantId: tenantId.trim() }),
+  });
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(apiI18nKey("errors.serverUnavailable"));
+  }
+  if (!res.ok) {
+    throw new Error(httpErrorUserMessage(res.status, json, "errors.billingPortalFailed"));
+  }
+  const o = json as Record<string, unknown>;
+  if (typeof o.url !== "string" || !o.url) {
+    throw new Error(apiI18nKey("errors.billingInvalidPortalResponse"));
+  }
+  return { url: o.url };
 }
 
 function chatUrl(): string {

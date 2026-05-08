@@ -1,11 +1,16 @@
 package com.atendimento.cerebro.infrastructure.adapter.inbound.rest;
 
-import com.atendimento.cerebro.infrastructure.service.TransactionalPortalRegistrationService;
+import com.atendimento.cerebro.application.port.out.TenantSubscriptionPersistencePort;
+import com.atendimento.cerebro.application.service.billing.TenantEntitlementEvaluator;
 import com.atendimento.cerebro.domain.tenant.PlanFeature;
-import com.atendimento.cerebro.infrastructure.security.FirebasePendingInviteAuthenticationToken;
+import com.atendimento.cerebro.domain.tenant.ProfileLevel;
 import com.atendimento.cerebro.infrastructure.security.FeatureAccessEvaluator;
+import com.atendimento.cerebro.infrastructure.security.FirebasePendingInviteAuthenticationToken;
 import com.atendimento.cerebro.infrastructure.security.PortalAuthenticationToken;
+import com.atendimento.cerebro.infrastructure.service.TransactionalPortalRegistrationService;
 import jakarta.servlet.http.HttpServletRequest;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.http.HttpHeaders;
@@ -25,12 +30,21 @@ public class AuthController {
 
     private final TransactionalPortalRegistrationService portalRegistrationService;
     private final FeatureAccessEvaluator featureAccessEvaluator;
+    private final TenantSubscriptionPersistencePort tenantSubscriptionPersistence;
+    private final TenantEntitlementEvaluator tenantEntitlementEvaluator;
+    private final Clock clock;
 
     public AuthController(
             TransactionalPortalRegistrationService portalRegistrationService,
-            FeatureAccessEvaluator featureAccessEvaluator) {
+            FeatureAccessEvaluator featureAccessEvaluator,
+            TenantSubscriptionPersistencePort tenantSubscriptionPersistence,
+            TenantEntitlementEvaluator tenantEntitlementEvaluator,
+            Clock clock) {
         this.portalRegistrationService = portalRegistrationService;
         this.featureAccessEvaluator = featureAccessEvaluator;
+        this.tenantSubscriptionPersistence = tenantSubscriptionPersistence;
+        this.tenantEntitlementEvaluator = tenantEntitlementEvaluator;
+        this.clock = clock;
     }
 
     @PostMapping("/register")
@@ -79,7 +93,10 @@ public class AuthController {
             }
             return ResponseEntity.ok(
                     new SessionResponse(
-                            portal.getTenantId(), portal.getProfileLevel().name(), features));
+                            portal.getTenantId(),
+                            portal.getProfileLevel().name(),
+                            features,
+                            new BillingDto(resolveBillingBlocked(portal))));
         }
         if (authentication instanceof FirebasePendingInviteAuthenticationToken) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
@@ -110,8 +127,23 @@ public class AuthController {
 
     public record RegisterResponse(String tenantId, String profileLevel) {}
 
+    /** {@code blocked=true} quando a assinatura Stripe local não permite uso do produto (§12.3 billing). */
+    public record BillingDto(boolean blocked) {}
+
     public record SessionResponse(
-            String tenantId, String profileLevel, Map<String, Boolean> features) {}
+            String tenantId,
+            String profileLevel,
+            Map<String, Boolean> features,
+            BillingDto billing) {}
+
+    private boolean resolveBillingBlocked(PortalAuthenticationToken portal) {
+        if (portal.getProfileLevel() == ProfileLevel.COMERCIAL) {
+            return false;
+        }
+        String tenantId = portal.getTenantId();
+        var snapshot = tenantSubscriptionPersistence.findByTenantId(tenantId).orElse(null);
+        return !tenantEntitlementEvaluator.evaluate(snapshot, Instant.now(clock)).allowed();
+    }
 
     public record ErrorBody(String error) {}
 }

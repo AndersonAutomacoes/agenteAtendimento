@@ -16,7 +16,7 @@ export type UpgradePlanPanelProps = {
 
 export function UpgradePlanPanel({
   requiredPlan,
-  upgradeHref = "/settings",
+  upgradeHref = "/pricing",
   className,
 }: UpgradePlanPanelProps) {
   const t = useTranslations("plan");

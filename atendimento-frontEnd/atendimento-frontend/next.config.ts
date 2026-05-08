@@ -84,6 +84,10 @@ const nextConfig: NextConfig = {
         destination: `${backend}/v1/auth/me`,
       },
       {
+        source: "/api/v1/billing/:path*",
+        destination: `${backend}/v1/billing/:path*`,
+      },
+      {
         source: "/api/v1/tenant/settings",
         destination: `${backend}/api/v1/tenant/settings`,
       },

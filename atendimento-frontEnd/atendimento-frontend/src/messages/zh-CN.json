@@ -217,6 +217,31 @@
       "enterprise": "CSV 与 PDF 导出仅在企业版套餐中提供。"
     }
   },
+  "billing": {
+    "pricingTitle": "AxeZap 套餐",
+    "pricingSubtitle": "所有套餐均为 Stripe 付费订阅，可选择月付或年付。",
+    "intervalMonthly": "按月",
+    "intervalYearly": "按年",
+    "subscribe": "订阅",
+    "priceNotConfigured": "未配置价格 ID（NEXT_PUBLIC_STRIPE_PRICE_*）",
+    "needLogin": "请先登录再订阅。",
+    "tierBasic": "Basic",
+    "tierPro": "Pro",
+    "tierUltra": "Ultra",
+    "featureDashboard": "仪表盘与核心指标",
+    "featureMonitoring": "WhatsApp 监控",
+    "featureKb": "知识库",
+    "featureAnalytics": "分析与导出",
+    "successTitle": "支付已完成或已提交",
+    "successBody": "若付款成功，Stripe 会发送收据。服务器处理 webhook 后，访问权限会在几秒内更新。",
+    "successCtaApp": "前往仪表盘",
+    "successCtaPricing": "返回套餐页",
+    "suspendedTitle": "账户不可用",
+    "suspendedBody": "当前租户没有有效的 Stripe 订阅，或付款逾期超过宽限期。请续订或更新付款方式。",
+    "suspendedCtaPricing": "查看套餐并订阅",
+    "suspendedCtaPortal": "管理账单（银行卡、发票）",
+    "suspendedCtaLogin": "使用其他账户登录"
+  },
   "localeNames": {
     "pt-BR": "Português (Brasil)",
     "en": "English",
@@ -732,7 +757,11 @@
       "crmNotesSaveFailed": "无法保存备注。",
       "crmOpportunitiesFailed": "无法加载商机。",
       "invalidCrmOpportunities": "CRM 商机响应格式无效",
-      "crmAssumeOpportunityFailed": "无法接管该商机。"
+      "crmAssumeOpportunityFailed": "无法接管该商机。",
+      "billingCheckoutFailed": "无法启动 Stripe 结账。",
+      "billingPortalFailed": "无法打开账单门户。",
+      "billingInvalidCheckoutResponse": "结账响应无效。",
+      "billingInvalidPortalResponse": "账单门户响应无效。"
     }
   }
 }

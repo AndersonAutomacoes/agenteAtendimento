@@ -7,6 +7,7 @@ import { usePlan } from "@/components/plan/plan-provider";
 import { getFirebaseAuth, isFirebaseConfigured } from "@/lib/firebase";
 import { mapProfileLevelToPlanTier } from "@/lib/plan-tier";
 import { triggerSessionExpired } from "@/lib/auth-session";
+import { setBillingBlockedCookieClient } from "@/lib/billing-cookie";
 import {
   CEREBRO_AUTH_TOKEN_KEY,
   getPortalSession,
@@ -41,6 +42,7 @@ export function SessionProfileSync() {
         setProfileLevel(s.profileLevel);
         setTier(mapProfileLevelToPlanTier(s.profileLevel));
         setFeatures(s.features ?? {});
+        setBillingBlockedCookieClient(s.billing.blocked);
       } catch (e) {
         if (
           e instanceof ApiHttpError &&

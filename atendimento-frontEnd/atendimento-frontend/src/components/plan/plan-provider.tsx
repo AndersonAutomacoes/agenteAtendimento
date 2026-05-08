@@ -7,6 +7,7 @@ import { ApiHttpError, CEREBRO_AUTH_TOKEN_KEY, getPortalSession } from "@/servic
 import { SessionExpiryCoordinator } from "@/components/auth/session-expiry-coordinator";
 import { SessionProfileSync } from "@/components/auth/session-profile-sync";
 import { triggerSessionExpired } from "@/lib/auth-session";
+import { setBillingBlockedCookieClient } from "@/lib/billing-cookie";
 import {
   PLAN_CHANGED_EVENT,
   PLAN_STORAGE_KEY,
@@ -128,6 +129,7 @@ export function PlanProvider({ children }: PlanProviderProps) {
         if (cancelled) return;
         setProfileLevelState(s.profileLevel);
         setTierState(mapProfileLevelToPlanTier(s.profileLevel));
+        setBillingBlockedCookieClient(s.billing.blocked);
         const nextFeatures = s.features ?? {};
         try {
           localStorage.setItem(PLAN_FEATURES_STORAGE_KEY, JSON.stringify(nextFeatures));

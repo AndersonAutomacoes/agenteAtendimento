@@ -217,6 +217,31 @@
       "enterprise": "CSV and PDF exports are available on the Enterprise plan."
     }
   },
+  "billing": {
+    "pricingTitle": "AxeZap plans",
+    "pricingSubtitle": "All tiers are paid Stripe subscriptions. Choose monthly or yearly billing.",
+    "intervalMonthly": "Monthly",
+    "intervalYearly": "Yearly",
+    "subscribe": "Subscribe",
+    "priceNotConfigured": "Price ID not configured (set NEXT_PUBLIC_STRIPE_PRICE_*)",
+    "needLogin": "Sign in to subscribe.",
+    "tierBasic": "Basic",
+    "tierPro": "Pro",
+    "tierUltra": "Ultra",
+    "featureDashboard": "Dashboard & core metrics",
+    "featureMonitoring": "WhatsApp monitoring",
+    "featureKb": "Knowledge base",
+    "featureAnalytics": "Analytics & exports",
+    "successTitle": "Checkout complete",
+    "successBody": "If payment succeeded, Stripe will email a receipt. Dashboard access updates within seconds after our server processes the webhook—you can close this tab.",
+    "successCtaApp": "Go to dashboard",
+    "successCtaPricing": "Back to plans",
+    "suspendedTitle": "Account inactive",
+    "suspendedBody": "There is no valid Stripe subscription for this tenant, or payment is past due beyond the grace window. Renew your plan or update your payment method.",
+    "suspendedCtaPricing": "View plans & subscribe",
+    "suspendedCtaPortal": "Manage billing (card, invoices)",
+    "suspendedCtaLogin": "Sign in with another account"
+  },
   "localeNames": {
     "pt-BR": "Português (Brasil)",
     "en": "English",
@@ -732,7 +757,11 @@
       "crmNotesSaveFailed": "Could not save notes.",
       "crmOpportunitiesFailed": "Could not load opportunities.",
       "invalidCrmOpportunities": "Invalid CRM opportunities response",
-      "crmAssumeOpportunityFailed": "Could not take this opportunity."
+      "crmAssumeOpportunityFailed": "Could not take this opportunity.",
+      "billingCheckoutFailed": "Could not start Stripe checkout.",
+      "billingPortalFailed": "Could not open the billing portal.",
+      "billingInvalidCheckoutResponse": "Invalid checkout response.",
+      "billingInvalidPortalResponse": "Invalid billing portal response."
     }
   }
 }

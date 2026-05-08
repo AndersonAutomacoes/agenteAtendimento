@@ -217,6 +217,31 @@
       "enterprise": "As exportações CSV e PDF estão disponíveis no plano Enterprise."
     }
   },
+  "billing": {
+    "pricingTitle": "Planos AxeZap",
+    "pricingSubtitle": "Todos os planos incluem acesso pago à plataforma. Escolha mensal ou anual.",
+    "intervalMonthly": "Mensal",
+    "intervalYearly": "Anual",
+    "subscribe": "Assinar",
+    "priceNotConfigured": "Preço não configurado (NEXT_PUBLIC_STRIPE_PRICE_*)",
+    "needLogin": "Inicie sessão para subscrever.",
+    "tierBasic": "Basic",
+    "tierPro": "Pro",
+    "tierUltra": "Ultra",
+    "featureDashboard": "Painel e métricas principais",
+    "featureMonitoring": "Monitorização WhatsApp",
+    "featureKb": "Base de conhecimento",
+    "featureAnalytics": "Analytics e exportação",
+    "successTitle": "Pagamento iniciado",
+    "successBody": "Se o pagamento foi concluído, o Stripe confirma por e-mail. O acesso à plataforma actualiza em poucos segundos após o webhook — pode fechar esta página.",
+    "successCtaApp": "Ir para o painel",
+    "successCtaPricing": "Voltar aos planos",
+    "suspendedTitle": "Conta inactiva",
+    "suspendedBody": "Não há assinatura Stripe válida para este tenant ou o pagamento está pendente fora do período de tolerância. Renove o plano ou regularize o método de pagamento.",
+    "suspendedCtaPricing": "Ver planos e assinar",
+    "suspendedCtaPortal": "Gerir faturação (cartão, facturas)",
+    "suspendedCtaLogin": "Iniciar sessão com outra conta"
+  },
   "localeNames": {
     "pt-BR": "Português (Brasil)",
     "en": "English",
@@ -732,7 +757,11 @@
       "crmNotesSaveFailed": "Não foi possível guardar as notas.",
       "crmOpportunitiesFailed": "Não foi possível carregar as oportunidades.",
       "invalidCrmOpportunities": "Resposta de oportunidades CRM com formato inválido",
-      "crmAssumeOpportunityFailed": "Não foi possível assumir esta oportunidade."
+      "crmAssumeOpportunityFailed": "Não foi possível assumir esta oportunidade.",
+      "billingCheckoutFailed": "Não foi possível iniciar o checkout Stripe.",
+      "billingPortalFailed": "Não foi possível abrir o portal de faturação.",
+      "billingInvalidCheckoutResponse": "Resposta de checkout inválida.",
+      "billingInvalidPortalResponse": "Resposta do portal de faturação inválida."
     }
   }
 }

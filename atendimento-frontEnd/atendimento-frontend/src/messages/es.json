@@ -217,6 +217,31 @@
       "enterprise": "Las exportaciones CSV y PDF están disponibles en el plan Enterprise."
     }
   },
+  "billing": {
+    "pricingTitle": "Planes AxeZap",
+    "pricingSubtitle": "Todos los planes son suscripciones Stripe de pago. Elige facturación mensual o anual.",
+    "intervalMonthly": "Mensual",
+    "intervalYearly": "Anual",
+    "subscribe": "Suscribirse",
+    "priceNotConfigured": "Precio no configurado (NEXT_PUBLIC_STRIPE_PRICE_*)",
+    "needLogin": "Inicia sesión para suscribirte.",
+    "tierBasic": "Basic",
+    "tierPro": "Pro",
+    "tierUltra": "Ultra",
+    "featureDashboard": "Panel y métricas principales",
+    "featureMonitoring": "Monitorización WhatsApp",
+    "featureKb": "Base de conocimiento",
+    "featureAnalytics": "Analytics y exportación",
+    "successTitle": "Pago iniciado",
+    "successBody": "Si el pago se completó, Stripe enviará un correo. El acceso se actualiza en segundos tras el webhook.",
+    "successCtaApp": "Ir al panel",
+    "successCtaPricing": "Volver a planes",
+    "suspendedTitle": "Cuenta inactiva",
+    "suspendedBody": "No hay suscripción Stripe válida o el pago está vencido fuera del período de gracia.",
+    "suspendedCtaPricing": "Ver planes",
+    "suspendedCtaPortal": "Gestionar facturación",
+    "suspendedCtaLogin": "Iniciar sesión con otra cuenta"
+  },
   "localeNames": {
     "pt-BR": "Português (Brasil)",
     "en": "English",
@@ -727,7 +752,11 @@
       "crmNotesSaveFailed": "No se pudieron guardar las notas.",
       "crmOpportunitiesFailed": "No se pudieron cargar las oportunidades.",
       "invalidCrmOpportunities": "Respuesta de oportunidades CRM inválida",
-      "crmAssumeOpportunityFailed": "No se pudo tomar esta oportunidad."
+      "crmAssumeOpportunityFailed": "No se pudo tomar esta oportunidad.",
+      "billingCheckoutFailed": "No se pudo iniciar el checkout de Stripe.",
+      "billingPortalFailed": "No se pudo abrir el portal de facturación.",
+      "billingInvalidCheckoutResponse": "Respuesta de checkout inválida.",
+      "billingInvalidPortalResponse": "Respuesta del portal de facturación inválida."
     }
   }
 }

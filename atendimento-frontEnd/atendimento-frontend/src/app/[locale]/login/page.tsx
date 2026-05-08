@@ -16,6 +16,7 @@ import { Link, useRouter } from "@/i18n/navigation";
 import { getFirebaseAuth, isFirebaseConfigured } from "@/lib/firebase";
 import { mapProfileLevelToPlanTier } from "@/lib/plan-tier";
 import { cn } from "@/lib/utils";
+import { setBillingBlockedCookieClient } from "@/lib/billing-cookie";
 import {
   CEREBRO_AUTH_TOKEN_KEY,
   getPortalSession,
@@ -81,6 +82,7 @@ export default function LoginPage() {
       setTier(mapProfileLevelToPlanTier(session.profileLevel));
       setProfileLevel(session.profileLevel);
       setFeatures(session.features ?? {});
+      setBillingBlockedCookieClient(session.billing.blocked);
       toast.success(t("success"));
       router.push("/");
     } catch (err) {

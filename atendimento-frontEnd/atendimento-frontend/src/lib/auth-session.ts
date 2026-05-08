@@ -1,4 +1,5 @@
 import { routing, type AppLocale } from "@/i18n/routing";
+import { clearBillingBlockedCookieClient } from "@/lib/billing-cookie";
 
 import { CEREBRO_AUTH_TOKEN_KEY } from "@/services/apiService";
 
@@ -7,7 +8,14 @@ export const TENANT_STORAGE_KEY = "cerebro-tenant-id";
 /** Pedidos autenticados que devolvam 401 devem disparar fluxo de sessão expirada. */
 export const SESSION_EXPIRED_EVENT = "cerebro-session-expired";
 
-const PUBLIC_ROUTE_SEGMENTS = ["login", "register", "forgot-password"];
+const PUBLIC_ROUTE_SEGMENTS = [
+  "login",
+  "register",
+  "forgot-password",
+  "landing",
+  "pricing",
+  "billing",
+];
 
 /** Normaliza pathname removendo prefixo de locale quando presente (ex.: /en/dashboard → /dashboard). */
 export function normalizeAppPathname(pathname: string): string {
@@ -36,6 +44,7 @@ export function clearAuthStorage(): void {
   } catch {
     /* ignore */
   }
+  clearBillingBlockedCookieClient();
 }
 
 export function triggerSessionExpired(): void {

@@ -19,6 +19,7 @@ import { readFirebaseErrorCode, isLikelyEmail } from "@/lib/email-format";
 import { getFirebaseAuth, isFirebaseConfigured } from "@/lib/firebase";
 import { mapProfileLevelToPlanTier } from "@/lib/plan-tier";
 import { cn } from "@/lib/utils";
+import { setBillingBlockedCookieClient } from "@/lib/billing-cookie";
 import {
   CEREBRO_AUTH_TOKEN_KEY,
   getPortalSession,
@@ -110,6 +111,7 @@ export default function RegisterPage() {
         const session = await getPortalSession();
         setProfileLevel(session.profileLevel);
         setFeatures(session.features ?? {});
+        setBillingBlockedCookieClient(session.billing.blocked);
       } catch {
         setFeatures({});
       }
