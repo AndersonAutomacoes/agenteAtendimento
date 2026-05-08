@@ -6,15 +6,22 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Recebe {@link Event} já verificado por assinatura HMAC. Na Task 8 o corpo passa a sincronizar BD via
- * {@code BillingSubscriptionSyncService}.
+ * Recebe {@link Event} já verificado por assinatura HMAC e delega para {@link StripeBillingWebhookProcessor}
+ * (inbox idempotente + sincronização de subscrição / perfis).
  */
 @Component
 public class StripeValidatedWebhookSink {
 
     private static final Logger log = LoggerFactory.getLogger(StripeValidatedWebhookSink.class);
 
+    private final StripeBillingWebhookProcessor processor;
+
+    public StripeValidatedWebhookSink(StripeBillingWebhookProcessor processor) {
+        this.processor = processor;
+    }
+
     public void accept(Event event) {
-        log.info("stripe webhook event id={} type={}", event.getId(), event.getType());
+        log.debug("stripe webhook accepted id={} type={}", event.getId(), event.getType());
+        processor.process(event);
     }
 }
