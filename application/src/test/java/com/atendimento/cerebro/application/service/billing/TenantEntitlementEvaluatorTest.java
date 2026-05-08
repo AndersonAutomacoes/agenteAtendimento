@@ -13,19 +13,33 @@ class TenantEntitlementEvaluatorTest {
 
     private final TenantEntitlementEvaluator evaluator = new TenantEntitlementEvaluator(7);
 
+    private static TenantSubscriptionSnapshot activeLike(
+            String stripeStatus,
+            BillingPlanTier tier,
+            Instant start,
+            Instant end,
+            boolean cancelAtPeriodEnd,
+            Instant pastDueSince) {
+        return new TenantSubscriptionSnapshot(
+                "t1",
+                "sub_1",
+                "cus_1",
+                stripeStatus,
+                tier,
+                "price_test",
+                "MONTH",
+                start,
+                end,
+                cancelAtPeriodEnd,
+                pastDueSince);
+    }
+
     @Test
     void active_allows_through_end_of_period() {
         Instant start = Instant.parse("2026-05-01T00:00:00Z");
         Instant end = Instant.parse("2026-06-01T00:00:00Z");
-        TenantSubscriptionSnapshot snap = new TenantSubscriptionSnapshot(
-                "t1",
-                "sub_1",
-                "active",
-                BillingPlanTier.PRO,
-                start,
-                end,
-                false,
-                null);
+        TenantSubscriptionSnapshot snap =
+                activeLike("active", BillingPlanTier.PRO, start, end, false, null);
         TenantEntitlementDecision d = evaluator.evaluate(snap, Instant.parse("2026-05-15T00:00:00Z"));
         assertThat(d.allowed()).isTrue();
         assertThat(d.tier()).isEqualTo(BillingPlanTier.PRO);
@@ -34,9 +48,7 @@ class TenantEntitlementEvaluatorTest {
 
     @Test
     void canceled_at_period_end_still_allowed_while_active() {
-        TenantSubscriptionSnapshot snap = new TenantSubscriptionSnapshot(
-                "t1",
-                "sub_1",
+        TenantSubscriptionSnapshot snap = activeLike(
                 "active",
                 BillingPlanTier.BASIC,
                 Instant.parse("2026-05-01T00:00:00Z"),
@@ -50,9 +62,7 @@ class TenantEntitlementEvaluatorTest {
     @Test
     void past_due_within_grace_allows() {
         Instant pastDueSince = Instant.parse("2026-05-08T12:00:00Z");
-        TenantSubscriptionSnapshot snap = new TenantSubscriptionSnapshot(
-                "t1",
-                "sub_1",
+        TenantSubscriptionSnapshot snap = activeLike(
                 "past_due",
                 BillingPlanTier.ULTRA,
                 Instant.parse("2026-05-01T00:00:00Z"),
@@ -67,9 +77,7 @@ class TenantEntitlementEvaluatorTest {
     @Test
     void past_due_after_grace_denies() {
         Instant pastDueSince = Instant.parse("2026-05-08T12:00:00Z");
-        TenantSubscriptionSnapshot snap = new TenantSubscriptionSnapshot(
-                "t1",
-                "sub_1",
+        TenantSubscriptionSnapshot snap = activeLike(
                 "past_due",
                 BillingPlanTier.ULTRA,
                 Instant.parse("2026-05-01T00:00:00Z"),
