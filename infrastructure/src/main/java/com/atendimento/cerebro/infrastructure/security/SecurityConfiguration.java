@@ -35,6 +35,8 @@ public class SecurityConfiguration {
                                 .permitAll()
                                 .requestMatchers(HttpMethod.POST, "/api/v1/whatsapp/webhook/**")
                                 .permitAll()
+                                .requestMatchers(HttpMethod.POST, "/v1/billing/webhook/stripe")
+                                .permitAll()
                                 // AuthController valida Bearer + portal vs convite pendente (401/403 com JSON).
                                 .requestMatchers(HttpMethod.GET, "/v1/auth/me")
                                 .permitAll()

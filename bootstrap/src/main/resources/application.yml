@@ -225,6 +225,10 @@ resilience4j:
         enableExponentialBackoff: true
         exponentialBackoffMultiplier: 2
 
+# Stripe (billing por tenant — Task 6 completa keys/URLs restantes).
+stripe:
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+
 # Contrato único: classpath/static/openapi.yaml — UI em /swagger-ui/index.html
 springdoc:
   api-docs:
