@@ -5,13 +5,15 @@
 **Provedor:** Stripe (Billing / Subscriptions)  
 **Premissa de negócio:** o **pagador é sempre o dono do tenant** (um “account owner” por tenant). O acesso do tenant aos perfis **Basic**, **Pro** e **Ultra** é **concedido ou revogado** com base no estado da assinatura no Stripe e no período vigente.
 
+**Premissa de produto:** **Basic**, **Pro** e **Ultra** são **planos exclusivamente pagos** (cada um com Price mensal e anual no Stripe). **Não há tier operacional gratuito**: sem assinatura válida e em dia, o tenant **não** possui entitlement de uso conforme política da seção 6.
+
 ---
 
 ## 1. Objetivos
 
 - Integrar o Stripe como fonte de verdade do **ciclo de vida de pagamento** (assinatura mensal ou anual).
 - **Liberar** o tier correto após **comprovação de pagamento** confiável (via webhooks assinados e estado consistente de assinatura).
-- **Encerrar ou rebaixar** o acesso quando o período pago terminar, houver falha de pagamento persistente ou cancelamento, conforme regras abaixo.
+- **Encerrar ou alterar tier (sempre entre planos pagos)** quando o período pago terminar, houver falha de pagamento persistente ou cancelamento; **revogar** entitlement quando não houver subscription válida, conforme regras abaixo.
 - Manter o sistema **multi-tenant**: todo estado de billing e toda decisão de entitlement deve ser **associável de forma inequívoca** a um `tenant_id` interno.
 
 ## 2. Contexto no repositório
@@ -22,7 +24,7 @@ O módulo **cerebro** (`com.atendimento.cerebro`) já propaga `TenantId` de form
 
 **Dentro do escopo**
 
-- Assinaturas **mensais** e **anuais** para três tiers (Basic, Pro, Ultra), modelados no Stripe como **Products/Prices** distintos ou metadados equivalentes.
+- Assinaturas **mensais** e **anuais** para **três tiers pagos** (Basic, Pro, Ultra), cada qual com valores próprios no Stripe (**Products/Prices** distintos ou metadados equivalentes).
 - Fluxo de compra via **Stripe Checkout** (modo subscription) e, opcionalmente na mesma fase, **Customer Portal** para gestão de cartão e cancelamento.
 - Endpoint(s) de **webhook** para processar eventos do Stripe com **verificação de assinatura** e **idempotência**.
 - Modelo de dados mínimo para decisão de acesso (ver seção 7).
@@ -105,7 +107,7 @@ sequenceDiagram
   WH->>App: Marcar past_due + tolerância
 
   Stripe->>WH: customer.subscription.deleted
-  WH->>App: Encerrar benefício conforme política
+  WH->>App: Revogar entitlement (sem plano pago ativo) conforme política
 ```
 
 ## 6. Estados, período de acesso e corte
@@ -118,9 +120,9 @@ Interpretação simplificada para decisão de produto:
 |---------------|----------------------------------|
 | `trialing` | Se o produto permitir trial: liberar tier do trial até fim do trial (opcional nesta versão). |
 | `active` | **Liberar** tier mapeado do Price vigente durante `current_period_end` (usuário pode usar recursos pagos até lá, inclusive se `cancel_at_period_end=true` até o fim do período). |
-| `past_due` | **Restringir gradualmente**: manter acesso pelo **grace period** interno (ex.: 7 dias configurável); após isso, rebaixar para Basic gratuito ou bloquear conforme política. |
-| `unpaid` / `incomplete_expired` | **Cortar** benefícios pagos (tier efetivo = Basic livre ou bloqueio total). |
-| `canceled` | Se cancelamento efetivo ocorreu: **sem** acesso pago; se cancelamento é ao fim do período mas ainda dentro do período pago com status `active`, manter até `current_period_end`. |
+| `past_due` | **Restringir gradualmente**: manter acesso pelo **grace period** interno (ex.: 7 dias configurável); após isso, **revogar** entitlement (tenant **sem** plano ativo) até regularização ou nova assinatura — **sem** fallback para plano gratuito. |
+| `unpaid` / `incomplete_expired` | **Revogar** acesso aos três tiers: tenant **sem** subscription válida; aplicar bloqueio ou modo restrito conforme política de produto (seção 12). |
+| `canceled` | Se cancelamento efetivo ocorreu: **sem** entitlement de Basic/Pro/Ultra; se cancelamento é ao fim do período mas ainda dentro do período pago com status `active`, manter **o tier pago vigente** até `current_period_end`. |
 
 ### 6.2 Regra de “comprovação de pagamento”
 
@@ -141,7 +143,7 @@ Entidades/conceitos mínimos (nomes ilustrativos):
 
 Índices: por `tenant_id`, por `stripe_subscription_id`, por `stripe_customer_id`.
 
-**Nota:** o tier **comercial** “Basic” pode ser gratuito sem subscription Stripe; “Pro/Ultra” exigem subscription `active` (ou período válido até `current_period_end` quando aplicável).
+**Nota:** **Basic**, **Pro** e **Ultra** exigem subscription Stripe **paga** e em situação que confira entitlement (`active`, ou equivalente dentro do período pago conforme seção 6). O campo `tier` reflete o plano contratado; se não houver assinatura válida, o modelo deve representar **ausência de entitlement** (valor sentinela, status separado ou registro inexistente — a definir na implementação).
 
 ## 8. Mapeamento de planos mensal / anual
 
@@ -160,14 +162,14 @@ Entidades/conceitos mínimos (nomes ilustrativos):
 
 ## 10. UX mínima
 
-- Tela de planos: escolha Basic (gratuito, sem checkout) vs Pro/Ultra com botão “Assinar” → Checkout.
+- Tela de planos: comparar **Basic**, **Pro** e **Ultra** (todos precificados); cada um com botão **“Assinar”** → Checkout (modo subscription) para o intervalo mensal ou anual escolhido.
 - Pós-pagamento: página de sucesso informando que a liberação pode levar segundos até processar webhook.
 - Área “Faturamento”: link para **Customer Portal** (sessão criada no backend com `customer_id`).
 
 ## 11. Critérios de aceite
 
 - Assinatura **mensal** e **anual** para cada tier gera entitlement correto após webhook.
-- Falha de pagamento repetida ou subscription encerrada **remove** Pro/Ultra após política definida.
+- Falha de pagamento repetida ou subscription encerrada **revoga** entitlement a **qualquer** um dos três planos após a política definida (não permanece acesso “gratuito” em Basic).
 - Reprocessamento do mesmo `event.id` não duplica efeitos (idempotência).
 - Tenant A nunca altera entitlement de Tenant B mesmo com payloads malformados se `tenant_id` não bater com o Customer mapeado.
 
@@ -175,7 +177,8 @@ Entidades/conceitos mínimos (nomes ilustrativos):
 
 1. **Grace period** exata em dias para `past_due` (sugestão inicial: 7 dias).
 2. Comportamento pós-cancelamento dentro do período pago (seguir tabela da seção 6.1 — alinhado ao Stripe).
-3. Tier “Basic”: é **gratuito ilimitado** ou **trial limitado** sem Stripe?
+3. **Sem assinatura válida** (após cancelamento efetivo, expiração ou inadimplência fora da tolerância): **bloqueio total** do tenant vs **somente leitura** vs **grace de login** para regularizar pagamento (escolha única para o produto).
+4. **Trial** (opcional): se existir período experimental, deve estar modelado no Stripe (ex.: trial no Price/Subscription) e continua sendo “pago” no sentido de cadastro de método de pagamento conforme política — **não** substitui um tier gratuito permanente.
 
 ---
 
