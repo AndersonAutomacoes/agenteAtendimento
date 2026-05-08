@@ -228,18 +228,23 @@ resilience4j:
 billing:
   past-due-grace-days: ${BILLING_PAST_DUE_GRACE_DAYS:7}
 
-# Stripe (billing por tenant). Substituir price_REPLACE_* pelos IDs reais no Dashboard.
+# Stripe (billing por tenant).
+# - Chaves de price-tier: literais `price_…` iguais aos NEXT_PUBLIC_STRIPE_PRICE_* no frontend.
+# - URLs: alinhar ao domínio/path do Next.js (locale por defeito pt-BR sem prefixo na URL — ver next-intl localePrefix).
 stripe:
   secret-key: ${STRIPE_SECRET_KEY:}
   webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
-  success-url: ${STRIPE_CHECKOUT_SUCCESS_URL:http://localhost:3000/pt-BR/billing/success}
-  cancel-url: ${STRIPE_CHECKOUT_CANCEL_URL:http://localhost:3000/pt-BR/pricing}
-  portal-return-url: ${STRIPE_PORTAL_RETURN_URL:http://localhost:3000/pt-BR/pricing}
+  # Local: http://localhost:3000/billing/success — Produção: https://<domínio-front>/billing/success
+  success-url: ${STRIPE_CHECKOUT_SUCCESS_URL:http://localhost:3000/billing/success}
+  cancel-url: ${STRIPE_CHECKOUT_CANCEL_URL:http://localhost:3000/pricing}
+  portal-return-url: ${STRIPE_PORTAL_RETURN_URL:http://localhost:3000/pricing}
   price-tier:
-    price_REPLACE_BASIC_MONTHLY: BASIC
-    price_REPLACE_BASIC_YEARLY: BASIC
-    price_REPLACE_PRO_MONTHLY: PRO
-    price_REPLACE_ULTRA_YEARLY: ULTRA
+    price_1DevBasicMonth: BASIC
+    price_1DevBasicYear: BASIC
+    price_1DevProMonth: PRO
+    price_1DevProYear: PRO
+    price_1DevUltraMonth: ULTRA
+    price_1DevUltraYear: ULTRA
 
 # Contrato único: classpath/static/openapi.yaml — UI em /swagger-ui/index.html
 springdoc:
