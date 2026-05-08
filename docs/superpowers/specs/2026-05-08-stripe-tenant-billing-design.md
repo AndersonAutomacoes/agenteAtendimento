@@ -182,4 +182,4 @@ Entidades/conceitos mínimos (nomes ilustrativos):
 
 ---
 
-**Implementação:** plano incremental em [`.cursor/plans/stripe_tenant_billing_implementation_20260508.plan.md`](../../../.cursor/plans/stripe_tenant_billing_implementation_20260508.plan.md) (skill `writing-plans` não está versionada neste repositório; o plano cumpre o mesmo papel).
+**Implementação:** plano canónico (formato **writing-plans**) em [`docs/superpowers/plans/2026-05-08-stripe-tenant-billing.md`](../plans/2026-05-08-stripe-tenant-billing.md). O ficheiro em `.cursor/plans/` aponta para este plano.
