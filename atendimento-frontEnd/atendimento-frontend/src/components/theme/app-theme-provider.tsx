@@ -26,7 +26,7 @@ function resolveTheme(theme: Theme): "light" | "dark" {
 
 export function AppThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = React.useState<Theme>("dark");
-  const [systemEpoch, setSystemEpoch] = React.useState(0);
+  const [, setSystemEpoch] = React.useState(0);
 
   React.useEffect(() => {
     try {
@@ -47,10 +47,7 @@ export function AppThemeProvider({ children }: { children: React.ReactNode }) {
     return () => mq.removeEventListener("change", onChange);
   }, [theme]);
 
-  const resolvedTheme = React.useMemo(
-    () => resolveTheme(theme),
-    [theme, systemEpoch],
-  );
+  const resolvedTheme = resolveTheme(theme);
 
   React.useEffect(() => {
     const root = document.documentElement;

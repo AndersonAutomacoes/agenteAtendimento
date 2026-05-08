@@ -97,6 +97,73 @@ body {
   color: var(--foreground);
 }
 
+.font-landing-brand {
+  font-family: var(--font-lexend), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.01em;
+}
+
+.landing-mesh-bg::before,
+.landing-mesh-bg::after {
+  content: "";
+  position: fixed;
+  inset: -20% -10%;
+  pointer-events: none;
+  z-index: 0;
+  filter: blur(90px);
+  opacity: 0.3;
+}
+
+.landing-mesh-bg::before {
+  background:
+    radial-gradient(circle at 20% 20%, oklch(0.62 0.2 290 / 0.5), transparent 45%),
+    radial-gradient(circle at 80% 30%, oklch(0.72 0.19 180 / 0.45), transparent 45%),
+    radial-gradient(circle at 50% 80%, oklch(0.64 0.21 250 / 0.45), transparent 45%);
+  animation: landingMeshShift 18s ease-in-out infinite alternate;
+}
+
+.landing-mesh-bg::after {
+  background:
+    radial-gradient(circle at 75% 70%, oklch(0.6 0.18 30 / 0.35), transparent 42%),
+    radial-gradient(circle at 25% 65%, oklch(0.7 0.18 210 / 0.35), transparent 44%);
+  animation: landingMeshShift 24s ease-in-out infinite alternate-reverse;
+}
+
+.landing-benefit-card {
+  position: relative;
+}
+
+.landing-benefit-card::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(120deg, rgba(124, 58, 237, 0.65), rgba(16, 185, 129, 0.5), rgba(59, 130, 246, 0.65));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 220ms ease;
+  pointer-events: none;
+}
+
+.landing-benefit-card:hover::after {
+  opacity: 0.8;
+}
+
+@keyframes landingMeshShift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(2%, -2%, 0) scale(1.03);
+  }
+  100% {
+    transform: translate3d(-1%, 1%, 0) scale(1.01);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

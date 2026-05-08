@@ -7,16 +7,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 
 export function LandingContactForm() {
   const t = useTranslations("landingForm");
   const locale = useLocale();
   const honeypotRef = React.useRef<HTMLInputElement>(null);
   const [name, setName] = React.useState("");
-  const [email, setEmail] = React.useState("");
   const [whatsapp, setWhatsapp] = React.useState("");
-  const [message, setMessage] = React.useState("");
   const [consent, setConsent] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -33,9 +30,7 @@ export function LandingContactForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
-          email: email.trim(),
           whatsapp: whatsapp.trim(),
-          message: message.trim(),
           locale,
           consent: true,
           company_website: honeypotRef.current?.value?.trim() ?? "",
@@ -44,9 +39,7 @@ export function LandingContactForm() {
       if (res.status === 204 || res.status === 201) {
         toast.success(t("success"));
         setName("");
-        setEmail("");
         setWhatsapp("");
-        setMessage("");
         setConsent(false);
         return;
       }
@@ -89,18 +82,6 @@ export function LandingContactForm() {
             maxLength={120}
           />
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="landing-email">{t("email")}</Label>
-          <Input
-            id="landing-email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
-            required
-            maxLength={254}
-          />
-        </div>
       </div>
       <div className="space-y-2">
         <Label htmlFor="landing-wa">{t("whatsapp")}</Label>
@@ -117,19 +98,6 @@ export function LandingContactForm() {
         />
         <p className="text-xs text-muted-foreground">{t("whatsappHint")}</p>
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="landing-msg">{t("message")}</Label>
-        <Textarea
-          id="landing-msg"
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          required
-          minLength={10}
-          maxLength={2000}
-          rows={5}
-          className="min-h-[120px] resize-y"
-        />
-      </div>
       <label className="flex cursor-pointer items-start gap-3 text-sm text-muted-foreground">
         <input
           type="checkbox"
@@ -141,7 +109,7 @@ export function LandingContactForm() {
         <span>{t("consent")}</span>
       </label>
       <Button type="submit" size="lg" className="w-full sm:w-auto" disabled={submitting}>
-        {t("submit")}
+        {t("submitStrong")}
       </Button>
     </form>
   );

@@ -83,6 +83,9 @@
     ],
     "socialProofQuote": "AxeZap cut our response time and increased bookings by over 30% in the first month of operation.",
     "socialProofAttribution": "— Clinical Director, Salvador, Brazil",
+    "socialProofStarsAria": "Five-star rating",
+    "integrationsHeading": "Integrations built for speed",
+    "integrationsSub": "Plug AxeZap into the tools your team already uses and scale operations without losing control.",
     "howHeading": "How it works",
     "howSub": "Three steps to leave improvisation behind.",
     "howSteps": [
@@ -147,6 +150,7 @@
     "message": "How can we help?",
     "consent": "I authorize the use of my data for commercial contact, under the applicable privacy policy.",
     "submit": "Send message",
+    "submitStrong": "I want to scale my business",
     "success": "We received your message. We'll get back to you soon!",
     "errorGeneric": "Could not send. Please try again later.",
     "errorValidation": "Please check the fields and try again.",

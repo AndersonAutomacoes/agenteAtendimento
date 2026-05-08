@@ -5,8 +5,6 @@ import { getFirestoreAdmin } from "@/lib/firebase-admin";
 
 const COLLECTION = "contact_leads";
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 function sanitizeUa(ua: string | null): string | undefined {
   if (!ua || ua.length > 512) return undefined;
   return ua.replace(/[^\x20-\x7E]/g, "").slice(0, 512);
@@ -14,9 +12,7 @@ function sanitizeUa(ua: string | null): string | undefined {
 
 function validateBody(raw: unknown): {
   name: string;
-  email: string;
   whatsapp: string;
-  message: string;
   locale: string;
 } | null {
   if (!raw || typeof raw !== "object") return null;
@@ -26,33 +22,27 @@ function validateBody(raw: unknown): {
   if (honeypot.length > 0) return null;
 
   const name = typeof o.name === "string" ? o.name.trim() : "";
-  const email = typeof o.email === "string" ? o.email.trim().toLowerCase() : "";
   const whatsapp = typeof o.whatsapp === "string" ? o.whatsapp.trim() : "";
-  const message = typeof o.message === "string" ? o.message.trim() : "";
   const localeRaw = typeof o.locale === "string" ? o.locale.trim() : "pt-BR";
   const locale = localeRaw.slice(0, 16);
 
   if (o.consent !== true) return null;
 
   if (name.length < 2 || name.length > 120) return null;
-  if (!EMAIL_RE.test(email) || email.length > 254) return null;
   if (whatsapp.length < 8 || whatsapp.length > 32) return null;
   if (!/^[\d\s+()-]+$/.test(whatsapp)) return null;
-  if (message.length < 10 || message.length > 2000) return null;
 
-  return { name, email, whatsapp, message, locale };
+  return { name, whatsapp, locale };
 }
 
 async function persistLead(
   db: Firestore,
-  body: { name: string; email: string; whatsapp: string; message: string; locale: string },
+  body: { name: string; whatsapp: string; locale: string },
   userAgent: string | undefined,
 ) {
   await db.collection(COLLECTION).add({
     name: body.name,
-    email: body.email,
     whatsapp: body.whatsapp,
-    message: body.message,
     locale: body.locale,
     source: "landing",
     createdAt: FieldValue.serverTimestamp(),

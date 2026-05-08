@@ -18,7 +18,8 @@ export type PasswordInputProps = Omit<React.ComponentProps<typeof Input>, "type"
 export const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
   ({ className, toggleShowLabel, toggleHideLabel, id, disabled, ...rest }, ref) => {
     const [visible, setVisible] = React.useState(false);
-    const inputId = id ?? React.useId();
+    const generatedId = React.useId();
+    const inputId = id ?? generatedId;
     const btnId = `${inputId}-visibility`;
 
     return (

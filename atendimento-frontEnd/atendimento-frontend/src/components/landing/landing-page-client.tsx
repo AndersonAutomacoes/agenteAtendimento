@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, ChevronRight, Clock, Quote, TrendingUp } from "lucide-react";
+import { CalendarClock, CalendarDays, ChevronRight, Clock, Quote, Star, TrendingUp, UserCircle2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { LandingChatMockup, type ChatBubble } from "@/components/landing/landing-chat-mockup";
@@ -17,6 +17,11 @@ type Step = { title: string; description: string };
 type FaqItem = { q: string; a: string };
 
 const benefitIcons = [Clock, TrendingUp, CalendarClock] as const;
+const integrations = [
+  { key: "whatsapp", label: "WhatsApp", icon: MessageCircleIcon, colorClass: "group-hover:text-[#25D366]" },
+  { key: "googleCalendar", label: "Google Calendar", icon: CalendarDays, colorClass: "group-hover:text-[#4285F4]" },
+  { key: "postgresql", label: "PostgreSQL", icon: DatabaseIcon, colorClass: "group-hover:text-[#336791]" },
+] as const;
 
 /** Demo externo: defina NEXT_PUBLIC_LANDING_DEMO_URL (https://...). Se vazio, o CTA secundário do Hero usa #contato. */
 function getLandingDemoHref(): string | null {
@@ -40,7 +45,7 @@ export function LandingPageClient() {
   const demoTargetHref = demoHref ?? "#contato";
 
   return (
-    <div className="dark relative min-h-full bg-background text-foreground">
+    <div className="landing-mesh-bg dark relative min-h-full bg-background text-foreground">
       <a
         href="#contato"
         className="bg-primary text-primary-foreground shadow-md outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring absolute top-4 start-[10000px] z-[100] rounded-lg px-4 py-2 text-sm font-medium focus-visible:start-4"
@@ -50,7 +55,7 @@ export function LandingPageClient() {
 
       <header className="sticky top-0 z-40 border-b border-border/80 bg-background/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 md:px-6">
-          <span className="text-lg font-semibold tracking-tight text-foreground">{t("navBrand")}</span>
+          <span className="font-landing-brand text-lg font-semibold tracking-tight text-foreground">{t("navBrand")}</span>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <LocaleSwitcher />
             <Button variant="ghost" size="sm" className="hidden sm:inline-flex" asChild>
@@ -140,7 +145,7 @@ export function LandingPageClient() {
                 const Icon = benefitIcons[i] ?? Clock;
                 return (
                   <li key={b.title}>
-                    <Card className="h-full border-border/80 bg-card/80 transition-colors hover:border-primary/35 hover:shadow-md hover:shadow-primary/5">
+                    <Card className="landing-benefit-card h-full border-border/80 bg-card/80 transition-colors hover:border-primary/35 hover:shadow-md hover:shadow-primary/5">
                       <CardHeader className="pb-2">
                         <div className="mb-3 flex size-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-emerald-600/15 text-primary ring-1 ring-border/60">
                           <Icon className="size-6" aria-hidden strokeWidth={1.75} />
@@ -158,12 +163,18 @@ export function LandingPageClient() {
 
         <section className="border-y border-border bg-muted/10 px-4 py-12 md:px-6 md:py-16">
           <div className="mx-auto max-w-3xl">
-            <Card className="border-primary/20 bg-card/70 shadow-sm">
-              <CardContent className="flex flex-col gap-6 p-8 md:flex-row md:items-start md:gap-8 md:p-10">
-                <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
-                  <Quote className="size-6" aria-hidden />
+            <Card className="mx-auto max-w-2xl border-primary/25 bg-card/80 shadow-lg shadow-primary/10">
+              <CardContent className="flex flex-col items-center gap-6 p-8 text-center md:p-10">
+                <div className="flex size-16 items-center justify-center rounded-full bg-primary/15 text-primary ring-1 ring-primary/20">
+                  <UserCircle2 className="size-10" aria-hidden />
                 </div>
-                <figure className="min-w-0 flex-1 space-y-4">
+                <div className="flex items-center gap-1 text-amber-400" aria-label={t("socialProofStarsAria")}>
+                  {Array.from({ length: 5 }).map((_, index) => (
+                    <Star key={index} className="size-4 fill-current" aria-hidden />
+                  ))}
+                </div>
+                <figure className="min-w-0 space-y-4">
+                  <Quote className="mx-auto size-6 text-primary/70" aria-hidden />
                   <blockquote className="text-lg font-medium leading-relaxed text-foreground md:text-xl">
                     &ldquo;{t("socialProofQuote")}&rdquo;
                   </blockquote>
@@ -171,6 +182,28 @@ export function LandingPageClient() {
                 </figure>
               </CardContent>
             </Card>
+          </div>
+        </section>
+
+        <section className="border-b border-border bg-muted/10 px-4 py-12 md:px-6 md:py-16">
+          <div className="mx-auto max-w-6xl">
+            <div className="mx-auto max-w-2xl text-center">
+              <h2 className="text-2xl font-bold tracking-tight md:text-3xl">{t("integrationsHeading")}</h2>
+              <p className="mt-3 text-muted-foreground">{t("integrationsSub")}</p>
+            </div>
+            <ul className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
+              {integrations.map((integration) => {
+                const Icon = integration.icon;
+                return (
+                  <li key={integration.key}>
+                    <div className="group flex h-full items-center justify-center gap-3 rounded-xl border border-border/80 bg-card/60 px-4 py-5 text-muted-foreground transition-all hover:border-primary/35 hover:bg-card/80">
+                      <Icon className={cn("size-5 transition-colors", integration.colorClass)} aria-hidden />
+                      <span className={cn("font-medium transition-colors", integration.colorClass)}>{integration.label}</span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         </section>
 
@@ -320,5 +353,21 @@ export function LandingPageClient() {
 
       <LandingFloatingWhatsApp />
     </div>
+  );
+}
+
+function MessageCircleIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
+      <path d="M12 2C6.478 2 2 6.03 2 11c0 2.145.845 4.113 2.253 5.664L3 22l5.594-1.477A10.88 10.88 0 0 0 12 21c5.522 0 10-4.03 10-10S17.522 2 12 2Zm0 17a8.7 8.7 0 0 1-3.145-.582l-.545-.207-3.318.876.84-3.243-.354-.518A7.744 7.744 0 0 1 4 11c0-4.019 3.589-7.286 8-7.286s8 3.267 8 7.286S16.411 19 12 19Z" />
+    </svg>
+  );
+}
+
+function DatabaseIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
+      <path d="M12 2C7.03 2 3 3.79 3 6v12c0 2.21 4.03 4 9 4s9-1.79 9-4V6c0-2.21-4.03-4-9-4Zm0 2c4.418 0 7 .99 7 2s-2.582 2-7 2-7-.99-7-2 2.582-2 7-2Zm0 16c-4.418 0-7-.99-7-2v-2.224C6.636 16.56 9.037 17 12 17s5.364-.44 7-1.224V18c0 1.01-2.582 2-7 2Zm0-5c-4.418 0-7-.99-7-2v-2.224C6.636 11.56 9.037 12 12 12s5.364-.44 7-1.224V13c0 1.01-2.582 2-7 2Z" />
+    </svg>
   );
 }

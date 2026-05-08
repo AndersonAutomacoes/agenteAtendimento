@@ -83,6 +83,9 @@
     ],
     "socialProofQuote": "AxeZap 缩短了我们的响应时间，并在上线第一个月将预约量提升逾 30%。",
     "socialProofAttribution": "— 临床总监，巴西萨尔瓦多",
+    "socialProofStarsAria": "五星评价",
+    "integrationsHeading": "让增长更快的集成能力",
+    "integrationsSub": "将 AxeZap 接入团队已在使用的工具体系，提升效率且保持可控。",
     "howHeading": "如何运作",
     "howSub": "三步告别临场发挥。",
     "howSteps": [
@@ -147,6 +150,7 @@
     "message": "我们如何帮助您？",
     "consent": "我授权在适用隐私政策下将我的数据用于商业联系。",
     "submit": "发送",
+    "submitStrong": "我要扩大我的业务规模",
     "success": "我们已收到您的留言，将尽快回复。",
     "errorGeneric": "发送失败，请稍后再试。",
     "errorValidation": "请检查表单后重试。",

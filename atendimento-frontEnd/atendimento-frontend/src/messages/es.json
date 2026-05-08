@@ -83,6 +83,9 @@
     ],
     "socialProofQuote": "AxeZap redujo nuestro tiempo de respuesta y aumentó las citas en más de un 30% en el primer mes de operación.",
     "socialProofAttribution": "— Director clínico, Salvador (BA), Brasil",
+    "socialProofStarsAria": "Valoración de cinco estrellas",
+    "integrationsHeading": "Integraciones listas para escalar",
+    "integrationsSub": "Conecta AxeZap con las herramientas que tu equipo ya utiliza y acelera la operación con control.",
     "howHeading": "Cómo funciona",
     "howSub": "Tres pasos para salir del improviso.",
     "howSteps": [
@@ -147,6 +150,7 @@
     "message": "¿En qué podemos ayudarte?",
     "consent": "Autorizo el uso de mis datos para contacto comercial, según la política de privacidad aplicable.",
     "submit": "Enviar mensaje",
+    "submitStrong": "Quiero escalar mi negocio",
     "success": "Hemos recibido tu mensaje. Te responderemos pronto.",
     "errorGeneric": "No se pudo enviar. Inténtalo más tarde.",
     "errorValidation": "Revisa los campos e inténtalo de nuevo.",

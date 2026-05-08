@@ -83,6 +83,9 @@
     ],
     "socialProofQuote": "O AxeZap reduziu o nosso tempo de resposta e aumentou os agendamentos em mais de 30% no primeiro mês de operação.",
     "socialProofAttribution": "— Diretor Clínico, Salvador (BA)",
+    "socialProofStarsAria": "Avaliação de cinco estrelas",
+    "integrationsHeading": "Integrações que aceleram sua operação",
+    "integrationsSub": "Conecte o AxeZap ao ecossistema que seu time já usa e ganhe velocidade sem perder controle.",
     "howHeading": "Como funciona",
     "howSub": "Três passos para sair do improviso e entrar em modo automático.",
     "howSteps": [
@@ -147,6 +150,7 @@
     "message": "Como podemos ajudar?",
     "consent": "Autorizo o uso dos meus dados para contato comercial, conforme a política de privacidade aplicável.",
     "submit": "Enviar mensagem",
+    "submitStrong": "Quero escalar meu negócio",
     "success": "Recebemos sua mensagem. Retornaremos em breve!",
     "errorGeneric": "Não foi possível enviar. Tente novamente mais tarde.",
     "errorValidation": "Verifique os campos e tente novamente.",

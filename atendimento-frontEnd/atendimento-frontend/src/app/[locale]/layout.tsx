@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist_Mono, Inter } from "next/font/google";
+import { Geist_Mono, Inter, Lexend } from "next/font/google";
 import { hasLocale, NextIntlClientProvider } from "next-intl";
 import { getMessages, getTranslations, setRequestLocale } from "next-intl/server";
 import { notFound } from "next/navigation";
@@ -18,6 +18,12 @@ const inter = Inter({
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
+  subsets: ["latin"],
+  display: "swap",
+});
+
+const lexend = Lexend({
+  variable: "--font-lexend",
   subsets: ["latin"],
   display: "swap",
 });
@@ -60,7 +66,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       telephone: false,
     },
     icons: {
+      shortcut: [{ url: "/favicon.ico", type: "image/x-icon" }],
       icon: [
+        { url: "/favicon.ico", type: "image/x-icon" },
         { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
         { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
       ],
@@ -91,7 +99,7 @@ export default async function LocaleLayout({ children, params }: Props) {
   const messages = await getMessages();
 
   return (
-    <div className={`${inter.variable} ${geistMono.variable} min-h-full antialiased`}>
+    <div className={`${inter.variable} ${geistMono.variable} ${lexend.variable} min-h-full antialiased`}>
       <div className="min-h-full font-sans">
         <Providers>
           <NextIntlClientProvider locale={locale} messages={messages}>
