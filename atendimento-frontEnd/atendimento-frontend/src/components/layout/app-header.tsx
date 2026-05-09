@@ -25,9 +25,9 @@ export function AppHeader() {
         <Link
           href="/"
           aria-label={t("logoLinkHome")}
-          className="flex min-w-0 max-w-[min(60vw,13rem)] items-center rounded-lg md:hidden"
+          className="flex min-w-0 max-w-[min(92vw,22rem)] items-center rounded-lg md:hidden"
         >
-          <AppLogo variant="navigation" className="min-w-0" />
+          <AppLogo variant="navigation" />
         </Link>
       </div>
       <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">

@@ -65,9 +65,9 @@ export function LandingPageClient() {
           <Link
             href="/landing"
             aria-label={tNav("logoLinkHome")}
-            className="flex min-w-0 max-w-[min(100%,16rem)] items-center rounded-lg outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring sm:max-w-none"
+            className="flex min-w-0 max-w-[min(100%,24rem)] items-center rounded-lg outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring sm:max-w-none"
           >
-            <AppLogo variant="marketing" priority className="min-w-0 justify-start" />
+            <AppLogo variant="marketing" priority className="justify-start" />
           </Link>
           <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
             <LocaleSwitcher />

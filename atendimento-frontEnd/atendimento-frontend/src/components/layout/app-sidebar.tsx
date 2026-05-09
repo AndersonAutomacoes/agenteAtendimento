@@ -19,7 +19,7 @@ export function AppSidebar() {
         <Link
           href="/"
           aria-label={t("logoLinkHome")}
-          className="min-w-0 flex-1 rounded-lg outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex min-w-0 flex-1 items-center rounded-lg outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
         >
           <AppLogo variant="navigation" className="justify-start" />
         </Link>

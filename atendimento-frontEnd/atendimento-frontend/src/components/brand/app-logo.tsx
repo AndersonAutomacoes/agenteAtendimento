@@ -2,6 +2,7 @@ import Image from "next/image";
 
 import { cn } from "@/lib/utils";
 
+/** Canvas único para light/dark (PNG padronizado 1024×558, transparência). */
 const INTRINSIC_WIDTH = 1024;
 const INTRINSIC_HEIGHT = 558;
 
@@ -22,10 +23,10 @@ export function AppLogo({
 }: AppLogoProps) {
   const sizeClass =
     variant === "auth"
-      ? "h-11 max-h-11"
+      ? "h-16 sm:h-[4.25rem]"
       : variant === "marketing"
-        ? "h-10 max-h-10"
-        : "h-9 max-h-9";
+        ? "h-12 sm:h-14"
+        : "h-12";
 
   return (
     <span className={cn("inline-flex max-w-full shrink-0", className)}>
@@ -33,11 +34,11 @@ export function AppLogo({
         src="/branding/logo-light-ui.png"
         width={INTRINSIC_WIDTH}
         height={INTRINSIC_HEIGHT}
-        sizes="(max-width: 768px) 60vw, 240px"
+        sizes="(max-width: 640px) 85vw, (max-width: 1024px) 40vw, 360px"
         priority={priority}
         className={cn(
           sizeClass,
-          "w-auto max-w-full object-contain object-left dark:hidden",
+          "aspect-[1024/558] w-auto max-w-full shrink-0 object-contain object-left dark:hidden",
         )}
         alt=""
         decoding="async"
@@ -46,11 +47,11 @@ export function AppLogo({
         src="/branding/logo-dark-ui.png"
         width={INTRINSIC_WIDTH}
         height={INTRINSIC_HEIGHT}
-        sizes="(max-width: 768px) 60vw, 240px"
+        sizes="(max-width: 640px) 85vw, (max-width: 1024px) 40vw, 360px"
         priority={priority}
         className={cn(
           sizeClass,
-          "hidden w-auto max-w-full object-contain object-left dark:block",
+          "hidden aspect-[1024/558] w-auto max-w-full shrink-0 object-contain object-left dark:block",
         )}
         alt=""
         decoding="async"
