@@ -618,7 +618,7 @@ function InternalTenantsPageContent() {
               </p>
             ) : null}
             {lastProvisioningWarning ? (
-              <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+              <p className="text-sm font-medium text-warning">
                 {lastProvisioningWarning}
               </p>
             ) : null}
@@ -716,8 +716,8 @@ function InternalTenantsPageContent() {
                             className={cn(
                               "inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
                               x.active
-                                ? "bg-emerald-500/15 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300"
-                                : "bg-amber-500/15 text-amber-900 dark:bg-amber-500/20 dark:text-amber-200",
+                                ? "bg-success/15 text-success dark:bg-success/20"
+                                : "bg-warning/15 text-warning dark:bg-warning/20",
                             )}
                           >
                             {x.active ? t("statusActive") : t("statusInactive")}

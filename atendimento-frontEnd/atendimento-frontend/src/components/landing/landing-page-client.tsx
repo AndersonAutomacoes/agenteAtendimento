@@ -94,7 +94,7 @@ export function LandingPageClient() {
 
           <div className="relative mx-auto grid max-w-6xl gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(280px,400px)] lg:items-center lg:gap-16">
             <div className="max-w-xl lg:max-w-none">
-              <p className="mb-4 inline-flex items-center rounded-full border border-border/80 bg-muted/40 px-3 py-1 text-xs font-medium text-emerald-400/95 backdrop-blur-sm">
+              <p className="mb-4 inline-flex items-center rounded-full border border-border/80 bg-muted/40 px-3 py-1 text-xs font-medium text-success backdrop-blur-sm">
                 {t("heroBadge")}
               </p>
               <h1 className="text-balance text-3xl font-bold tracking-tight text-foreground md:text-4xl lg:text-[2.65rem] lg:leading-[1.12]">
@@ -108,8 +108,8 @@ export function LandingPageClient() {
                   size="lg"
                   className={cn(
                     "relative h-12 border-0 px-8 text-base font-semibold text-white shadow-xl shadow-violet-950/30 ring-2 ring-white/15",
-                    "bg-gradient-to-r from-violet-600 via-emerald-500 to-teal-500",
-                    "hover:from-violet-500 hover:via-emerald-400 hover:to-teal-400 hover:text-white hover:ring-white/25",
+                    "bg-gradient-to-r from-violet-600 via-success to-teal-500",
+                    "hover:from-violet-500 hover:via-success/90 hover:to-teal-400 hover:text-white hover:ring-white/25",
                   )}
                   asChild
                 >
@@ -165,7 +165,7 @@ export function LandingPageClient() {
                   <li key={b.title}>
                     <Card className="landing-benefit-card h-full border-border/80 bg-card/80 transition-colors hover:border-primary/35 hover:shadow-md hover:shadow-primary/5">
                       <CardHeader className="pb-2">
-                        <div className="mb-3 flex size-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-emerald-600/15 text-primary ring-1 ring-border/60">
+                        <div className="mb-3 flex size-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-success/15 text-primary ring-1 ring-border/60">
                           <Icon className="size-6" aria-hidden strokeWidth={1.75} />
                         </div>
                         <CardTitle className="text-lg leading-snug">{b.title}</CardTitle>
@@ -186,7 +186,7 @@ export function LandingPageClient() {
                 <div className="flex size-16 items-center justify-center rounded-full bg-primary/15 text-primary ring-1 ring-primary/20">
                   <UserCircle2 className="size-10" aria-hidden />
                 </div>
-                <div className="flex items-center gap-1 text-amber-400" aria-label={t("socialProofStarsAria")}>
+                <div className="flex items-center gap-1 text-warning" aria-label={t("socialProofStarsAria")}>
                   {Array.from({ length: 5 }).map((_, index) => (
                     <Star key={index} className="size-4 fill-current" aria-hidden />
                   ))}

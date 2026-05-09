@@ -39,7 +39,7 @@ export function LandingChatMockup({
             <p className="truncate text-sm font-semibold text-foreground">{headerTitle}</p>
             <p className="truncate text-xs text-muted-foreground">{headerSub}</p>
           </div>
-          <span className="size-2 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" aria-hidden />
+          <span className="size-2 shrink-0 rounded-full bg-success shadow-lg shadow-success/50" aria-hidden />
         </div>
       </div>
       <div className="relative space-y-3 px-3 py-5 md:px-4 md:py-6">

@@ -30,7 +30,7 @@ export function AppLogo({
   return (
     <span className={cn("inline-flex max-w-full shrink-0", className)}>
       <Image
-        src="/branding/logo-light-ui.jpg"
+        src="/branding/logo-light-ui.png"
         width={INTRINSIC_WIDTH}
         height={INTRINSIC_HEIGHT}
         sizes="(max-width: 768px) 60vw, 240px"
@@ -43,7 +43,7 @@ export function AppLogo({
         decoding="async"
       />
       <Image
-        src="/branding/logo-dark-ui.jpg"
+        src="/branding/logo-dark-ui.png"
         width={INTRINSIC_WIDTH}
         height={INTRINSIC_HEIGHT}
         sizes="(max-width: 768px) 60vw, 240px"

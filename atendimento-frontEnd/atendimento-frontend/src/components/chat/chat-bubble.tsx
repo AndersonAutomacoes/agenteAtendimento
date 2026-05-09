@@ -40,7 +40,7 @@ export function ChatBubble({
   const bubble = monitor
     ? isUser
       ? "rounded-2xl rounded-tl-md border border-border/70 bg-muted/95 text-foreground shadow-sm dark:border-border dark:bg-muted dark:text-foreground"
-      : "rounded-2xl rounded-tr-md bg-gradient-to-br from-primary via-primary to-emerald-700/95 text-primary-foreground shadow-md dark:from-primary dark:via-primary dark:to-emerald-800 dark:text-primary-foreground"
+      : "rounded-2xl rounded-tr-md bg-gradient-to-br from-primary via-primary to-success/95 text-primary-foreground shadow-md dark:from-primary dark:via-primary dark:to-success dark:text-primary-foreground"
     : isUser
       ? "rounded-tr-md bg-chat-user text-primary-foreground"
       : "rounded-tl-md border border-border/60 bg-chat-assistant text-foreground";
@@ -61,21 +61,21 @@ export function ChatBubble({
       case "RECEIVED":
         return (
           <Clock
-            className="size-3.5 shrink-0 text-amber-500 dark:text-amber-400"
+            className="size-3.5 shrink-0 text-warning"
             aria-hidden
           />
         );
       case "SENT":
         return (
           <CheckCheck
-            className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400"
+            className="size-3.5 shrink-0 text-success"
             aria-hidden
           />
         );
       case "ERROR":
         return (
           <CircleAlert
-            className="size-3.5 shrink-0 text-red-600 dark:text-red-400"
+            className="size-3.5 shrink-0 text-destructive"
             aria-hidden
           />
         );

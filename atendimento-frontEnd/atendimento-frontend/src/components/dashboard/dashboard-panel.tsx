@@ -271,7 +271,7 @@ function opportunityLeadScorePresentation(
   }
   return {
     text: String(score),
-    className: "font-semibold text-red-500",
+    className: "font-semibold text-destructive",
     title: translate("opportunities.scoreTierHot"),
   };
 }

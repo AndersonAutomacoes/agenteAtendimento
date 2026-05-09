@@ -520,7 +520,7 @@ function MonitoramentoConversasPageContent() {
         </p>
         <div className="mt-3 max-w-md space-y-1">
           {!tenantId.trim() ? (
-            <p className="pt-1 text-xs text-amber-600 dark:text-amber-400/90">
+            <p className="pt-1 text-xs text-warning">
               {t("needAccountWarning")}
             </p>
           ) : null}
@@ -580,7 +580,7 @@ function MonitoramentoConversasPageContent() {
                 {t("filterPending")}
                 {pendingCount > 0 ? (
                   <span
-                    className="min-w-[1.125rem] rounded-full bg-amber-500/90 px-1 text-[9px] font-semibold tabular-nums text-white dark:bg-amber-600"
+                    className="min-w-[1.125rem] rounded-full bg-warning px-1 text-[9px] font-semibold tabular-nums text-warning-foreground"
                     aria-label={t("pendingBadgeAria", { count: pendingCount })}
                   >
                     {pendingCount > 99 ? "99+" : pendingCount}
@@ -637,8 +637,8 @@ function MonitoramentoConversasPageContent() {
                             ? "bg-primary/15 ring-1 ring-primary/30"
                             : "bg-transparent",
                           !c.botEnabled &&
-                            "ring-2 ring-amber-400/90 ring-offset-2 ring-offset-background dark:ring-amber-500/70",
-                          !c.botEnabled && !active && "bg-amber-500/[0.07]",
+                            "ring-2 ring-warning/90 ring-offset-2 ring-offset-background dark:ring-warning/80",
+                          !c.botEnabled && !active && "bg-warning/[0.07]",
                         )}
                       >
                         <button
@@ -654,7 +654,7 @@ function MonitoramentoConversasPageContent() {
                           <span className="flex items-center gap-1.5 font-medium">
                             {!c.botEnabled ? (
                               <Hand
-                                className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
+                                className="h-4 w-4 shrink-0 text-warning"
                                 aria-hidden
                               />
                             ) : null}
@@ -666,7 +666,7 @@ function MonitoramentoConversasPageContent() {
                             </span>
                           ) : null}
                           {upcomingAppt ? (
-                            <span className="mt-1 block text-[10px] font-medium leading-tight text-emerald-700 dark:text-emerald-400/95">
+                            <span className="mt-1 block text-[10px] font-medium leading-tight text-success">
                               {t("appointmentBadge", {
                                 date: formatAppointmentLine(upcomingAppt.startsAt),
                               })}
@@ -696,7 +696,7 @@ function MonitoramentoConversasPageContent() {
                             className={cn(
                               "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
                               !c.botEnabled
-                                ? "border-amber-600 bg-amber-500 dark:border-amber-500"
+                                ? "border-warning/90 bg-warning dark:border-warning"
                                 : "border-border bg-muted",
                             )}
                             onClick={() => {
@@ -732,7 +732,7 @@ function MonitoramentoConversasPageContent() {
               selectedPhone &&
                 contacts.find((x) => x.phoneNumber === selectedPhone)
                   ?.botEnabled === false &&
-                "border-amber-500/40 bg-amber-500/[0.06]",
+                "border-warning/40 bg-warning/[0.06]",
             )}
           >
             <div>
@@ -741,7 +741,7 @@ function MonitoramentoConversasPageContent() {
                 contacts.find((x) => x.phoneNumber === selectedPhone)
                   ?.botEnabled === false ? (
                   <Hand
-                    className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
+                    className="h-4 w-4 shrink-0 text-warning"
                     aria-hidden
                   />
                 ) : null}

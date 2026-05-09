@@ -29,3 +29,16 @@ Fontes: **Inter** (UI), **Geist Mono** (código/monoespaçado), **Lexend** (marc
 ## Evolução
 
 Ao introduzir novos estados (“paid”, “pending billing”), primeiro tentar `success` / `warning` / `info`; só depois propor novo token aqui + em `globals.css`.
+
+## Onde já está aplicado (iteração 2026-05)
+
+- `dashboard-panel.tsx` — badges de instância, avisos, KPIs, sombras, score “hot” (`destructive`)
+- `monitoramento/page.tsx` — aviso de conta, pendentes, handoff humano, agendamento próximo, barra do thread
+- `appointments/page.tsx` — aviso de conta, destaque “hoje”, ícone relógio
+- `internal/tenants/page.tsx` — aviso de provisionamento, chips ativo/inativo
+- `uploaded-files-list.tsx` — linha a indexar / estado OK
+- `customer-record-dialog.tsx` — caixa de insight IA (`info`)
+- `chat-bubble.tsx` — bolha assistente, ícones de entrega, erro
+- `landing-page-client.tsx` / `landing-chat-mockup.tsx` — badge, gradiente hero (via `success`), ícones de benefício, estrelas, indicador “online”
+
+Gradientes de marketing na landing podem manter `violet` / `teal` Tailwind onde forem puramente decorativos; estados semânticos usam sempre os tokens acima.

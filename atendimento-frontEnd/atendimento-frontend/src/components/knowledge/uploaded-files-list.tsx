@@ -113,7 +113,7 @@ export function KnowledgeBaseFilesTable({
               </thead>
               <tbody className="[&>tr]:[contain-intrinsic-size:auto_3rem] [&>tr]:[content-visibility:auto]">
                 {uploading ? (
-                  <tr className="border-b border-border/60 bg-amber-500/5">
+                  <tr className="border-b border-border/60 bg-warning/5">
                     <td className="max-w-[200px] truncate px-3 py-3 font-medium">
                       {uploading.fileName}
                     </td>
@@ -124,7 +124,7 @@ export function KnowledgeBaseFilesTable({
                     <td className="px-3 py-3">
                       <span
                         className={cn(
-                          "inline-flex rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400",
+                          "inline-flex rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning",
                         )}
                       >
                         {t("statusProcessing")}
@@ -150,7 +150,7 @@ export function KnowledgeBaseFilesTable({
                       {formatFileSize(f.sizeBytes)}
                     </td>
                     <td className="px-3 py-3">
-                      <span className="inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                      <span className="inline-flex rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-success">
                         {statusLabel(f.status)}
                       </span>
                     </td>

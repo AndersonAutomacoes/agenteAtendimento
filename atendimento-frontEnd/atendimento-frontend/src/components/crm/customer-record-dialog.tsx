@@ -172,7 +172,7 @@ export function CustomerRecordDialog({
             {data?.customer?.aiSalesInsight?.trim() ? (
               <section>
                 <h3 className="mb-2 font-medium text-foreground">{t("aiInsightTitle")}</h3>
-                <p className="rounded-lg border border-cyan-500/25 bg-cyan-500/5 px-3 py-2.5 text-sm leading-relaxed text-foreground/90">
+                <p className="rounded-lg border border-info/25 bg-info/5 px-3 py-2.5 text-sm leading-relaxed text-foreground/90">
                   {data.customer.aiSalesInsight}
                 </p>
               </section>

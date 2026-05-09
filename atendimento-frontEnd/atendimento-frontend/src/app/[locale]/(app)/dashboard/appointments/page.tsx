@@ -120,7 +120,7 @@ export default function AppointmentsPage() {
           <p className="text-muted-foreground">{t("subtitle")}</p>
           <div className="mt-4 max-w-md space-y-1">
             {!tenantId.trim() ? (
-              <p className="pt-1 text-xs text-amber-600 dark:text-amber-400/90">
+              <p className="pt-1 text-xs text-warning">
                 {t("needAccount")}
               </p>
             ) : null}
@@ -207,7 +207,7 @@ export default function AppointmentsPage() {
                           <span className="inline-flex items-center gap-2 tabular-nums">
                             {row.todayHighlight ? (
                               <Clock
-                                className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
+                                className="h-4 w-4 shrink-0 text-warning"
                                 aria-label={t("todayHint")}
                               />
                             ) : null}
@@ -239,7 +239,7 @@ export default function AppointmentsPage() {
                             className={cn(
                               "inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium",
                               row.todayHighlight
-                                ? "border-amber-500/50 bg-amber-500/10 text-amber-900 dark:text-amber-100"
+                                ? "border-warning/50 bg-warning/10 text-warning"
                                 : "border-border bg-muted/40 text-foreground",
                             )}
                           >
