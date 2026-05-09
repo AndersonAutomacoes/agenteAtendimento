@@ -82,7 +82,7 @@ export function PwaInstallCard() {
           aria-label={t("dismissAria")}
           onClick={() => setDismissed(true)}
         >
-          <X className="h-4 w-4" />
+          <X className="h-4 w-4" aria-hidden />
         </Button>
         <CardTitle className="pr-8 text-base">{t("title")}</CardTitle>
         <CardDescription>{t("subtitle")}</CardDescription>
@@ -95,7 +95,7 @@ export function PwaInstallCard() {
             size="touch"
             onClick={() => void runInstall()}
           >
-            <Download className="h-4 w-4 shrink-0" />
+            <Download className="h-4 w-4 shrink-0" aria-hidden />
             {t("installCta")}
           </Button>
         ) : null}
@@ -103,7 +103,7 @@ export function PwaInstallCard() {
         {isIos || iosHintOpen || !installEvent ? (
           <div className="rounded-xl border border-border/60 bg-muted/30 px-3 py-2.5 text-sm text-muted-foreground dark:bg-muted/15">
             <p className="flex items-start gap-2">
-              <Share2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <Share2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
               <span>{isIos ? t("iosInstructions") : t("fallbackHint")}</span>
             </p>
           </div>

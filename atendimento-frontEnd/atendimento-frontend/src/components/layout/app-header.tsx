@@ -1,8 +1,8 @@
 "use client";
 
-import { Brain } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { AppLogo } from "@/components/brand/app-logo";
 import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
 
@@ -24,14 +24,10 @@ export function AppHeader() {
         <MobileNavDrawer />
         <Link
           href="/"
-          className="flex min-w-0 items-center gap-2 rounded-lg md:hidden"
+          aria-label={t("logoLinkHome")}
+          className="flex min-w-0 max-w-[min(60vw,13rem)] items-center rounded-lg md:hidden"
         >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
-            <Brain className="h-5 w-5" aria-hidden />
-          </span>
-          <span className="truncate font-semibold tracking-tight">
-            {t("brand")}
-          </span>
+          <AppLogo variant="navigation" className="min-w-0" />
         </Link>
       </div>
       <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">

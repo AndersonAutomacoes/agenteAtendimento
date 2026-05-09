@@ -529,7 +529,7 @@ function InternalTenantsPageContent() {
                 id="tenantId"
                 value={tenantId}
                 onChange={(e) => setTenantId(e.target.value)}
-                placeholder="oficina-centro-sp"
+                placeholder="oficina-centro-sp…"
                 disabled={busy}
                 className="rounded-xl"
               />
@@ -552,7 +552,7 @@ function InternalTenantsPageContent() {
                 type="email"
                 value={customerEmail}
                 onChange={(e) => setCustomerEmail(e.target.value)}
-                placeholder="cliente@empresa.com"
+                placeholder="cliente@empresa.com…"
                 disabled={busy}
                 className="rounded-xl"
               />
@@ -659,6 +659,7 @@ function InternalTenantsPageContent() {
               aria-label={t("searchPlaceholder")}
             />
             <select
+              aria-label={t("ariaStatusFilter")}
               className="h-9 rounded-xl border border-input bg-transparent px-3 py-1 text-sm"
               value={statusFilter}
               onChange={(e) =>
@@ -1225,16 +1226,30 @@ function InternalTenantsPageContent() {
               />
             </div>
             <div className="space-y-2">
-              <Label>{t("establishmentName")}</Label>
-              <Input value={editEstablishmentName} onChange={(e) => setEditEstablishmentName(e.target.value)} />
+              <Label htmlFor="edit-establishment-name">{t("establishmentName")}</Label>
+              <Input
+                id="edit-establishment-name"
+                name="establishmentName"
+                value={editEstablishmentName}
+                onChange={(e) => setEditEstablishmentName(e.target.value)}
+              />
             </div>
             <div className="space-y-2">
-              <Label>{t("customerEmail")}</Label>
-              <Input value={editCustomerEmail} onChange={(e) => setEditCustomerEmail(e.target.value)} />
+              <Label htmlFor="edit-customer-email">{t("customerEmail")}</Label>
+              <Input
+                id="edit-customer-email"
+                name="customerEmail"
+                type="email"
+                autoComplete="email"
+                value={editCustomerEmail}
+                onChange={(e) => setEditCustomerEmail(e.target.value)}
+              />
             </div>
             <div className="space-y-2">
-              <Label>{t("plan")}</Label>
+              <Label htmlFor="edit-profile-level">{t("plan")}</Label>
               <select
+                id="edit-profile-level"
+                name="profileLevel"
                 className="h-9 w-full rounded-xl border border-input bg-transparent px-3 py-1 text-sm"
                 value={editProfileLevel}
                 onChange={(e) => setEditProfileLevel(e.target.value as ProfileLevel)}

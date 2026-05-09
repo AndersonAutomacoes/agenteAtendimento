@@ -152,14 +152,38 @@ function monitorPhoneFromCrmCustomer(c: CrmCustomerDto): string {
 
 type ChartRow = { bucketStart: string; count: number; label: string };
 
-const PIE_COLORS = ["#22d3ee", "#34d399", "#a78bfa", "#fb7185", "#fbbf24"];
+/** Distinct hues + primary token; legend/tooltip carry labels (not color-only). */
+const PIE_COLORS = [
+  "var(--color-primary)",
+  "#34d399",
+  "#a78bfa",
+  "#fb7185",
+  "#fbbf24",
+] as const;
 
 const SENTIMENT_ORDER: readonly ConversationSentiment[] = ["POSITIVO", "NEUTRO", "NEGATIVO"];
 
+/** Teal / slate / orange — clearer than green vs red for common color-vision deficiencies. */
 const SENTIMENT_BAR_COLORS: Record<ConversationSentiment, string> = {
-  POSITIVO: "#34d399",
-  NEUTRO: "hsl(var(--muted-foreground))",
-  NEGATIVO: "#fb7185",
+  POSITIVO: "#0d9488",
+  NEUTRO: "#64748b",
+  NEGATIVO: "#ea580c",
+};
+
+const rechartsTooltipBox = {
+  backgroundColor: "hsl(var(--card))",
+  border: "1px solid hsl(var(--border))",
+  borderRadius: "0.75rem",
+} as const;
+
+const rechartsTooltipLabelStyle = {
+  color: "hsl(var(--foreground))",
+  fontVariantNumeric: "tabular-nums" as const,
+};
+
+const rechartsTooltipItemStyle = {
+  color: "hsl(var(--foreground))",
+  fontVariantNumeric: "tabular-nums" as const,
 };
 
 const AI_INSIGHT_MIN_PERCENT = 5;
@@ -241,7 +265,7 @@ function opportunityLeadScorePresentation(
   if (score <= 70) {
     return {
       text: String(score),
-      className: "font-semibold text-amber-400",
+      className: "font-semibold text-warning",
       title: translate("opportunities.scoreTierWarm"),
     };
   }
@@ -293,6 +317,18 @@ export function DashboardPanel() {
   const chartReady = useChartReady();
   const areaChartPx = isSmallViewport ? 280 : 320;
   const lowerChartPx = isSmallViewport ? 260 : 300;
+  const chartNumberFmt = React.useMemo(
+    () => new Intl.NumberFormat(dateLocale, { maximumFractionDigits: 0 }),
+    [dateLocale],
+  );
+  const chartAxisTickProps = React.useMemo(
+    () => ({
+      fill: "hsl(var(--muted-foreground))",
+      fontSize: chartTickSize,
+      style: { fontVariantNumeric: "tabular-nums" as const },
+    }),
+    [chartTickSize],
+  );
 
   const periodRange = React.useMemo(
     () =>
@@ -467,6 +503,20 @@ export function DashboardPanel() {
     });
   }, [data, useHourlyChartLabels, dateLocale]);
 
+  const areaChartSrSummary = React.useMemo(() => {
+    if (chartData.length === 0) return "";
+    const total = chartData.reduce((a, r) => a + r.count, 0);
+    const peak = chartData.reduce(
+      (best, r) => (r.count > best.count ? r : best),
+      chartData[0]!,
+    );
+    return t("chart.srSummary", {
+      total: chartNumberFmt.format(total),
+      peak: chartNumberFmt.format(peak.count),
+      peakLabel: peak.label,
+    });
+  }, [chartData, chartNumberFmt, t]);
+
   const runExport = React.useCallback(
     async (format: AnalyticsExportFormat) => {
       const tid = tenantId.trim();
@@ -543,6 +593,14 @@ export function DashboardPanel() {
     }));
   }, [intentData, t]);
 
+  const sentimentSrSummary = React.useMemo(() => {
+    if (sentimentBarRows.length === 0) return "";
+    return sentimentBarRows
+      .filter((r) => r.count > 0)
+      .map((r) => `${r.label}: ${chartNumberFmt.format(r.count)}`)
+      .join(". ");
+  }, [sentimentBarRows, chartNumberFmt]);
+
   const aiInsight = React.useMemo(() => {
     if (!intentData || totalIntentCount === 0) {
       return { kind: "empty" as const };
@@ -603,10 +661,10 @@ export function DashboardPanel() {
 
   const instanceBadgeClass = (s: string) =>
     s === "CONFIGURED"
-      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+      ? "border-success/40 bg-success/10 text-success"
       : s === "SIMULATED"
-        ? "border-sky-500/40 bg-sky-500/10 text-sky-400"
-        : "border-amber-500/40 bg-amber-500/10 text-amber-300";
+        ? "border-info/40 bg-info/10 text-info"
+        : "border-warning/40 bg-warning/10 text-warning";
 
   const canAccessOpportunities = planMeetsRequirement(tier, "pro");
   const canAccessExport = planMeetsRequirement(tier, "pro");
@@ -676,7 +734,7 @@ export function DashboardPanel() {
                 onClick={() => navigateDashboardTab("metrics")}
                 className={cn(
                   mainTab === "metrics" &&
-                    "bg-primary text-primary-foreground shadow-md shadow-cyan-500/20",
+                    "bg-primary text-primary-foreground shadow-md shadow-primary/25",
                 )}
               >
                 {t("mainTabMetrics")}
@@ -690,7 +748,7 @@ export function DashboardPanel() {
                   className={cn(
                     "gap-1.5",
                     mainTab === "opportunities" &&
-                      "bg-primary text-primary-foreground shadow-md shadow-cyan-500/20",
+                      "bg-primary text-primary-foreground shadow-md shadow-primary/25",
                   )}
                 >
                   <Target className="h-4 w-4 shrink-0" aria-hidden />
@@ -722,7 +780,7 @@ export function DashboardPanel() {
                 onClick={() => setPeriodPreset(value)}
                 className={cn(
                   periodPreset === value &&
-                    "bg-primary text-primary-foreground shadow-md shadow-cyan-500/20",
+                    "bg-primary text-primary-foreground shadow-md shadow-primary/25",
                 )}
               >
                 {t(label)}
@@ -819,11 +877,11 @@ export function DashboardPanel() {
       </div>
 
       {!tenantId.trim() ? (
-        <p className="text-sm text-amber-600 dark:text-amber-400">{t("needAccount")}</p>
+        <p className="text-sm text-warning">{t("needAccount")}</p>
       ) : null}
 
       {periodError ? (
-        <p className="text-sm text-amber-600 dark:text-amber-400" role="status">
+        <p className="text-sm text-warning" role="status">
           {periodError}
         </p>
       ) : null}
@@ -858,7 +916,7 @@ export function DashboardPanel() {
             <Card className={cn(cardClass)}>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                  <Target className="h-5 w-5 shrink-0 text-cyan-400" aria-hidden />
+                  <Target className="h-5 w-5 shrink-0 text-info" aria-hidden />
                   {t("opportunities.title")}
                 </CardTitle>
                 <CardDescription>{t("opportunities.subtitle")}</CardDescription>
@@ -1025,7 +1083,7 @@ export function DashboardPanel() {
                 <Bot className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold tabular-nums tracking-tight text-cyan-400">
+                <div className="text-3xl font-bold tabular-nums tracking-tight text-info">
                   {data.aiRatePercent != null ? `${data.aiRatePercent}%` : "—"}
                 </div>
                 <CardDescription>{t("cards.aiRateDesc")}</CardDescription>
@@ -1096,9 +1154,14 @@ export function DashboardPanel() {
             </CardHeader>
             <CardContent className="pt-2">
               <div
-                className="w-full min-w-0 shrink-0"
+                className="w-full min-w-0 shrink-0 outline-none"
                 style={{ height: areaChartPx, minHeight: areaChartPx }}
+                role="img"
+                aria-label={t("chart.ariaLabel")}
               >
+                {areaChartSrSummary ? (
+                  <p className="sr-only">{areaChartSrSummary}</p>
+                ) : null}
                 {chartReady ? (
                   <ResponsiveContainer
                     width="100%"
@@ -1114,8 +1177,8 @@ export function DashboardPanel() {
                     >
                       <defs>
                         <linearGradient id="dashMsgGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.85} />
-                          <stop offset="100%" stopColor="#34d399" stopOpacity={0.12} />
+                          <stop offset="0%" stopColor="var(--color-primary)" stopOpacity={0.9} />
+                          <stop offset="100%" stopColor="var(--color-primary)" stopOpacity={0.08} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid
@@ -1125,27 +1188,26 @@ export function DashboardPanel() {
                       />
                       <XAxis
                         dataKey="label"
-                        tick={{ fill: "hsl(var(--muted-foreground))", fontSize: chartTickSize }}
+                        tick={chartAxisTickProps}
                         interval="preserveStartEnd"
                         tickLine={false}
                         axisLine={{ stroke: "hsl(var(--border))" }}
                       />
                       <YAxis
                         width={isSmallViewport ? 36 : 40}
-                        tick={{ fill: "hsl(var(--muted-foreground))", fontSize: chartTickSize }}
+                        tick={chartAxisTickProps}
                         tickLine={false}
                         axisLine={{ stroke: "hsl(var(--border))" }}
                         allowDecimals={false}
                       />
                       <Tooltip
-                        contentStyle={{
-                          backgroundColor: "hsl(var(--card))",
-                          border: "1px solid hsl(var(--border))",
-                          borderRadius: "0.75rem",
-                        }}
-                        labelStyle={{ color: "hsl(var(--foreground))" }}
-                        itemStyle={{ color: "#22d3ee" }}
-                        formatter={(v) => [v ?? 0, t("chart.tooltipCount")]}
+                        contentStyle={rechartsTooltipBox}
+                        labelStyle={rechartsTooltipLabelStyle}
+                        itemStyle={rechartsTooltipItemStyle}
+                        formatter={(v) => [
+                          chartNumberFmt.format(Number(v ?? 0)),
+                          t("chart.tooltipCount"),
+                        ]}
                         labelFormatter={(_, payload) =>
                           payload?.[0]?.payload?.bucketStart
                             ? new Date(
@@ -1157,11 +1219,17 @@ export function DashboardPanel() {
                       <Area
                         type="monotone"
                         dataKey="count"
-                        stroke="#22d3ee"
+                        name={t("chart.tooltipCount")}
+                        stroke="var(--color-primary)"
                         strokeWidth={2}
                         fill="url(#dashMsgGrad)"
                         dot={false}
-                        activeDot={{ r: 4, fill: "#34d399", stroke: "#22d3ee" }}
+                        activeDot={{
+                          r: 4,
+                          fill: "var(--color-primary)",
+                          stroke: "hsl(var(--background))",
+                          strokeWidth: 2,
+                        }}
                       />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -1193,9 +1261,18 @@ export function DashboardPanel() {
                     <p className="text-sm text-muted-foreground">{t("primaryIntents.pieEmpty")}</p>
                   ) : (
                     <div
-                      className="w-full min-w-0 shrink-0"
+                      className="w-full min-w-0 shrink-0 outline-none"
                       style={{ height: lowerChartPx, minHeight: lowerChartPx }}
+                      role="img"
+                      aria-label={t("primaryIntents.pieAriaLabel")}
                     >
+                      <ul className="sr-only">
+                        {pieRows.map((row) => (
+                          <li key={row.category}>
+                            {row.label}: {chartNumberFmt.format(row.count)}
+                          </li>
+                        ))}
+                      </ul>
                       {chartReady ? (
                         <ResponsiveContainer
                           width="100%"
@@ -1225,23 +1302,29 @@ export function DashboardPanel() {
                               {pieRows.map((_, i) => (
                                 <Cell
                                   key={pieRows[i]!.category}
-                                  fill={PIE_COLORS[i % PIE_COLORS.length]!}
+                                  fill={PIE_COLORS[i % PIE_COLORS.length]}
                                   stroke="hsl(var(--background))"
                                   strokeWidth={2}
                                 />
                               ))}
                             </Pie>
                             <Tooltip
-                              contentStyle={{
-                                backgroundColor: "hsl(var(--card))",
-                                border: "1px solid hsl(var(--border))",
-                                borderRadius: "0.75rem",
-                              }}
-                              formatter={(v) => [v ?? 0, t("primaryIntents.pieTooltipCount")]}
+                              contentStyle={rechartsTooltipBox}
+                              labelStyle={rechartsTooltipLabelStyle}
+                              itemStyle={rechartsTooltipItemStyle}
+                              formatter={(v) => [
+                                chartNumberFmt.format(Number(v ?? 0)),
+                                t("primaryIntents.pieTooltipCount"),
+                              ]}
                             />
                             <Legend
                               verticalAlign="bottom"
-                              wrapperStyle={{ fontSize: isSmallViewport ? 10 : 12 }}
+                              iconType="circle"
+                              align="center"
+                              wrapperStyle={{
+                                fontSize: isSmallViewport ? 10 : 12,
+                                fontVariantNumeric: "tabular-nums",
+                              }}
                               formatter={(value) => (
                                 <span className="text-muted-foreground text-[10px] sm:text-xs">
                                   {value}
@@ -1279,9 +1362,14 @@ export function DashboardPanel() {
                     <p className="text-sm text-muted-foreground">{t("sentiment.empty")}</p>
                   ) : (
                     <div
-                      className="w-full min-w-0 shrink-0"
+                      className="w-full min-w-0 shrink-0 outline-none"
                       style={{ height: lowerChartPx, minHeight: lowerChartPx }}
+                      role="img"
+                      aria-label={t("sentiment.barAriaLabel")}
                     >
+                      {sentimentSrSummary ? (
+                        <p className="sr-only">{sentimentSrSummary}</p>
+                      ) : null}
                       {chartReady ? (
                         <ResponsiveContainer
                           width="100%"
@@ -1306,8 +1394,7 @@ export function DashboardPanel() {
                               type="number"
                               allowDecimals={false}
                               tick={{
-                                fill: "hsl(var(--muted-foreground))",
-                                fontSize: chartTickSize,
+                                ...chartAxisTickProps,
                               }}
                               tickLine={false}
                               axisLine={{ stroke: "hsl(var(--border))" }}
@@ -1317,22 +1404,31 @@ export function DashboardPanel() {
                               dataKey="label"
                               width={sentimentYAxisW}
                               tick={{
-                                fill: "hsl(var(--muted-foreground))",
-                                fontSize: chartTickSize,
+                                ...chartAxisTickProps,
                               }}
                               tickLine={false}
                               axisLine={false}
                             />
                             <Tooltip
                               cursor={{ fill: "hsl(var(--muted))", opacity: 0.15 }}
-                              contentStyle={{
-                                backgroundColor: "hsl(var(--card))",
-                                border: "1px solid hsl(var(--border))",
-                                borderRadius: "0.75rem",
+                              contentStyle={rechartsTooltipBox}
+                              labelStyle={rechartsTooltipLabelStyle}
+                              itemStyle={rechartsTooltipItemStyle}
+                              formatter={(v, _name, item) => {
+                                const payload = item?.payload as { label?: string } | undefined;
+                                const label = payload?.label ?? "";
+                                return [
+                                  chartNumberFmt.format(Number(v ?? 0)),
+                                  label || t("sentiment.tooltipCount"),
+                                ];
                               }}
-                              formatter={(v) => [v ?? 0, t("sentiment.tooltipCount")]}
                             />
-                            <Bar dataKey="count" radius={[0, 8, 8, 0]} maxBarSize={28}>
+                            <Bar
+                              dataKey="count"
+                              name={t("sentiment.tooltipCount")}
+                              radius={[0, 8, 8, 0]}
+                              maxBarSize={28}
+                            >
                               {sentimentBarRows.map((r) => (
                                 <Cell key={r.sentiment} fill={SENTIMENT_BAR_COLORS[r.sentiment]} />
                               ))}
@@ -1373,7 +1469,7 @@ export function DashboardPanel() {
                 ) : aiInsight.kind === "stable" ? (
                   <p className="text-sm text-foreground/90 leading-relaxed">{t("aiInsight.stable")}</p>
                 ) : (
-                  <p className="text-sm font-medium leading-relaxed text-amber-700 dark:text-amber-400">
+                  <p className="text-sm font-medium leading-relaxed text-warning">
                     {t("aiInsight.spike", {
                       percent: aiInsight.percent,
                       category: primaryIntentLabel(aiInsight.category),
@@ -1457,7 +1553,7 @@ export function DashboardPanel() {
                                 </div>
                               </td>
                               <td className="max-w-[140px] pr-4 align-middle">
-                                <span className="inline-block truncate rounded-md bg-muted/80 px-2 py-0.5 text-xs text-cyan-400">
+                                <span className="inline-block truncate rounded-md bg-muted/80 px-2 py-0.5 text-xs text-info">
                                   {intentLabel(row.detectedIntent)}
                                 </span>
                               </td>
@@ -1533,7 +1629,7 @@ export function DashboardPanel() {
                                   {t("activities.colIntent")}
                                 </span>
                                 <div className="mt-0.5">
-                                  <span className="inline-block rounded-md bg-muted/80 px-2 py-1 text-xs text-cyan-400">
+                                  <span className="inline-block rounded-md bg-muted/80 px-2 py-1 text-xs text-info">
                                     {intentLabel(row.detectedIntent)}
                                   </span>
                                 </div>

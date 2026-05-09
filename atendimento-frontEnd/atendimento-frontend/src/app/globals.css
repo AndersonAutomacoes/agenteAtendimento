@@ -2,6 +2,16 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Typography scale (use Tailwind utilities; body ≥16px em mobile onde aplicável):
+ * — display / hero: text-4xl–text-6xl font-bold tracking-tight + text-balance (landing)
+ * — page title (app h1): text-2xl font-semibold tracking-tight
+ * — section/card title: text-base–text-xl font-semibold ou text-sm font-medium em KPIs
+ * — body: text-base (preferir em formulários) ou text-sm em tabelas densas
+ * — caption / helper: text-xs text-muted-foreground · números: tabular-nums
+ * Fonts: sans = Inter (--font-inter), mono = Geist (--font-geist-mono), marca landing = Lexend (.font-landing-brand)
+ */
+
 /* Light: neutro suave (acesso a quem alternar o tema) */
 :root {
   --background: oklch(0.97 0.01 250);
@@ -20,6 +30,13 @@
   --accent-foreground: oklch(0.2 0.03 260);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
+  /* Estados semânticos (superfícies plenas / texto em bg suave via opacity em Tailwind) */
+  --success: oklch(0.44 0.12 163);
+  --success-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.5 0.13 72);
+  --warning-foreground: oklch(0.99 0 0);
+  --info: oklch(0.48 0.11 237);
+  --info-foreground: oklch(0.99 0 0);
   --border: oklch(0.88 0.02 250);
   --input: oklch(0.88 0.02 250);
   --ring: oklch(0.45 0.14 250);
@@ -49,6 +66,12 @@
   --accent-foreground: oklch(0.98 0.01 250);
   --destructive: oklch(0.55 0.2 25);
   --destructive-foreground: oklch(0.99 0 0);
+  --success: oklch(0.72 0.14 162);
+  --success-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.78 0.14 86);
+  --warning-foreground: oklch(0.18 0.05 70);
+  --info: oklch(0.72 0.11 237);
+  --info-foreground: oklch(0.99 0 0);
   --border: oklch(0.35 0.04 260);
   --input: oklch(0.32 0.04 260);
   --ring: oklch(0.55 0.16 250);
@@ -76,6 +99,12 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

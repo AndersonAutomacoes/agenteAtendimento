@@ -50,12 +50,7 @@ export function AppNavEntry({ item, onNavigate, touchPadding }: AppNavEntryProps
 
   if (locked) {
     return (
-      <div
-        className={baseClass}
-        role="link"
-        aria-disabled="true"
-        title={tPlan("navLockedHint")}
-      >
+      <div className={baseClass} aria-disabled="true" title={tPlan("navLockedHint")}>
         <Icon className="h-4 w-4 shrink-0" aria-hidden />
         <span className="flex min-w-0 flex-col leading-tight">
           <span className="inline-flex items-center gap-1.5">

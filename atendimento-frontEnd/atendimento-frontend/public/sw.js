@@ -25,7 +25,7 @@ self.addEventListener("activate", (event) => {
 function isStaticAsset(url) {
   if (url.pathname.startsWith("/_next/static")) return true;
   if (url.pathname.startsWith("/icons/")) return true;
-  return /\.(?:js|css|woff2|png|svg|ico|webmanifest)$/i.test(url.pathname);
+  return /\.(?:js|css|woff2|png|jpe?g|svg|ico|webmanifest)$/i.test(url.pathname);
 }
 
 /** stale-while-revalidate — resposta rápida do cache + atualização em segundo plano */

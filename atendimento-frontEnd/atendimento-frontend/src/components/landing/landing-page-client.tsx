@@ -6,7 +6,9 @@ import { useTranslations } from "next-intl";
 import { LandingChatMockup, type ChatBubble } from "@/components/landing/landing-chat-mockup";
 import { LandingContactForm } from "@/components/landing/landing-contact-form";
 import { getLandingWhatsAppHref, LandingFloatingWhatsApp } from "@/components/landing/landing-floating-whatsapp";
+import { AppLogo } from "@/components/brand/app-logo";
 import { LocaleSwitcher } from "@/components/layout/locale-switcher";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link } from "@/i18n/navigation";
@@ -33,6 +35,7 @@ function getLandingDemoHref(): string | null {
 
 export function LandingPageClient() {
   const t = useTranslations("landingPage");
+  const tNav = useTranslations("nav");
   const benefits = t.raw("benefits") as Benefit[];
   const howSteps = t.raw("howSteps") as Step[];
   const faqItems = t.raw("faq") as FaqItem[];
@@ -53,22 +56,37 @@ export function LandingPageClient() {
         {t("skipToForm")}
       </a>
 
-      <header className="sticky top-0 z-40 border-b border-border/80 bg-background/90 backdrop-blur-md">
+      <header
+        className={cn(
+          "sticky top-0 z-40 border-b border-border/80 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80",
+        )}
+      >
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 md:px-6">
-          <span className="font-landing-brand text-lg font-semibold tracking-tight text-foreground">{t("navBrand")}</span>
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <Link
+            href="/landing"
+            aria-label={tNav("logoLinkHome")}
+            className="flex min-w-0 max-w-[min(100%,16rem)] items-center rounded-lg outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring sm:max-w-none"
+          >
+            <AppLogo variant="marketing" priority className="min-w-0 justify-start" />
+          </Link>
+          <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
             <LocaleSwitcher />
-            <Button variant="ghost" size="sm" className="hidden sm:inline-flex" asChild>
+            <ThemeToggle />
+            <Button variant="ghost" size="sm" className="touch-manipulation" asChild>
               <Link href="/login">{t("navLogin")}</Link>
             </Button>
-            <Button size="sm" asChild>
+            <Button size="sm" className="touch-manipulation" asChild>
               <Link href="/register">{t("navRegister")}</Link>
             </Button>
           </div>
         </div>
       </header>
 
-      <main id="landing-main-content" tabIndex={-1}>
+      <main
+        id="landing-main-content"
+        tabIndex={-1}
+        className="outline-none ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      >
         <section className="relative overflow-hidden border-b border-border/60 bg-gradient-to-br from-background via-card to-muted/30 px-4 pb-16 pt-12 md:px-6 md:pb-24 md:pt-16">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_100%_80%_at_50%_-40%,rgba(59,130,246,0.22),transparent)]" aria-hidden />
           <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(24,24,27,0.3)_0%,transparent_35%,rgba(9,9,11,0.85)_100%)]" aria-hidden />
@@ -196,7 +214,7 @@ export function LandingPageClient() {
                 const Icon = integration.icon;
                 return (
                   <li key={integration.key}>
-                    <div className="group flex h-full items-center justify-center gap-3 rounded-xl border border-border/80 bg-card/60 px-4 py-5 text-muted-foreground transition-all hover:border-primary/35 hover:bg-card/80">
+                    <div className="group flex h-full items-center justify-center gap-3 rounded-xl border border-border/80 bg-card/60 px-4 py-5 text-muted-foreground transition-colors hover:border-primary/35 hover:bg-card/80">
                       <Icon className={cn("size-5 transition-colors", integration.colorClass)} aria-hidden />
                       <span className={cn("font-medium transition-colors", integration.colorClass)}>{integration.label}</span>
                     </div>
@@ -296,17 +314,15 @@ export function LandingPageClient() {
               <div className="mt-8 flex w-full flex-col justify-center gap-3 sm:mx-auto sm:max-w-lg sm:flex-row sm:flex-wrap">
                 <Button
                   size="lg"
-                  className={cn(
-                    "w-full px-6 font-semibold text-white shadow-lg ring-2 ring-primary/25 sm:flex-1",
-                    "bg-gradient-to-r from-violet-600 via-emerald-600 to-teal-600 hover:from-violet-500 hover:via-emerald-500 hover:to-teal-500",
-                  )}
+                  className="w-full gap-1 px-6 font-semibold shadow-md sm:flex-1 touch-manipulation"
                   asChild
                 >
                   <a href="#landing-form" aria-label={t("finalCtaExpertAria")}>
                     {t("contactFormCardTitle")}
+                    <ChevronRight className="size-5 opacity-90" aria-hidden />
                   </a>
                 </Button>
-                <Button size="lg" variant="outline" className="w-full sm:flex-1" asChild>
+                <Button size="lg" variant="outline" className="w-full touch-manipulation sm:flex-1" asChild>
                   <Link href="/register">{t("finalCtaRegister")}</Link>
                 </Button>
               </div>

@@ -70,7 +70,7 @@ export function FileUploadZone({
           disabled={disabled}
           onChange={(e) => handleFiles(e.target.files)}
         />
-        <Upload className="mx-auto h-10 w-10 text-muted-foreground" />
+        <Upload className="mx-auto h-10 w-10 text-muted-foreground" aria-hidden />
         <p className="mt-3 text-sm font-medium">{t("dropTitle")}</p>
         <p className="mt-1 text-xs text-muted-foreground">{t("dropHint")}</p>
         <Button

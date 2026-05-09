@@ -15,7 +15,11 @@ export function AppShell({ children }: AppShellProps) {
       </div>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <AppHeader />
-        <main id="main-content" tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto p-4 touch-manipulation scroll-mt-14 outline-none md:p-6">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="min-h-0 flex-1 overflow-y-auto p-4 touch-manipulation scroll-mt-14 outline-none ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:p-6"
+        >
           {children}
         </main>
       </div>

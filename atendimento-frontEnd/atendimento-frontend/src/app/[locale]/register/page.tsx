@@ -9,6 +9,7 @@ import * as React from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
+import { AppLogo } from "@/components/brand/app-logo";
 import { PasswordInput } from "@/components/auth/password-input";
 import { usePlan } from "@/components/plan/plan-provider";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,7 @@ type FieldKey = "inviteCode" | "email" | "password";
 
 export default function RegisterPage() {
   const t = useTranslations("registerPage");
+  const tNav = useTranslations("nav");
   const tCommon = useTranslations("common");
   const tApi = useTranslations("api");
   const router = useRouter();
@@ -137,9 +139,18 @@ export default function RegisterPage() {
   return (
     <div className="flex min-h-full flex-col items-center justify-center bg-background p-6">
       <div className="w-full max-w-md space-y-6 rounded-2xl border border-border bg-card p-8 shadow-lg">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-          <p className="mt-2 text-sm text-muted-foreground">{t("subtitle")}</p>
+        <div className="flex flex-col items-center gap-6 text-center">
+          <Link
+            href="/landing"
+            aria-label={tNav("logoLinkHome")}
+            className="rounded-xl outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <AppLogo variant="auth" />
+          </Link>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+            <p className="mt-2 text-sm text-muted-foreground">{t("subtitle")}</p>
+          </div>
         </div>
         <form onSubmit={onSubmit} className="space-y-4" noValidate>
           <div className="space-y-2">
@@ -147,6 +158,7 @@ export default function RegisterPage() {
             <Input
               ref={inviteRef}
               id="reg-invite"
+              name="inviteCode"
               value={inviteCode}
               onChange={(e) => {
                 setInviteCode(e.target.value);
@@ -173,6 +185,7 @@ export default function RegisterPage() {
             <Input
               ref={emailRef}
               id="reg-email"
+              name="email"
               type="email"
               value={email}
               onChange={(e) => {
@@ -200,6 +213,7 @@ export default function RegisterPage() {
             <PasswordInput
               ref={passwordRef}
               id="reg-password"
+              name="password"
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);

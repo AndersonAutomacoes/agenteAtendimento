@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "pwa:icons": "node scripts/generate-pwa-icons.mjs"
+    "pwa:icons": "node scripts/generate-pwa-icons.mjs",
+    "design:search": "node ./scripts/run-ui-ux-search.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

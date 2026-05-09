@@ -3,7 +3,6 @@ import {
   Building2,
   BookOpen,
   Bot,
-  Brain,
   CalendarClock,
   LayoutDashboard,
   MessageSquareText,
@@ -83,5 +82,3 @@ export const APP_NAV_ITEMS: AppNavItem[] = [
     requiredProfile: "COMERCIAL",
   },
 ];
-
-export const NAV_BRAIN_ICON = Brain;

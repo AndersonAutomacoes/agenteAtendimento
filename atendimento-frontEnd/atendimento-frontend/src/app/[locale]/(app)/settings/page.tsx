@@ -315,7 +315,7 @@ export default function SettingsPage() {
           <Label htmlFor="google-calendar-id">{t("googleCalendarId")}</Label>
           <Input
             id="google-calendar-id"
-            placeholder="exemplo@group.calendar.google.com"
+            placeholder="exemplo@group.calendar.google.com…"
             value={googleCalendarId}
             onChange={(e) => setGoogleCalendarId(e.target.value)}
             disabled={busy}

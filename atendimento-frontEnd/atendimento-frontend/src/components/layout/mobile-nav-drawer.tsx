@@ -4,6 +4,7 @@ import { Menu, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import * as React from "react";
 
+import { AppLogo } from "@/components/brand/app-logo";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,7 +18,7 @@ import { cn } from "@/lib/utils";
 
 import { AppNavEntry } from "./app-nav-entry";
 import { NavAuthFooter } from "./nav-auth-footer";
-import { APP_NAV_ITEMS, NAV_BRAIN_ICON } from "./nav-config";
+import { APP_NAV_ITEMS } from "./nav-config";
 
 export function MobileNavDrawer() {
   const [open, setOpen] = React.useState(false);
@@ -50,24 +51,15 @@ export function MobileNavDrawer() {
       >
         <DialogTitle className="sr-only">{t("menuTitle")}</DialogTitle>
         <DialogDescription className="sr-only">{t("brandSubtitle")}</DialogDescription>
-        <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-sidebar-border px-4">
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
-              <NAV_BRAIN_ICON className="h-5 w-5" aria-hidden />
-            </div>
-            <div className="min-w-0">
-              <Link
-                href="/"
-                className="block truncate font-semibold tracking-tight"
-                onClick={() => setOpen(false)}
-              >
-                {t("brand")}
-              </Link>
-              <p className="truncate text-[11px] text-muted-foreground">
-                {t("brandSubtitle")}
-              </p>
-            </div>
-          </div>
+        <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-sidebar-border px-3">
+          <Link
+            href="/"
+            aria-label={t("logoLinkHome")}
+            className="min-w-0 flex-1 rounded-lg outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => setOpen(false)}
+          >
+            <AppLogo variant="navigation" />
+          </Link>
           <Button
             type="button"
             variant="ghost"
@@ -76,7 +68,7 @@ export function MobileNavDrawer() {
             onClick={() => setOpen(false)}
             aria-label={t("closeMenu")}
           >
-            <X className="h-5 w-5" />
+            <X className="h-5 w-5" aria-hidden />
           </Button>
         </div>
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-3">
