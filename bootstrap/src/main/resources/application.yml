@@ -235,9 +235,9 @@ stripe:
   secret-key: ${STRIPE_SECRET_KEY:}
   webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
   # Local: http://localhost:3000/billing/success — Produção: https://<domínio-front>/billing/success
-  success-url: ${STRIPE_CHECKOUT_SUCCESS_URL:http://localhost:3000/billing/success}
-  cancel-url: ${STRIPE_CHECKOUT_CANCEL_URL:http://localhost:3000/pricing}
-  portal-return-url: ${STRIPE_PORTAL_RETURN_URL:http://localhost:3000/pricing}
+  success-url: ${STRIPE_CHECKOUT_SUCCESS_URL:http://165.227.194.76:3000/billing/success}
+  cancel-url: ${STRIPE_CHECKOUT_CANCEL_URL:http://165.227.194.76:3000/pricing}
+  portal-return-url: ${STRIPE_PORTAL_RETURN_URL:http://165.227.194.76:3000/pricing}
   price-tier:
     price_1TUwrARWktVb3mYIaFEuiRRF: BASIC
     price_1TUwtiRWktVb3mYIEGEgd23Q: BASIC
