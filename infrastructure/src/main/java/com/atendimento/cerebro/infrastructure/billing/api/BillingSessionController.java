@@ -4,8 +4,10 @@ import com.atendimento.cerebro.infrastructure.billing.BillingStripeProperties;
 import com.atendimento.cerebro.infrastructure.billing.persistence.BillingStripeCustomerAccess;
 import com.atendimento.cerebro.infrastructure.security.PortalAuthenticationToken;
 import com.stripe.exception.StripeException;
+import com.stripe.model.Customer;
 import com.stripe.model.Price;
 import com.stripe.model.checkout.Session;
+import com.stripe.param.CustomerCreateParams;
 import com.stripe.net.RequestOptions;
 import com.stripe.param.billingportal.SessionCreateParams;
 import com.stripe.param.checkout.SessionCreateParams.LineItem;
@@ -15,6 +17,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -98,12 +101,11 @@ public class BillingSessionController {
         }
 
         String firebaseUid = portal.getFirebaseUid();
-        String stripeCustomerId =
-                customerAccess.findStripeCustomerIdForBillingActor(tenantId, firebaseUid).orElse(null);
-        if (stripeCustomerId == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(new BillingSessionApiDtos.ErrorResponse("cliente_stripe_não_configurado"));
+        CustomerIdOrError resolved = resolveOrProvisionStripeCustomer(tenantId, firebaseUid, "checkout");
+        if (resolved.error() != null) {
+            return resolved.error();
         }
+        String stripeCustomerId = resolved.customerId();
 
         String successUrl = stripeProperties.successUrl();
         String cancelUrl = stripeProperties.cancelUrl();
@@ -163,12 +165,11 @@ public class BillingSessionController {
         }
 
         String firebaseUid = portal.getFirebaseUid();
-        String stripeCustomerId =
-                customerAccess.findStripeCustomerIdForBillingActor(tenantId, firebaseUid).orElse(null);
-        if (stripeCustomerId == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(new BillingSessionApiDtos.ErrorResponse("cliente_stripe_não_configurado"));
+        CustomerIdOrError resolved = resolveOrProvisionStripeCustomer(tenantId, firebaseUid, "portal");
+        if (resolved.error() != null) {
+            return resolved.error();
         }
+        String stripeCustomerId = resolved.customerId();
 
         String returnUrl = stripeProperties.portalReturnUrl();
         if (returnUrl == null || returnUrl.isBlank()) {
@@ -194,6 +195,37 @@ public class BillingSessionController {
                     .body(new BillingSessionApiDtos.ErrorResponse("stripe_indisponível"));
         }
     }
+
+    private CustomerIdOrError resolveOrProvisionStripeCustomer(String tenantId, String firebaseUid, String opLabel) {
+        Optional<String> existing = customerAccess.findStripeCustomerIdForBillingActor(tenantId, firebaseUid);
+        if (existing.isPresent()) {
+            return new CustomerIdOrError(existing.get(), null);
+        }
+        if (!customerAccess.canProvisionStripeCustomerForCheckout(tenantId, firebaseUid)) {
+            return new CustomerIdOrError(
+                    null,
+                    ResponseEntity.status(HttpStatus.NOT_FOUND)
+                            .body(new BillingSessionApiDtos.ErrorResponse("cliente_stripe_não_configurado")));
+        }
+        try {
+            CustomerCreateParams custParams = CustomerCreateParams.builder()
+                    .putMetadata("tenant_id", tenantId)
+                    .putMetadata("firebase_uid", firebaseUid)
+                    .build();
+            Customer created = Customer.create(custParams, RequestOptions.getDefault());
+            String stripeCustomerId = created.getId();
+            customerAccess.upsertStripeCustomerExplicit(tenantId, stripeCustomerId, firebaseUid);
+            return new CustomerIdOrError(stripeCustomerId, null);
+        } catch (StripeException e) {
+            log.warn("Falha ao criar Stripe Customer {} tenant_id={}: {}", opLabel, tenantId, e.getMessage());
+            return new CustomerIdOrError(
+                    null,
+                    ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                            .body(new BillingSessionApiDtos.ErrorResponse("stripe_indisponível")));
+        }
+    }
+
+    private record CustomerIdOrError(String customerId, ResponseEntity<?> error) {}
 
     private PortalAuthenticationToken requirePortalUser(Authentication authentication) {
         if (!(authentication instanceof PortalAuthenticationToken token)) {

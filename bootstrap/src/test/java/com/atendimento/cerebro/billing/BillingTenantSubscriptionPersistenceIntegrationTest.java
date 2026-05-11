@@ -99,5 +99,12 @@ class BillingTenantSubscriptionPersistenceIntegrationTest {
                 jdbcTemplate.queryForObject(
                         "SELECT profile_level FROM portal_user WHERE tenant_id = ?", String.class, TENANT);
         assertThat(portalProfile).isEqualTo("PRO");
+
+        String linkedCustomer =
+                jdbcTemplate.queryForObject(
+                        "SELECT stripe_customer_id FROM stripe_customer WHERE tenant_id = ?",
+                        String.class,
+                        TENANT);
+        assertThat(linkedCustomer).isEqualTo("cus_test_integration");
     }
 }

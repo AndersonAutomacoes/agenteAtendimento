@@ -20,9 +20,11 @@ public class BillingTenantSubscriptionJdbcStore implements TenantSubscriptionPer
     private static final Logger log = LoggerFactory.getLogger(BillingTenantSubscriptionJdbcStore.class);
 
     private final JdbcClient jdbcClient;
+    private final BillingStripeCustomerAccess stripeCustomerAccess;
 
-    public BillingTenantSubscriptionJdbcStore(JdbcClient jdbcClient) {
+    public BillingTenantSubscriptionJdbcStore(JdbcClient jdbcClient, BillingStripeCustomerAccess stripeCustomerAccess) {
         this.jdbcClient = jdbcClient;
+        this.stripeCustomerAccess = stripeCustomerAccess;
     }
 
     @Override
@@ -65,6 +67,8 @@ public class BillingTenantSubscriptionJdbcStore implements TenantSubscriptionPer
                 .param(snapshot.cancelAtPeriodEnd())
                 .param(snapshot.pastDueSince() != null ? Timestamp.from(snapshot.pastDueSince()) : null)
                 .update();
+
+        stripeCustomerAccess.upsertStripeCustomerFromSubscriptionSync(tenantId, snapshot.stripeCustomerId());
 
         String tierName = snapshot.tier().toProfileLevel().name();
 
