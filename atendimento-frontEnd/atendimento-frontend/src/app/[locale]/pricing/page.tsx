@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -22,6 +22,12 @@ import {
 } from "@/services/apiService";
 
 const TIERS: StripePaidTier[] = ["BASIC", "PRO", "ULTRA"];
+type PublicPriceInfo = {
+  priceId: string;
+  currency: string;
+  unitAmount: number;
+};
+type PublicPricesByTier = Partial<Record<StripePaidTier, Partial<Record<BillingIntervalUi, PublicPriceInfo>>>>;
 
 function tierTranslationKey(t: StripePaidTier): "tierBasic" | "tierPro" | "tierUltra" {
   return t === "BASIC" ? "tierBasic" : t === "PRO" ? "tierPro" : "tierUltra";
@@ -40,16 +46,86 @@ function tierFeatures(
 }
 
 export default function PricingPage() {
+  const locale = useLocale();
   const t = useTranslations("billing");
   const tApi = useTranslations("api");
   const [interval, setInterval] = React.useState<BillingIntervalUi>("MONTH");
   const [busy, setBusy] = React.useState<string | null>(null);
+  const [publicPrices, setPublicPrices] = React.useState<PublicPricesByTier>({});
+  const [publicPricesLoaded, setPublicPricesLoaded] = React.useState(false);
 
   const translateApi = React.useCallback((key: string) => tApi(key), [tApi]);
 
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/v1/billing/public-prices", { method: "GET" });
+        const json = (await res.json().catch(() => ({}))) as {
+          prices?: Array<{
+            tier?: string;
+            interval?: string;
+            priceId?: string;
+            currency?: string;
+            unitAmount?: number;
+          }>;
+        };
+        if (!active || !res.ok || !Array.isArray(json.prices)) {
+          setPublicPricesLoaded(true);
+          return;
+        }
+        const next: PublicPricesByTier = {};
+        for (const p of json.prices) {
+          const tier = p.tier;
+          const int = p.interval;
+          if (
+            (tier === "BASIC" || tier === "PRO" || tier === "ULTRA") &&
+            (int === "MONTH" || int === "YEAR") &&
+            typeof p.priceId === "string" &&
+            p.priceId.trim() &&
+            typeof p.unitAmount === "number" &&
+            Number.isFinite(p.unitAmount)
+          ) {
+            next[tier] ??= {};
+            next[tier][int] = {
+              priceId: p.priceId.trim(),
+              currency: typeof p.currency === "string" && p.currency.trim() ? p.currency.trim() : "USD",
+              unitAmount: p.unitAmount,
+            };
+          }
+        }
+        if (active) {
+          setPublicPrices(next);
+          setPublicPricesLoaded(true);
+        }
+      } catch {
+        if (active) setPublicPricesLoaded(true);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const priceLabel = React.useCallback(
+    (tier: StripePaidTier, int: BillingIntervalUi): string | null => {
+      const info = publicPrices[tier]?.[int];
+      if (!info) return null;
+      const value = info.unitAmount / 100;
+      const formatted = new Intl.NumberFormat(locale, {
+        style: "currency",
+        currency: info.currency.toUpperCase(),
+        minimumFractionDigits: 0,
+      }).format(value);
+      return `${formatted} · ${int === "MONTH" ? t("intervalMonthly") : t("intervalYearly")}`;
+    },
+    [locale, publicPrices, t],
+  );
+
   const subscribe = React.useCallback(
     async (tier: StripePaidTier) => {
-      const priceId = publicStripePriceId(tier, interval);
+      const fromStripe = publicPrices[tier]?.[interval]?.priceId;
+      const priceId = fromStripe ?? publicStripePriceId(tier, interval);
       if (!priceId) {
         toast.error(t("priceNotConfigured"));
         return;
@@ -81,7 +157,7 @@ export default function PricingPage() {
         setBusy(null);
       }
     },
-    [interval, t, translateApi],
+    [interval, publicPrices, t, translateApi],
   );
 
   return (
@@ -114,7 +190,8 @@ export default function PricingPage() {
 
         <div className="grid gap-6 sm:grid-cols-3">
           {TIERS.map((tier) => {
-            const pid = publicStripePriceId(tier, interval);
+            const pid = publicPrices[tier]?.[interval]?.priceId ?? publicStripePriceId(tier, interval);
+            const visiblePrice = priceLabel(tier, interval);
             const disabled = !pid || busy !== null;
             const busyHere = busy === `${tier}-${interval}`;
             const featureKeys = tierFeatures(tier);
@@ -122,8 +199,11 @@ export default function PricingPage() {
               <Card key={tier} className="flex flex-col border-border/80 bg-card shadow-md">
                 <CardHeader className="space-y-1">
                   <p className="text-lg font-semibold">{t(tierTranslationKey(tier))}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {!pid ? t("priceNotConfigured") : "\u00a0"}
+                  <p className="text-sm font-medium text-foreground min-h-5">
+                    {visiblePrice ?? "\u00a0"}
+                  </p>
+                  <p className="text-xs text-muted-foreground min-h-4">
+                    {!pid ? t("priceNotConfigured") : !visiblePrice && !publicPricesLoaded ? "..." : "\u00a0"}
                   </p>
                 </CardHeader>
                 <CardContent className="flex-1 space-y-2">

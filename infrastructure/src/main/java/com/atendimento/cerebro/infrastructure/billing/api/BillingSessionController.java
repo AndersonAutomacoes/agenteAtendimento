@@ -4,18 +4,24 @@ import com.atendimento.cerebro.infrastructure.billing.BillingStripeProperties;
 import com.atendimento.cerebro.infrastructure.billing.persistence.BillingStripeCustomerAccess;
 import com.atendimento.cerebro.infrastructure.security.PortalAuthenticationToken;
 import com.stripe.exception.StripeException;
+import com.stripe.model.Price;
 import com.stripe.model.checkout.Session;
 import com.stripe.net.RequestOptions;
 import com.stripe.param.billingportal.SessionCreateParams;
 import com.stripe.param.checkout.SessionCreateParams.LineItem;
 import com.stripe.param.checkout.SessionCreateParams.Mode;
 import com.stripe.param.checkout.SessionCreateParams.SubscriptionData;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -33,6 +39,31 @@ public class BillingSessionController {
     public BillingSessionController(BillingStripeProperties stripeProperties, BillingStripeCustomerAccess customerAccess) {
         this.stripeProperties = stripeProperties;
         this.customerAccess = customerAccess;
+    }
+
+    @GetMapping(path = "/public-prices", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> listPublicPrices() {
+        ResponseEntity<?> configured = requireStripeConfigured();
+        if (configured != null) {
+            return configured;
+        }
+        Map<String, String> priceTier = stripeProperties.priceTierNonNull();
+        if (priceTier.isEmpty()) {
+            return ResponseEntity.ok(new BillingSessionApiDtos.PublicPricesResponse(List.of()));
+        }
+        try {
+            List<BillingSessionApiDtos.PublicPriceResponse> prices = priceTier.entrySet().stream()
+                    .map(this::toPublicPrice)
+                    .filter(x -> x != null)
+                    .sorted(Comparator.comparing(BillingSessionApiDtos.PublicPriceResponse::tier)
+                            .thenComparing(BillingSessionApiDtos.PublicPriceResponse::interval))
+                    .toList();
+            return ResponseEntity.ok(new BillingSessionApiDtos.PublicPricesResponse(prices));
+        } catch (RuntimeException e) {
+            log.warn("Falha ao consultar Stripe public-prices: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                    .body(new BillingSessionApiDtos.ErrorResponse("stripe_indisponível"));
+        }
     }
 
     @PostMapping(path = "/checkout-session", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -174,6 +205,41 @@ public class BillingSessionController {
     private static ResponseEntity<?> billingForbidden() {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(new BillingSessionApiDtos.ErrorResponse("sem_permissão_cobrança"));
+    }
+
+    private BillingSessionApiDtos.PublicPriceResponse toPublicPrice(Map.Entry<String, String> e) {
+        String priceId = e.getKey();
+        String tier = normalizeTier(e.getValue());
+        if (priceId == null || priceId.isBlank() || tier == null) {
+            return null;
+        }
+        try {
+            Price price = Price.retrieve(priceId, RequestOptions.getDefault());
+            if (price == null || price.getRecurring() == null || price.getUnitAmount() == null) {
+                return null;
+            }
+            String interval = normalizeInterval(price.getRecurring().getInterval());
+            String currency = price.getCurrency() != null
+                    ? price.getCurrency().trim().toUpperCase(Locale.ROOT)
+                    : "USD";
+            return new BillingSessionApiDtos.PublicPriceResponse(
+                    tier, interval, priceId, currency, price.getUnitAmount());
+        } catch (StripeException ex) {
+            throw new IllegalStateException("erro ao obter price " + priceId, ex);
+        }
+    }
+
+    private static String normalizeTier(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        return raw.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private static String normalizeInterval(String raw) {
+        if (raw == null) return "UNKNOWN";
+        String x = raw.trim().toLowerCase(Locale.ROOT);
+        if ("month".equals(x)) return "MONTH";
+        if ("year".equals(x)) return "YEAR";
+        return "UNKNOWN";
     }
 
     private ResponseEntity<?> requireStripeConfigured() {
