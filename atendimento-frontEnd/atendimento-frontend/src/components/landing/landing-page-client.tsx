@@ -1,12 +1,11 @@
 "use client";
 
-import { CalendarClock, CalendarDays, ChevronRight, Clock, Quote, Star, TrendingUp, UserCircle2 } from "lucide-react";
+import { Brain, CalendarClock, CalendarDays, ChevronRight, Clock, Quote, Star, TrendingUp, UserCircle2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { LandingChatMockup, type ChatBubble } from "@/components/landing/landing-chat-mockup";
 import { LandingContactForm } from "@/components/landing/landing-contact-form";
 import { getLandingWhatsAppHref, LandingFloatingWhatsApp } from "@/components/landing/landing-floating-whatsapp";
-import { AppLogo } from "@/components/brand/app-logo";
 import { LocaleSwitcher } from "@/components/layout/locale-switcher";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -35,7 +34,6 @@ function getLandingDemoHref(): string | null {
 
 export function LandingPageClient() {
   const t = useTranslations("landingPage");
-  const tNav = useTranslations("nav");
   const benefits = t.raw("benefits") as Benefit[];
   const howSteps = t.raw("howSteps") as Step[];
   const faqItems = t.raw("faq") as FaqItem[];
@@ -64,10 +62,14 @@ export function LandingPageClient() {
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 md:px-6">
           <Link
             href="/landing"
-            aria-label={tNav("logoLinkHome")}
-            className="flex min-w-0 max-w-[min(100%,24rem)] items-center rounded-lg outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring sm:max-w-none"
+            className="flex min-w-0 max-w-[min(100%,14rem)] items-center gap-2 rounded-lg outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring sm:max-w-none"
           >
-            <AppLogo variant="marketing" priority className="justify-start" />
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+              <Brain className="h-5 w-5" aria-hidden />
+            </span>
+            <span className="truncate font-landing-brand text-lg font-semibold tracking-tight text-foreground">
+              {t("navBrand")}
+            </span>
           </Link>
           <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
             <LocaleSwitcher />

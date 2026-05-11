@@ -6,7 +6,6 @@ import * as React from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
-import { AppLogo } from "@/components/brand/app-logo";
 import { PasswordInput } from "@/components/auth/password-input";
 import { usePlan } from "@/components/plan/plan-provider";
 import { Button } from "@/components/ui/button";
@@ -28,7 +27,6 @@ const TENANT_STORAGE_KEY = "cerebro-tenant-id";
 
 export default function LoginPage() {
   const t = useTranslations("loginPage");
-  const tNav = useTranslations("nav");
   const tCommon = useTranslations("common");
   const tApi = useTranslations("api");
   const router = useRouter();
@@ -110,18 +108,9 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-full flex-col items-center justify-center bg-background p-6">
       <div className="w-full max-w-md space-y-6 rounded-2xl border border-border bg-card p-8 shadow-lg">
-        <div className="flex flex-col items-center gap-6 text-center">
-          <Link
-            href="/landing"
-            aria-label={tNav("logoLinkHome")}
-            className="rounded-xl outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <AppLogo variant="auth" />
-          </Link>
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-            <p className="mt-2 text-sm text-muted-foreground">{t("subtitle")}</p>
-          </div>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{t("subtitle")}</p>
         </div>
         <form onSubmit={onSubmit} className="space-y-4" noValidate>
           {formError ? (
