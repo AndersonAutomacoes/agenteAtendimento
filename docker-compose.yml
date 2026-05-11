@@ -167,6 +167,12 @@ services:
       DD_TRACE_AGENT_URL: ${DD_TRACE_AGENT_URL:-http://host.docker.internal:8126}
       DD_TRACE_ENABLED: ${DD_TRACE_ENABLED:-true}
       CEREBRO_CORS_ALLOWED_ORIGINS: ${CEREBRO_CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      # Stripe billing — mesmo padrão que docker-compose.hml.yml (ver application.yml `stripe.*`).
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_CHECKOUT_SUCCESS_URL: ${STRIPE_CHECKOUT_SUCCESS_URL:-}
+      STRIPE_CHECKOUT_CANCEL_URL: ${STRIPE_CHECKOUT_CANCEL_URL:-}
+      STRIPE_PORTAL_RETURN_URL: ${STRIPE_PORTAL_RETURN_URL:-}
     depends_on:
       postgres:
         condition: service_healthy
