@@ -78,7 +78,7 @@ function InternalTenantsPageContent() {
     null,
   );
   const [search, setSearch] = React.useState("");
-  const [statusFilter, setStatusFilter] = React.useState<"all" | "active" | "inactive">("all");
+  const [statusFilter, setStatusFilter] = React.useState<"all" | "active" | "inactive">("active");
   const [tenants, setTenants] = React.useState<InternalTenantListItem[]>([]);
   const [loadingList, setLoadingList] = React.useState(false);
   const [invitingTenant, setInvitingTenant] = React.useState<string | null>(null);

@@ -124,21 +124,29 @@ public class TenantOnboardingRestRoute extends RouteBuilder {
             exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
             return;
         }
-        String code = tenantInviteService.createInviteAndSendEmail(
-                new TenantId(tenantId),
-                max,
-                null,
-                inviteEmail,
-                cfg != null ? cfg.establishmentName() : null);
-        exchange.getMessage()
-                .setBody(
-                        new CreateInviteResponse(
-                                code,
-                                "Convite gerado e enviado por e-mail com sucesso.",
-                                "O e-mail do utilizador final não fica no AxeZap após o envio.",
-                                inviteEmail));
-        exchange.getMessage().setHeader(Exchange.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
-        exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.OK.value());
+        try {
+            String code = tenantInviteService.createInviteAndSendEmail(
+                    new TenantId(tenantId),
+                    max,
+                    null,
+                    inviteEmail,
+                    cfg != null ? cfg.establishmentName() : null);
+            exchange.getMessage()
+                    .setBody(
+                            new CreateInviteResponse(
+                                    code,
+                                    "Convite gerado e enviado por e-mail com sucesso.",
+                                    "O e-mail do utilizador final não fica no AxeZap após o envio.",
+                                    inviteEmail));
+            exchange.getMessage().setHeader(Exchange.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
+            exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.OK.value());
+        } catch (IllegalArgumentException e) {
+            exchange.getIn().setBody(new IngestErrorResponse(e.getMessage()));
+            exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
+        } catch (IllegalStateException e) {
+            exchange.getIn().setBody(new IngestErrorResponse(e.getMessage()));
+            exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_GATEWAY.value());
+        }
     }
 
     private void handleServicesGet(Exchange exchange) {

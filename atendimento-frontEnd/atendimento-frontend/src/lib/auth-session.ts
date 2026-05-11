@@ -52,26 +52,35 @@ export function triggerSessionExpired(): void {
   window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
 }
 
-function requestUsedBearerAuth(init?: RequestInit): boolean {
-  const headers = init?.headers;
-  if (!headers) return false;
+/** Login com prefixo de locale quando a URL actual o tem (ex.: `/en/dashboard` → `/en/login`). */
+export function buildLoginHrefWithCurrentLocale(): string {
+  if (typeof window === "undefined") return "/login";
+  const parts = window.location.pathname.split("/").filter(Boolean);
+  const first = parts[0] as AppLocale | undefined;
+  if (first && routing.locales.includes(first)) {
+    return `/${first}/login`;
+  }
+  return "/login";
+}
+
+function headersInitHasBearer(headers: HeadersInit): boolean {
   if (headers instanceof Headers) {
     const v =
       headers.get("Authorization") ?? headers.get("authorization");
-    return typeof v === "string" && v.startsWith("Bearer ");
+    return typeof v === "string" && v.trim().startsWith("Bearer ");
   }
   if (Array.isArray(headers)) {
     return headers.some(
       ([k, v]) =>
         k.toLowerCase() === "authorization" &&
-        String(v).startsWith("Bearer "),
+        String(v).trim().startsWith("Bearer "),
     );
   }
   const rec = headers as Record<string, string>;
   for (const key of Object.keys(rec)) {
     if (
       key.toLowerCase() === "authorization" &&
-      String(rec[key]).startsWith("Bearer ")
+      String(rec[key] ?? "").trim().startsWith("Bearer ")
     ) {
       return true;
     }
@@ -80,8 +89,52 @@ function requestUsedBearerAuth(init?: RequestInit): boolean {
 }
 
 /**
- * Interceptor global de fetch: em 401 com Bearer no pedido, limpa sessão e redireciona para login.
- * Devolve a mesma Response para o chamador poder tratar o erro.
+ * Indica se o pedido foi feito com JWT (header {@code Authorization}) ou, em último recurso, com token ainda em
+ * {@code localStorage} para um URL da API — cobre {@code fetch(new Request(...))} sem segundo argumento.
+ */
+function requestAppearsAuthenticated(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): boolean {
+  if (init?.headers !== undefined && headersInitHasBearer(init.headers)) {
+    return true;
+  }
+  if (typeof Request !== "undefined" && input instanceof Request) {
+    const h =
+      input.headers.get("Authorization") ?? input.headers.get("authorization");
+    if (typeof h === "string" && h.trim().startsWith("Bearer ")) {
+      return true;
+    }
+  }
+  let urlStr = "";
+  try {
+    if (typeof input === "string") {
+      urlStr = input;
+    } else if (input instanceof URL) {
+      urlStr = input.toString();
+    } else if (input instanceof Request) {
+      urlStr = input.url;
+    }
+  } catch {
+    return false;
+  }
+  const looksLikeApi =
+    urlStr.includes("/api/v1/") || urlStr.includes("/v1/");
+  const isRegister = urlStr.includes("/v1/auth/register");
+  if (!looksLikeApi || isRegister) {
+    return false;
+  }
+  try {
+    return Boolean(localStorage.getItem(CEREBRO_AUTH_TOKEN_KEY));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Interceptor global de fetch: em 401 quando o pedido parecia autenticado (Bearer no {@code Request}/{@code init},
+ * ou token em {@code localStorage} para URL da API), dispara o fluxo de sessão expirada (limpeza + login).
+ * Devolve a mesma {@link Response} para o chamador poder tratar o erro.
  */
 export function installAuth401FetchInterceptor(
   onUnauthorized: () => void,
@@ -95,12 +148,10 @@ export function installAuth401FetchInterceptor(
     init?: RequestInit,
   ): Promise<Response> => {
     const res = await orig(input, init);
-    if (
-      res.status === 401 &&
-      requestUsedBearerAuth(init) &&
-      typeof window !== "undefined"
-    ) {
-      onUnauthorized();
+    if (res.status === 401 && typeof window !== "undefined") {
+      if (requestAppearsAuthenticated(input, init)) {
+        onUnauthorized();
+      }
     }
     return res;
   };

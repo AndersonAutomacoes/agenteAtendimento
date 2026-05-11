@@ -234,6 +234,8 @@ billing:
 stripe:
   secret-key: ${STRIPE_SECRET_KEY:}
   webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+  # Opcional: whsec do `stripe listen` (diferente do endpoint no Dashboard). Ver STRIPE_WEBHOOK_CLI_SECRET no .env.example.
+  webhook-cli-secret: ${STRIPE_WEBHOOK_CLI_SECRET:}
   # Local: http://localhost:3000/billing/success — Produção: https://<domínio-front>/billing/success
   success-url: ${STRIPE_CHECKOUT_SUCCESS_URL:http://165.227.194.76:3000/billing/success}
   cancel-url: ${STRIPE_CHECKOUT_CANCEL_URL:http://165.227.194.76:3000/pricing}

@@ -293,25 +293,37 @@ export class ApiHttpError extends Error {
   }
 }
 
-function parseErrorFromBody(json: unknown, fallbackErrorsKey: string): string {
+/** Mensagem estruturada do backend (`error` / `message`), ou null. */
+function parseStructuredApiError(json: unknown): string | null {
   if (json && typeof json === "object") {
     const o = json as ApiErrorBody;
-    if (typeof o.error === "string" && o.error.length > 0) return o.error;
-    if (typeof o.message === "string" && o.message.length > 0) return o.message;
+    if (typeof o.error === "string" && o.error.trim()) {
+      return o.error.trim();
+    }
+    if (typeof o.message === "string" && o.message.trim()) {
+      return o.message.trim();
+    }
   }
-  return apiI18nKey(fallbackErrorsKey);
+  return null;
 }
 
-/** Erros 5xx e corpo JSON — 4xx usa texto do backend quando existir. */
+/**
+ * Texto de erro para o utilizador: prioriza corpo JSON (incl. 502/503 com `error` do Java),
+ * depois 5xx sem mensagem → indisponível, depois chave i18n para 4xx sem corpo.
+ */
 function httpErrorUserMessage(
   status: number,
   json: unknown,
   fallbackErrorsKey: string,
 ): string {
+  const structured = parseStructuredApiError(json);
+  if (structured != null) {
+    return structured;
+  }
   if (status >= 500) {
     return apiI18nKey("errors.serverUnavailable");
   }
-  return parseErrorFromBody(json, fallbackErrorsKey);
+  return apiI18nKey(fallbackErrorsKey);
 }
 
 /**

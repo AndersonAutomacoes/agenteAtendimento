@@ -147,9 +147,10 @@ services:
       # Várias origens com vírgula; inclua http://<IP_PÚBLICO>:3000 para o painel (Next) falar com a API
       CEREBRO_CORS_ALLOWED_ORIGINS: ${CEREBRO_CORS_ALLOWED_ORIGINS:-http://localhost:3000}
       # Stripe (billing): definir no .env da VPS — sem isto o Java vê `stripe.secret-key` vazio → `stripe_não_configurado`.
-      # Relaxed binding: `stripe.secret-key` ← STRIPE_SECRET_KEY; `stripe.webhook-secret` ← STRIPE_WEBHOOK_SECRET.
+      # Relaxed binding: STRIPE_* → stripe.* ; `stripe listen` usa outro whsec → STRIPE_WEBHOOK_CLI_SECRET opcional.
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_WEBHOOK_CLI_SECRET: ${STRIPE_WEBHOOK_CLI_SECRET:-}
       STRIPE_CHECKOUT_SUCCESS_URL: ${STRIPE_CHECKOUT_SUCCESS_URL:-}
       STRIPE_CHECKOUT_CANCEL_URL: ${STRIPE_CHECKOUT_CANCEL_URL:-}
       STRIPE_PORTAL_RETURN_URL: ${STRIPE_PORTAL_RETURN_URL:-}

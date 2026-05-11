@@ -579,6 +579,10 @@ public class InternalTenantAdminRestRoute extends RouteBuilder {
         } catch (IllegalArgumentException e) {
             exchange.getIn().setBody(new IngestErrorResponse(e.getMessage()));
             exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_REQUEST.value());
+        } catch (IllegalStateException e) {
+            // Resend / configuração de e-mail (domínio não verificado, API key, etc.)
+            exchange.getIn().setBody(new IngestErrorResponse(e.getMessage()));
+            exchange.getMessage().setHeader(Exchange.HTTP_RESPONSE_CODE, HttpStatus.BAD_GATEWAY.value());
         }
     }
 

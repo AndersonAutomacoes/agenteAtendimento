@@ -36,7 +36,11 @@ public class SecurityConfiguration {
                                 .permitAll()
                                 .requestMatchers(HttpMethod.POST, "/api/v1/whatsapp/webhook/**")
                                 .permitAll()
-                                .requestMatchers(HttpMethod.POST, "/v1/billing/webhook/stripe")
+                                .requestMatchers(
+                                                HttpMethod.POST,
+                                                "/v1/billing/webhook/stripe",
+                                                "/v1/billing/webhook",
+                                                "/v1/billing/webhook/")
                                 .permitAll()
                                 .requestMatchers(HttpMethod.POST, "/v1/billing/checkout-session", "/v1/billing/portal-session")
                                 .authenticated()
