@@ -8,6 +8,9 @@ type Props = {
   params: Promise<{ locale: string }>;
 };
 
+/** Sem isto, o Next pré-renderiza no `build` (CI sem telefone) e o `whatsappHref` fica null para sempre. */
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "landingPage" });
