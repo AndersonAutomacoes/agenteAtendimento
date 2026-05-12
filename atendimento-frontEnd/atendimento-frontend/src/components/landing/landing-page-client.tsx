@@ -24,14 +24,6 @@ const integrations = [
   { key: "postgresql", label: "PostgreSQL", icon: DatabaseIcon, colorClass: "group-hover:text-[#336791]" },
 ] as const;
 
-/** Demo externo: defina NEXT_PUBLIC_LANDING_DEMO_URL (https://...). Se vazio, o CTA secundário do Hero usa #contato. */
-function getLandingDemoHref(): string | null {
-  const raw = process.env.NEXT_PUBLIC_LANDING_DEMO_URL?.trim();
-  if (!raw) return null;
-  if (raw.startsWith("https://") || raw.startsWith("http://")) return raw;
-  return null;
-}
-
 export function LandingPageClient() {
   const t = useTranslations("landingPage");
   const benefits = t.raw("benefits") as Benefit[];
@@ -40,10 +32,7 @@ export function LandingPageClient() {
   const heroChatBubbles = t.raw("heroChatBubbles") as ChatBubble[];
   const contactEmail = process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim();
   const waHref = getLandingWhatsAppHref();
-  const demoHref = getLandingDemoHref();
-
-  const trialHref = waHref ?? "#contato";
-  const demoTargetHref = demoHref ?? "#contato";
+  const primaryCtaHref = waHref ?? "#contato";
 
   return (
     <div className="landing-mesh-bg dark relative min-h-full bg-background text-foreground">
@@ -76,9 +65,6 @@ export function LandingPageClient() {
             <ThemeToggle />
             <Button variant="ghost" size="sm" className="touch-manipulation" asChild>
               <Link href="/login">{t("navLogin")}</Link>
-            </Button>
-            <Button size="sm" className="touch-manipulation" asChild>
-              <Link href="/register">{t("navRegister")}</Link>
             </Button>
           </div>
         </div>
@@ -116,28 +102,13 @@ export function LandingPageClient() {
                   asChild
                 >
                   <a
-                    href={trialHref}
+                    href={primaryCtaHref}
                     target={waHref ? "_blank" : undefined}
                     rel={waHref ? "noopener noreferrer" : undefined}
                     aria-label={t("heroCtaTrialAria")}
                   >
                     {t("heroCtaTrial")}
                     <ChevronRight className="ml-1 size-5 opacity-90" aria-hidden />
-                  </a>
-                </Button>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="h-12 border-border bg-transparent"
-                  asChild
-                >
-                  <a
-                    href={demoTargetHref}
-                    target={demoHref ? "_blank" : undefined}
-                    rel={demoHref ? "noopener noreferrer" : undefined}
-                    aria-label={t("heroCtaDemoAria")}
-                  >
-                    {t("heroCtaDemo")}
                   </a>
                 </Button>
               </div>
@@ -313,19 +284,19 @@ export function LandingPageClient() {
             <div className="mx-auto max-w-2xl text-center">
               <h2 className="text-3xl font-bold tracking-tight md:text-4xl">{t("contactHeading")}</h2>
               <p className="mt-4 text-muted-foreground">{t("contactSub")}</p>
-              <div className="mt-8 flex w-full flex-col justify-center gap-3 sm:mx-auto sm:max-w-lg sm:flex-row sm:flex-wrap">
+              <p className="mx-auto mt-3 max-w-lg text-pretty text-sm leading-relaxed text-muted-foreground/95 md:text-base">
+                {t("contactInviteNote")}
+              </p>
+              <div className="mt-8 flex w-full justify-center">
                 <Button
                   size="lg"
-                  className="w-full gap-1 px-6 font-semibold shadow-md sm:flex-1 touch-manipulation"
+                  className="w-full max-w-md gap-1 px-6 font-semibold shadow-md touch-manipulation sm:w-auto"
                   asChild
                 >
                   <a href="#landing-form" aria-label={t("finalCtaExpertAria")}>
                     {t("contactFormCardTitle")}
                     <ChevronRight className="size-5 opacity-90" aria-hidden />
                   </a>
-                </Button>
-                <Button size="lg" variant="outline" className="w-full touch-manipulation sm:flex-1" asChild>
-                  <Link href="/register">{t("finalCtaRegister")}</Link>
                 </Button>
               </div>
             </div>
@@ -361,9 +332,6 @@ export function LandingPageClient() {
           <div className="flex flex-wrap gap-4 text-sm">
             <Link href="/login" className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
               {t("footerLogin")}
-            </Link>
-            <Link href="/register" className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
-              {t("footerRegister")}
             </Link>
           </div>
         </div>

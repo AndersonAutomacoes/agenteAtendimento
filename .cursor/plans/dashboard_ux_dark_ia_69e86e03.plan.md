@@ -114,4 +114,4 @@ flowchart TB
 - [src/components/layout/app-sidebar.tsx](atendimento-frontEnd/atendimento-frontend/src/components/layout/app-sidebar.tsx), [src/components/layout/app-shell.tsx](atendimento-frontEnd/atendimento-frontend/src/components/layout/app-shell.tsx)
 - [src/app/(app)/knowledge/page.tsx](atendimento-frontEnd/atendimento-frontend/src/app/(app)/knowledge/page.tsx), [src/app/(app)/test-chat/page.tsx](atendimento-frontEnd/atendimento-frontend/src/app/(app)/test-chat/page.tsx), componentes novos em `src/components/chat/` (ex. `ChatThread.tsx`, `MessageBubble.tsx`, `ChatSkeleton.tsx`)
 - Novo [src/services/apiService.ts](atendimento-frontEnd/atendimento-frontend/src/services/apiService.ts); remover ou delegar [src/services/cerebro-api.ts](atendimento-frontEnd/atendimento-frontend/src/services/cerebro-api.ts)
-- Opcional backend: CORS + alias `/api/v1/ingest` se a equipa quiser `fetch` direto a `8080` com o path pedido literalmente.
+- Opcional backend: CORS + alias `/api/v1/ingest` se a equipe quiser `fetch` direto a `8080` com o path pedido literalmente.
