@@ -6,7 +6,8 @@
   "common": {
     "closeDialog": "Cerrar diálogo",
     "showPassword": "Mostrar contraseña",
-    "hidePassword": "Ocultar contraseña"
+    "hidePassword": "Ocultar contraseña",
+    "loadingApp": "Comprobando sesión…"
   },
   "pwa": {
     "title": "Instalar AxeZap en el móvil",

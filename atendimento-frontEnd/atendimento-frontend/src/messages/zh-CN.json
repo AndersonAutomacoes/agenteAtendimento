@@ -6,7 +6,8 @@
   "common": {
     "closeDialog": "关闭对话框",
     "showPassword": "显示密码",
-    "hidePassword": "隐藏密码"
+    "hidePassword": "隐藏密码",
+    "loadingApp": "正在验证会话…"
   },
   "pwa": {
     "title": "在手机上安装 AxeZap",

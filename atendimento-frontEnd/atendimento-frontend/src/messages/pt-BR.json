@@ -6,7 +6,8 @@
   "common": {
     "closeDialog": "Fechar diálogo",
     "showPassword": "Mostrar senha",
-    "hidePassword": "Ocultar senha"
+    "hidePassword": "Ocultar senha",
+    "loadingApp": "Verificando sessão…"
   },
   "pwa": {
     "title": "Instalar AxeZap no seu celular",
@@ -160,7 +161,7 @@
   },
   "loginPage": {
     "title": "Painel de controle",
-    "subtitle": "Entre com a sua conta Firebase (email e senha).",
+    "subtitle": "Entre com a sua conta (email e senha).",
     "email": "Email",
     "password": "Senha",
     "forgotPassword": "Esqueci minha senha",
@@ -241,7 +242,7 @@
     "suspendedTitle": "Conta inactiva",
     "suspendedBody": "Não há assinatura Stripe válida para este tenant ou o pagamento está pendente fora do período de tolerância. Renove o plano ou regularize o método de pagamento.",
     "suspendedCtaPricing": "Ver planos e assinar",
-    "suspendedCtaPortal": "Gerir faturação (cartão, facturas)",
+    "suspendedCtaPortal": "Métodos de Pagamento",
     "suspendedCtaLogin": "Iniciar sessão com outra conta"
   },
   "localeNames": {

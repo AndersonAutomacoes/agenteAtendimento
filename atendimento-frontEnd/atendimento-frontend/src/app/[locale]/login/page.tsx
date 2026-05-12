@@ -195,7 +195,7 @@ export default function LoginPage() {
           </Link>
         </p>
         <Button variant="ghost" asChild className="w-full">
-          <Link href="/">{t("backHome")}</Link>
+          <Link href="/landing">{t("backHome")}</Link>
         </Button>
       </div>
     </div>

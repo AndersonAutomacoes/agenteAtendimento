@@ -6,7 +6,8 @@
   "common": {
     "closeDialog": "Close dialog",
     "showPassword": "Show password",
-    "hidePassword": "Hide password"
+    "hidePassword": "Hide password",
+    "loadingApp": "Checking session…"
   },
   "pwa": {
     "title": "Install AxeZap on your phone",

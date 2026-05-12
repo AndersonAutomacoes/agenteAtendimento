@@ -1,3 +1,4 @@
+import { AppAuthenticatedGate } from "@/components/auth/app-authenticated-gate";
 import { AppShell } from "@/components/layout/app-shell";
 
 export default function AppLayout({
@@ -5,5 +6,9 @@ export default function AppLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return <AppShell>{children}</AppShell>;
+  return (
+    <AppAuthenticatedGate>
+      <AppShell>{children}</AppShell>
+    </AppAuthenticatedGate>
+  );
 }
