@@ -205,6 +205,9 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT_JSON_B64: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON_B64 }}
           # Opcional: mesmo padrão do Firebase — JSON em base64 (preenchido no GitHub) gravado no servidor; sobrescreve ficheiro do passo scp.
           GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64: ${{ secrets.GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64 }}
+          # Landing WhatsApp: preferir LANDING_* (runtime no container web); fallback para segredo já existente NEXT_PUBLIC_*.
+          LANDING_WHATSAPP_PHONE: ${{ secrets.LANDING_WHATSAPP_PHONE || secrets.NEXT_PUBLIC_LANDING_WHATSAPP_PHONE }}
+          LANDING_WHATSAPP_PREFILL: ${{ secrets.LANDING_WHATSAPP_PREFILL || secrets.NEXT_PUBLIC_LANDING_WHATSAPP_PREFILL }}
         with:
           host: ${{ secrets.SERVER_IP_HML }}
           username: ${{ secrets.SERVER_USER }}
@@ -212,7 +215,7 @@ jobs:
           port: 22
           command_timeout: 30m
           script_stop: true
-          envs: GHCR_IMAGE,GHCR_WEB_IMAGE,GHCR_READ_TOKEN,DATABASE_URL_HML,GROQ_API_KEY,GEMINI_API_KEY,AUTHENTICATION_API_KEY,RESEND_API_KEY,FIREBASE_PROJECT_ID,CEREBRO_FIREBASE_ENABLED,CEREBRO_CORS_ALLOWED_ORIGINS,CEREBRO_MAIL_INVITE_FROM_EMAIL,CEREBRO_MAIL_INVITE_FROM_NAME,CEREBRO_MAIL_INVITE_REGISTRATION_URL,CEREBRO_MAIL_INVITE_SUPPORT_EMAIL,WEBHOOK_GLOBAL_URL,GEMINI_CHAT_MODEL,FIREBASE_SERVICE_ACCOUNT_JSON_B64,GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64
+          envs: GHCR_IMAGE,GHCR_WEB_IMAGE,GHCR_READ_TOKEN,DATABASE_URL_HML,GROQ_API_KEY,GEMINI_API_KEY,AUTHENTICATION_API_KEY,RESEND_API_KEY,FIREBASE_PROJECT_ID,CEREBRO_FIREBASE_ENABLED,CEREBRO_CORS_ALLOWED_ORIGINS,CEREBRO_MAIL_INVITE_FROM_EMAIL,CEREBRO_MAIL_INVITE_FROM_NAME,CEREBRO_MAIL_INVITE_REGISTRATION_URL,CEREBRO_MAIL_INVITE_SUPPORT_EMAIL,WEBHOOK_GLOBAL_URL,GEMINI_CHAT_MODEL,FIREBASE_SERVICE_ACCOUNT_JSON_B64,GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON_B64,LANDING_WHATSAPP_PHONE,LANDING_WHATSAPP_PREFILL
           script: |
             set -e
             mkdir -p /opt/axezap
@@ -304,6 +307,14 @@ jobs:
                 grep -Ev '^[[:space:]]*GEMINI_CHAT_MODEL[[:space:]]*=' "$_strip_tmp" > "${_strip_tmp}.2" || true
                 mv "${_strip_tmp}.2" "$_strip_tmp"
               fi
+              if [ -n "${LANDING_WHATSAPP_PHONE:-}" ]; then
+                grep -Ev '^[[:space:]]*LANDING_WHATSAPP_PHONE[[:space:]]*=' "$_strip_tmp" > "${_strip_tmp}.2" || true
+                mv "${_strip_tmp}.2" "$_strip_tmp"
+              fi
+              if [ -n "${LANDING_WHATSAPP_PREFILL:-}" ]; then
+                grep -Ev '^[[:space:]]*LANDING_WHATSAPP_PREFILL[[:space:]]*=' "$_strip_tmp" > "${_strip_tmp}.2" || true
+                mv "${_strip_tmp}.2" "$_strip_tmp"
+              fi
               mv "$_strip_tmp" .env
             }
             remove_managed_keys_from_dotenv
@@ -323,6 +334,8 @@ jobs:
             append_kv_if_set CEREBRO_MAIL_INVITE_SUPPORT_EMAIL "$CEREBRO_MAIL_INVITE_SUPPORT_EMAIL"
             append_kv_if_set WEBHOOK_GLOBAL_URL "$WEBHOOK_GLOBAL_URL"
             append_kv_if_set GEMINI_CHAT_MODEL "$GEMINI_CHAT_MODEL"
+            append_kv_if_set LANDING_WHATSAPP_PHONE "$LANDING_WHATSAPP_PHONE"
+            append_kv_if_set LANDING_WHATSAPP_PREFILL "$LANDING_WHATSAPP_PREFILL"
             echo "=== garantir service account Firebase no servidor ==="
             # Todo o bloco secrets/Firebase/Calendar até ao compose usava set -e até aqui: um falhanço oculto matava o job só com exit 1.
             set +e

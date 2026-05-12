@@ -133,7 +133,7 @@
     "tryAgentSub": "Abre WhatsApp con un mensaje preparado — ideal para ver ritmo, tono y utilidad en móvil o escritorio.",
     "tryAgentCta": "Chatear en WhatsApp",
     "tryAgentFallbackCta": "Prefiero el formulario",
-    "tryAgentUnavailableHint": "Configura NEXT_PUBLIC_LANDING_WHATSAPP_PHONE en el entorno para activar WhatsApp.",
+    "tryAgentUnavailableHint": "Define LANDING_WHATSAPP_PHONE en el contenedor web (o NEXT_PUBLIC_LANDING_WHATSAPP_PHONE en el build) para activar WhatsApp.",
     "floatWhatsAppAria": "Abrir WhatsApp para probar el agente",
     "footerTagline": "AxeZap — Atención Inteligente",
     "footerLogin": "Login",

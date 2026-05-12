@@ -133,7 +133,7 @@
     "tryAgentSub": "Open WhatsApp with a pre-filled message — see pace, tone, and usefulness on mobile or desktop.",
     "tryAgentCta": "Chat on WhatsApp",
     "tryAgentFallbackCta": "Use the form instead",
-    "tryAgentUnavailableHint": "Set NEXT_PUBLIC_LANDING_WHATSAPP_PHONE in your environment to enable the WhatsApp button.",
+    "tryAgentUnavailableHint": "Set LANDING_WHATSAPP_PHONE on the web container (or NEXT_PUBLIC_LANDING_WHATSAPP_PHONE at build time) to enable the WhatsApp button.",
     "floatWhatsAppAria": "Open WhatsApp to try the agent",
     "footerTagline": "AxeZap — Intelligent Support",
     "footerLogin": "Login",

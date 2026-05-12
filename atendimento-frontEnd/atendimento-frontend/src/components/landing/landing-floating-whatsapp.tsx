@@ -3,19 +3,27 @@
 import { MessageCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { buildWhatsappMeHref, normalizeWhatsappDigits } from "@/lib/landing-whatsapp";
 import { cn } from "@/lib/utils";
 
+/** Só variáveis {@code NEXT_PUBLIC_*} (embutidas no bundle no build). Para VPS só com .env, usar SSR em {@link resolveLandingWhatsAppHrefForServer}. */
 export function getLandingWhatsAppHref(): string | null {
-  const raw = process.env.NEXT_PUBLIC_LANDING_WHATSAPP_PHONE?.replace(/\D/g, "") ?? "";
-  if (!raw) return null;
-  const prefill = process.env.NEXT_PUBLIC_LANDING_WHATSAPP_PREFILL?.trim();
-  const q = prefill ? `?text=${encodeURIComponent(prefill)}` : "";
-  return `https://wa.me/${raw}${q}`;
+  return buildWhatsappMeHref(
+      normalizeWhatsappDigits(process.env.NEXT_PUBLIC_LANDING_WHATSAPP_PHONE),
+      process.env.NEXT_PUBLIC_LANDING_WHATSAPP_PREFILL ?? null,
+  );
 }
 
-export function LandingFloatingWhatsApp({ className }: { className?: string }) {
+export function LandingFloatingWhatsApp({
+  className,
+  /** Quando a landing resolve o link no servidor (ex.: {@code LANDING_WHATSAPP_PHONE} no Docker). */
+  hrefOverride,
+}: {
+  className?: string;
+  hrefOverride?: string | null;
+}) {
   const t = useTranslations("landingPage");
-  const href = getLandingWhatsAppHref();
+  const href = hrefOverride ?? getLandingWhatsAppHref();
 
   if (!href) return null;
 

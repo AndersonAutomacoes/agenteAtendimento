@@ -24,14 +24,19 @@ const integrations = [
   { key: "postgresql", label: "PostgreSQL", icon: DatabaseIcon, colorClass: "group-hover:text-[#336791]" },
 ] as const;
 
-export function LandingPageClient() {
+export type LandingPageClientProps = {
+  /** Resolvido no servidor (ex.: {@code LANDING_WHATSAPP_PHONE} no Docker em runtime). */
+  whatsappHref?: string | null;
+};
+
+export function LandingPageClient({ whatsappHref: whatsappHrefFromServer }: LandingPageClientProps = {}) {
   const t = useTranslations("landingPage");
   const benefits = t.raw("benefits") as Benefit[];
   const howSteps = t.raw("howSteps") as Step[];
   const faqItems = t.raw("faq") as FaqItem[];
   const heroChatBubbles = t.raw("heroChatBubbles") as ChatBubble[];
   const contactEmail = process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim();
-  const waHref = getLandingWhatsAppHref();
+  const waHref = whatsappHrefFromServer ?? getLandingWhatsAppHref();
   const primaryCtaHref = waHref ?? "#contato";
 
   return (
@@ -337,7 +342,7 @@ export function LandingPageClient() {
         </div>
       </footer>
 
-      <LandingFloatingWhatsApp />
+      <LandingFloatingWhatsApp hrefOverride={waHref} />
     </div>
   );
 }

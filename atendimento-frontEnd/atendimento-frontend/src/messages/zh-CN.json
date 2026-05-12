@@ -133,7 +133,7 @@
     "tryAgentSub": "使用预设开场白打开 WhatsApp——在手机或桌面快速感受响应速度与语气。",
     "tryAgentCta": "在 WhatsApp 对话",
     "tryAgentFallbackCta": "使用表单联系",
-    "tryAgentUnavailableHint": "在环境中配置 NEXT_PUBLIC_LANDING_WHATSAPP_PHONE 以启用 WhatsApp 按钮。",
+    "tryAgentUnavailableHint": "请在 Web 容器环境中设置 LANDING_WHATSAPP_PHONE（或在构建时设置 NEXT_PUBLIC_LANDING_WHATSAPP_PHONE）以启用 WhatsApp 按钮。",
     "floatWhatsAppAria": "打开 WhatsApp 试用代理",
     "footerTagline": "AxeZap — 智能客服",
     "footerLogin": "登录",

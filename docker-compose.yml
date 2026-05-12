@@ -204,6 +204,9 @@ services:
       - "3000:3000"
     environment:
       FIREBASE_SERVICE_ACCOUNT_JSON_PATH: ${FIREBASE_SERVICE_ACCOUNT_JSON_PATH:-/run/firebase.json}
+      # Landing WhatsApp (SSR): não precisa de NEXT_PUBLIC_* no build; Compose injeta em runtime.
+      LANDING_WHATSAPP_PHONE: ${LANDING_WHATSAPP_PHONE:-${NEXT_PUBLIC_LANDING_WHATSAPP_PHONE:-}}
+      LANDING_WHATSAPP_PREFILL: ${LANDING_WHATSAPP_PREFILL:-${NEXT_PUBLIC_LANDING_WHATSAPP_PREFILL:-}}
     depends_on:
       api:
         condition: service_healthy
